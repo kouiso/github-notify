@@ -204,9 +204,21 @@ export function migrateDefaultFilters(filters: CustomFilter[]): {
   const hasNeedsReview = filters.some((f) => f.id === 'default-needs-review');
   const hasMyPrs = filters.some((f) => f.id === 'default-my-prs');
 
+  // Ensure existing default search views have their searchQuery set
+  // (fixes migration gap where filters were created without searchQuery)
+  const needsSearchQueryFix = filters.some((f) => {
+    if (f.id === 'default-needs-review') {
+      return !f.searchQuery && DEFAULT_INITIAL_FILTERS[1].searchQuery;
+    }
+    if (f.id === 'default-my-prs') {
+      return !f.searchQuery && DEFAULT_INITIAL_FILTERS[2].searchQuery;
+    }
+    return false;
+  });
+
   // Check if already fully migrated
   const hasOldDefaults = filters.some((f) => OLD_DEFAULT_IDS.includes(f.id));
-  if (hasNewDefault && hasNeedsReview && hasMyPrs && !hasOldDefaults) {
+  if (hasNewDefault && hasNeedsReview && hasMyPrs && !hasOldDefaults && !needsSearchQueryFix) {
     const newDefaultReasons = new Set(DEFAULT_INITIAL_FILTERS[0].reasons);
     const hasRedundant = filters.some(
       (f) =>
@@ -260,8 +272,25 @@ export function migrateDefaultFilters(filters: CustomFilter[]): {
     result.splice(reviewIdx + 1, 0, DEFAULT_INITIAL_FILTERS[2]);
   }
 
+  // Patch searchQuery on existing default search views that are missing it
+  result = result.map((f) => {
+    if (
+      f.id === 'default-needs-review' &&
+      !f.searchQuery &&
+      DEFAULT_INITIAL_FILTERS[1].searchQuery
+    ) {
+      return { ...f, searchQuery: DEFAULT_INITIAL_FILTERS[1].searchQuery };
+    }
+    if (f.id === 'default-my-prs' && !f.searchQuery && DEFAULT_INITIAL_FILTERS[2].searchQuery) {
+      return { ...f, searchQuery: DEFAULT_INITIAL_FILTERS[2].searchQuery };
+    }
+    return f;
+  });
+
   const changed =
-    result.length !== filters.length || result.some((f, i) => f.id !== filters[i]?.id);
+    needsSearchQueryFix ||
+    result.length !== filters.length ||
+    result.some((f, i) => f.id !== filters[i]?.id);
   return { filters: result, changed };
 }
 
