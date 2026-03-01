@@ -1,0 +1,5 @@
+CLAUDE.md filter=git-crypt diff=git-crypt
+.claude/** filter=git-crypt diff=git-crypt
+prompt/** filter=git-crypt diff=git-crypt
+openspec/** filter=git-crypt diff=git-crypt
+.github/instructions/** filter=git-crypt diff=git-crypt

@@ -1,0 +1,29 @@
+name: Semgrep Code Scan
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '**/*.ts'
+      - '**/*.tsx'
+      - '**/*.js'
+      - '**/*.jsx'
+      - '**/*.rs'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  semgrep:
+    name: Semgrep コード品質スキャン
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    if: github.actor != 'dependabot[bot]'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Semgrep
+        run: semgrep scan --config auto
