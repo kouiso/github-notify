@@ -39,6 +39,8 @@ query SearchIssuesAndPRs($query: String!, $first: Int!) {
         title
         url
         state
+        isDraft
+        reviewDecision
         createdAt
         updatedAt
         author {

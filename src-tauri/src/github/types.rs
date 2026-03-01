@@ -63,10 +63,15 @@ pub struct NotificationItem {
     pub labels: Vec<Label>,
     #[serde(default)]
     pub is_read: bool,
+    #[serde(default)]
+    pub is_draft: Option<bool>,
+    #[serde(default)]
+    pub review_decision: Option<String>,
 }
 
-/// GraphQL response for viewer
+/// GraphQL response for viewer (needed for deserialization even if unused)
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct Viewer {
     pub login: String,
 }
@@ -80,6 +85,7 @@ pub struct SearchResponse {
 
 #[derive(Debug, Deserialize)]
 pub struct SearchData {
+    #[allow(dead_code)]
     pub viewer: Viewer,
     pub search: SearchResult,
 }
@@ -89,7 +95,7 @@ pub struct SearchData {
 pub struct SearchResult {
     #[allow(dead_code)]
     pub issue_count: i32,
-    pub nodes: Vec<SearchNode>,
+    pub nodes: Vec<Option<SearchNode>>,
 }
 
 /// Search node (can be Issue or PullRequest)
@@ -123,6 +129,10 @@ pub struct PullRequestNode {
     pub title: String,
     pub url: String,
     pub state: String,
+    #[serde(default)]
+    pub is_draft: Option<bool>,
+    #[serde(default)]
+    pub review_decision: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub author: Option<AuthorNode>,
@@ -222,6 +232,8 @@ impl SearchNode {
                     })
                     .collect(),
                 is_read: false,
+                is_draft: None,
+                review_decision: None,
             },
             SearchNode::PullRequest(pr) => NotificationItem {
                 id: pr.id.clone(),
@@ -252,16 +264,12 @@ impl SearchNode {
                     })
                     .collect(),
                 is_read: false,
+                is_draft: pr.is_draft,
+                review_decision: pr.review_decision.clone(),
             },
         }
     }
 
-    pub fn author_login(&self) -> Option<&str> {
-        match self {
-            SearchNode::Issue(issue) => issue.author.as_ref().map(|a| a.login.as_str()),
-            SearchNode::PullRequest(pr) => pr.author.as_ref().map(|a| a.login.as_str()),
-        }
-    }
 }
 
 fn parse_state(state: &str) -> ItemState {

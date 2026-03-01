@@ -28,6 +28,8 @@ pub struct CustomFilter {
     pub sound_type: String,
     #[serde(default)]
     pub repositories: Vec<String>,
+    #[serde(default)]
+    pub search_query: Option<String>,
 }
 
 fn default_sound_type() -> String {
@@ -63,49 +65,49 @@ impl Default for AppSettings {
             desktop_notifications: true,
             sound_enabled: true,
             custom_filters: default_initial_filters(),
-            active_filter_id: None,
+            active_filter_id: Some("dashboard".to_string()),
         }
     }
 }
 
-/// Default filters matching frontend DEFAULT_INITIAL_FILTERS (settings.ts)
+/// Default views matching frontend DEFAULT_INITIAL_FILTERS (settings.ts)
 fn default_initial_filters() -> Vec<CustomFilter> {
     vec![
         CustomFilter {
-            id: "default-review".to_string(),
-            name: "レビュー依頼".to_string(),
-            reasons: vec!["review_requested".to_string()],
+            id: "default-important".to_string(),
+            name: "重要な通知".to_string(),
+            reasons: vec![
+                "review_requested".to_string(),
+                "mention".to_string(),
+                "team_mention".to_string(),
+                "assign".to_string(),
+                "author".to_string(),
+            ],
             enable_desktop_notification: true,
             enable_sound: true,
             sound_type: "default".to_string(),
             repositories: vec![],
+            search_query: None,
         },
         CustomFilter {
-            id: "default-mention".to_string(),
-            name: "メンション".to_string(),
-            reasons: vec!["mention".to_string(), "team_mention".to_string()],
-            enable_desktop_notification: true,
-            enable_sound: true,
-            sound_type: "default".to_string(),
-            repositories: vec![],
-        },
-        CustomFilter {
-            id: "default-assign".to_string(),
-            name: "アサイン".to_string(),
-            reasons: vec!["assign".to_string()],
-            enable_desktop_notification: true,
-            enable_sound: true,
-            sound_type: "soft".to_string(),
-            repositories: vec![],
-        },
-        CustomFilter {
-            id: "default-author".to_string(),
-            name: "自分のPR/Issue".to_string(),
-            reasons: vec!["author".to_string()],
+            id: "default-needs-review".to_string(),
+            name: "Needs My Review".to_string(),
+            reasons: vec![],
             enable_desktop_notification: false,
             enable_sound: false,
             sound_type: "default".to_string(),
             repositories: vec![],
+            search_query: Some("is:open is:pr review-requested:@me -reviewed-by:@me".to_string()),
+        },
+        CustomFilter {
+            id: "default-my-prs".to_string(),
+            name: "My PRs".to_string(),
+            reasons: vec![],
+            enable_desktop_notification: false,
+            enable_sound: false,
+            sound_type: "default".to_string(),
+            repositories: vec![],
+            search_query: Some("is:open is:pr author:@me".to_string()),
         },
     ]
 }

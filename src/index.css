@@ -81,28 +81,20 @@
 }
 
 :root {
-  /* Base font size - scales with viewport and device pixel ratio */
+  /* Base font size — generous default for desktop apps */
   font-size: 16px;
 }
 
-/* Scale up for high-DPI displays (Retina, 4K) */
-@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+/* Scale up for wider windows (27"+ monitors) */
+@media (min-width: 1600px) {
   :root {
     font-size: 17px;
   }
 }
 
-/* Scale up further for very large displays */
-@media (min-width: 2560px) {
+@media (min-width: 2200px) {
   :root {
     font-size: 18px;
-  }
-}
-
-/* Scale up for ultra-high DPI + large displays */
-@media (min-width: 2560px) and (-webkit-min-device-pixel-ratio: 2) {
-  :root {
-    font-size: 19px;
   }
 }
 

@@ -1,19 +1,23 @@
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useEffect, useState } from 'react';
 import { LoginScreen } from '@/components/auth/login-screen';
+import { Dashboard } from '@/components/dashboard/dashboard';
 import { InboxList } from '@/components/inbox';
 import { Sidebar } from '@/components/layout/sidebar';
 import { SettingsDialog } from '@/components/settings/settings-dialog';
-import { useAuth, useInbox, useTheme } from '@/hooks';
+import { useAuth, useInbox, useSearchView, useSettings, useTheme } from '@/hooks';
+import { isSearchView } from '@/types/settings';
 
 export default function App() {
   const auth = useAuth();
   const inbox = useInbox();
+  const { settings } = useSettings();
+  const searchView = useSearchView();
 
   // Apply theme on mount + keyboard shortcut
   const { theme, setTheme } = useTheme();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [selectedFilterId, setSelectedFilterId] = useState<string | null>(null);
+  const [selectedFilterId, setSelectedFilterId] = useState<string | null>('dashboard');
 
   // Cmd/Ctrl+Shift+T: cycle theme (light → dark → system → light)
   useEffect(() => {
@@ -47,6 +51,23 @@ export default function App() {
     };
   }, []);
 
+  // Fetch search view data when selecting a search-based filter
+  const selectedFilter = selectedFilterId
+    ? settings.customFilters.find((f) => f.id === selectedFilterId)
+    : null;
+
+  // Replace @me with actual login for GitHub search queries
+  const userLogin = auth.user?.login;
+
+  useEffect(() => {
+    if (selectedFilter && isSearchView(selectedFilter) && selectedFilter.searchQuery) {
+      const resolved = userLogin
+        ? selectedFilter.searchQuery.replace(/@me\b/g, userLogin)
+        : selectedFilter.searchQuery;
+      searchView.fetch(resolved);
+    }
+  }, [selectedFilterId, userLogin]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Show login screen if not authenticated
   if (auth.isLoading) {
     return (
@@ -70,6 +91,10 @@ export default function App() {
     );
   }
 
+  // Determine what main content to show
+  const isDashboard = selectedFilterId === 'dashboard';
+  const isSearchMode = selectedFilter && isSearchView(selectedFilter);
+
   return (
     <div className="flex h-screen bg-background">
       {/* Sidebar */}
@@ -86,19 +111,46 @@ export default function App() {
 
       {/* Main content */}
       <div className="flex-1 min-w-0">
-        <InboxList
-          items={inbox.items}
-          isLoading={inbox.isLoading}
-          error={inbox.error}
-          lastUpdated={inbox.lastUpdated}
-          onMarkAsRead={inbox.markAsRead}
-          onMarkAllAsRead={inbox.markAllAsRead}
-          onRefresh={inbox.refresh}
-          unreadCount={inbox.unreadCount}
-          selectedIndex={inbox.selectedIndex}
-          setSelectedIndex={inbox.setSelectedIndex}
-          selectedFilterId={selectedFilterId}
-        />
+        {isDashboard ? (
+          <Dashboard
+            inboxItems={inbox.items}
+            filters={settings.customFilters}
+            onMarkInboxRead={inbox.markAsRead}
+            onRefresh={inbox.refresh}
+            isInboxLoading={inbox.isLoading}
+            userLogin={userLogin}
+          />
+        ) : isSearchMode ? (
+          <InboxList
+            items={inbox.items}
+            isLoading={searchView.isLoading}
+            error={searchView.error}
+            lastUpdated={searchView.lastUpdated}
+            onMarkAsRead={inbox.markAsRead}
+            onMarkAllAsRead={inbox.markAllAsRead}
+            onRefresh={searchView.refresh}
+            unreadCount={inbox.unreadCount}
+            selectedIndex={inbox.selectedIndex}
+            setSelectedIndex={inbox.setSelectedIndex}
+            selectedFilterId={selectedFilterId}
+            isSearchMode
+            searchItems={searchView.items}
+          />
+        ) : (
+          <InboxList
+            items={inbox.items}
+            isLoading={inbox.isLoading}
+            error={inbox.error}
+            lastUpdated={inbox.lastUpdated}
+            onMarkAsRead={inbox.markAsRead}
+            onMarkAllAsRead={inbox.markAllAsRead}
+            onRefresh={inbox.refresh}
+            unreadCount={inbox.unreadCount}
+            selectedIndex={inbox.selectedIndex}
+            setSelectedIndex={inbox.setSelectedIndex}
+            selectedFilterId={selectedFilterId}
+          />
+        )}
       </div>
 
       {/* Settings Dialog */}

@@ -31,6 +31,8 @@ export interface NotificationItem {
   repository: Repository;
   labels: Label[];
   isRead: boolean;
+  isDraft?: boolean;
+  reviewDecision?: string | null;
 }
 
 // Inbox item from REST API (no query needed!)

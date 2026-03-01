@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { InboxItem } from '@/types';
 import type { AppSettings, CustomFilter } from '@/types/settings';
-import { DEFAULT_SETTINGS, FILTER_TEMPLATES } from '@/types/settings';
+import { DEFAULT_SETTINGS } from '@/types/settings';
 import { Sidebar } from './sidebar';
 
 // useSettings をモック
@@ -81,6 +81,20 @@ describe('Sidebar', () => {
       expect(screen.getByText('GitHub Notify')).toBeInTheDocument();
     });
 
+    it('Dashboard エントリが表示される', () => {
+      render(<Sidebar {...defaultProps} />);
+      expect(screen.getByText('Dashboard')).toBeInTheDocument();
+    });
+
+    it('Dashboard クリックで onSelectFilter("dashboard") が呼ばれる', async () => {
+      const user = userEvent.setup();
+      const onSelectFilter = vi.fn();
+      render(<Sidebar {...defaultProps} onSelectFilter={onSelectFilter} />);
+
+      await user.click(screen.getByText('Dashboard'));
+      expect(onSelectFilter).toHaveBeenCalledWith('dashboard');
+    });
+
     it('Inbox フィルターが常に表示される', () => {
       render(<Sidebar {...defaultProps} />);
       expect(screen.getByText('Inbox')).toBeInTheDocument();
@@ -99,14 +113,19 @@ describe('Sidebar', () => {
       expect(screen.getByText('Settings')).toBeInTheDocument();
     });
 
-    it('Add filter ボタンが表示される', () => {
+    it('New view ボタンが表示される', () => {
       render(<Sidebar {...defaultProps} />);
-      expect(screen.getByText('Add filter')).toBeInTheDocument();
+      expect(screen.getByText('New view')).toBeInTheDocument();
+    });
+
+    it('Views セクションヘッダーが表示される', () => {
+      render(<Sidebar {...defaultProps} />);
+      expect(screen.getByText('Views')).toBeInTheDocument();
     });
   });
 
-  describe('フィルターカウント', () => {
-    it('「すべて」にフィルターマッチする未読件数を表示する', () => {
+  describe('ビューカウント', () => {
+    it('Inbox にフィルターマッチする未読件数を表示する', () => {
       const filter = createMockFilter({ id: 'f1', reasons: ['review_requested'] });
       mockSettings = { ...DEFAULT_SETTINGS, customFilters: [filter] };
 
@@ -118,12 +137,11 @@ describe('Sidebar', () => {
 
       render(<Sidebar {...defaultProps} items={items} unreadCount={2} />);
 
-      // 「すべて」は customFilters のいずれかにマッチする未読 → review_requested が1件
       const allButton = screen.getByText('Inbox').closest('button')!;
       expect(within(allButton).getByText('1')).toBeInTheDocument();
     });
 
-    it('カスタムフィルターに正しいカウントを表示する', () => {
+    it('カスタムビューに正しいカウントを表示する', () => {
       const filter = createMockFilter({
         id: 'f1',
         name: 'レビュー依頼',
@@ -139,7 +157,6 @@ describe('Sidebar', () => {
 
       render(<Sidebar {...defaultProps} items={items} unreadCount={3} />);
 
-      // レビュー依頼フィルターは review_requested の未読2件
       const filterButton = screen.getByText('レビュー依頼').closest('button')!;
       expect(within(filterButton).getByText('2')).toBeInTheDocument();
     });
@@ -175,7 +192,7 @@ describe('Sidebar', () => {
     });
   });
 
-  describe('フィルター選択', () => {
+  describe('ビュー選択', () => {
     it('Inbox クリックで onSelectFilter(null) が呼ばれる', async () => {
       const user = userEvent.setup();
       const onSelectFilter = vi.fn();
@@ -186,7 +203,7 @@ describe('Sidebar', () => {
       expect(onSelectFilter).toHaveBeenCalledWith(null);
     });
 
-    it('カスタムフィルタークリックで onSelectFilter(id) が呼ばれる', async () => {
+    it('カスタムビュークリックで onSelectFilter(id) が呼ばれる', async () => {
       const user = userEvent.setup();
       const onSelectFilter = vi.fn();
       const filter = createMockFilter({ id: 'f1', name: 'レビュー依頼' });
@@ -210,71 +227,43 @@ describe('Sidebar', () => {
     });
   });
 
-  describe('フィルター追加ダイアログ', () => {
-    it('「フィルターを追加」クリックでダイアログが開く', async () => {
+  describe('ビュー作成', () => {
+    it('「New view」クリックで作成ダイアログが開く', async () => {
       const user = userEvent.setup();
       render(<Sidebar {...defaultProps} />);
 
-      await user.click(screen.getByText('Add filter'));
-      expect(screen.getByText('受け取りたい通知の種類を選んでください')).toBeInTheDocument();
+      await user.click(screen.getByText('New view'));
+      expect(screen.getByText('ビューを作成')).toBeInTheDocument();
+      expect(screen.getByPlaceholderText('ビュー名')).toBeInTheDocument();
     });
 
-    it('テンプレート一覧が表示される', async () => {
+    it('ビュー名と通知種類を設定して保存できる', async () => {
       const user = userEvent.setup();
       render(<Sidebar {...defaultProps} />);
 
-      await user.click(screen.getByText('Add filter'));
+      await user.click(screen.getByText('New view'));
 
-      for (const template of FILTER_TEMPLATES) {
-        expect(screen.getByText(template.name)).toBeInTheDocument();
-      }
-    });
+      // ビュー名を入力
+      const nameInput = screen.getByPlaceholderText('ビュー名');
+      await user.type(nameInput, 'CI監視');
 
-    it('既存フィルターと同名のテンプレートは非表示になる', async () => {
-      const user = userEvent.setup();
-      const filter = createMockFilter({ name: 'レビュー依頼' });
-      mockSettings = { ...DEFAULT_SETTINGS, customFilters: [filter] };
+      // 通知種類のチェックボックスが表示される
+      expect(screen.getByText('通知の種類:')).toBeInTheDocument();
 
-      render(<Sidebar {...defaultProps} />);
-
-      await user.click(screen.getByText('Add filter'));
-
-      // テンプレート一覧で「レビュー依頼」の説明文は非表示（既にフィルターとして存在するため）
-      expect(screen.queryByText('PRのレビューを依頼された時')).not.toBeInTheDocument();
-    });
-
-    it('テンプレート選択で updateSettings が呼ばれる', async () => {
-      const user = userEvent.setup();
-      render(<Sidebar {...defaultProps} />);
-
-      await user.click(screen.getByText('Add filter'));
-      // 「アサイン」テンプレートを選択
-      await user.click(screen.getByText('アサイン'));
+      await user.click(screen.getByText('保存'));
 
       expect(mockUpdateSettings).toHaveBeenCalledWith({
         customFilters: expect.arrayContaining([
           expect.objectContaining({
             id: MOCK_UUID,
-            name: 'アサイン',
-            reasons: ['assign'],
+            name: 'CI監視',
           }),
         ]),
       });
     });
-
-    it('カスタムフィルター作成ボタンで編集ダイアログが開く', async () => {
-      const user = userEvent.setup();
-      render(<Sidebar {...defaultProps} />);
-
-      await user.click(screen.getByText('Add filter'));
-      await user.click(screen.getByText('カスタムフィルターを作成'));
-
-      expect(screen.getByText('フィルターを作成')).toBeInTheDocument();
-      expect(screen.getByPlaceholderText('フィルター名')).toBeInTheDocument();
-    });
   });
 
-  describe('フィルター編集・削除', () => {
+  describe('ビュー編集・削除', () => {
     it('編集ボタンクリックで編集ダイアログが開く', async () => {
       const user = userEvent.setup();
       const filter = createMockFilter({ id: 'f1', name: 'レビュー依頼' });
@@ -282,11 +271,10 @@ describe('Sidebar', () => {
 
       render(<Sidebar {...defaultProps} />);
 
-      // SidebarItem の編集ボタンは hover 時に表示されるが、DOM上は存在する
       const editButton = screen.getByTitle('Edit');
       await user.click(editButton);
 
-      expect(screen.getByText('フィルターを編集')).toBeInTheDocument();
+      expect(screen.getByText('ビューを編集')).toBeInTheDocument();
       expect(screen.getByDisplayValue('レビュー依頼')).toBeInTheDocument();
     });
 
@@ -308,7 +296,7 @@ describe('Sidebar', () => {
       });
     });
 
-    it('削除ボタンクリックでフィルターが削除される', async () => {
+    it('削除ボタンクリックでビューが削除される', async () => {
       const user = userEvent.setup();
       const filter = createMockFilter({ id: 'f1', name: 'レビュー依頼' });
       mockSettings = { ...DEFAULT_SETTINGS, customFilters: [filter] };
@@ -323,7 +311,7 @@ describe('Sidebar', () => {
       });
     });
 
-    it('選択中のフィルターを削除すると onSelectFilter(null) が呼ばれる', async () => {
+    it('選択中のビューを削除すると onSelectFilter(null) が呼ばれる', async () => {
       const user = userEvent.setup();
       const onSelectFilter = vi.fn();
       const filter = createMockFilter({ id: 'f1', name: 'レビュー依頼' });
@@ -335,6 +323,40 @@ describe('Sidebar', () => {
       await user.click(screen.getByText('削除'));
 
       expect(onSelectFilter).toHaveBeenCalledWith(null);
+    });
+  });
+
+  describe('検索ビュー表示', () => {
+    it('検索ビューにはカウントバッジが表示されない', () => {
+      const searchFilter = createMockFilter({
+        id: 'search-1',
+        name: 'Needs My Review',
+        reasons: [],
+        searchQuery: 'is:open is:pr review-requested:@me',
+      });
+      mockSettings = { ...DEFAULT_SETTINGS, customFilters: [searchFilter] };
+
+      const items = [createMockItem({ id: '1', reason: 'review_requested', unread: true })];
+      render(<Sidebar {...defaultProps} items={items} />);
+
+      const filterButton = screen.getByText('Needs My Review').closest('button')!;
+      // 検索ビューにはカウントが表示されない
+      expect(within(filterButton).queryByText('1')).not.toBeInTheDocument();
+    });
+
+    it('検索ビューには編集ボタンが表示されない', () => {
+      const searchFilter = createMockFilter({
+        id: 'search-1',
+        name: 'Needs My Review',
+        reasons: [],
+        searchQuery: 'is:open is:pr review-requested:@me',
+      });
+      mockSettings = { ...DEFAULT_SETTINGS, customFilters: [searchFilter] };
+
+      render(<Sidebar {...defaultProps} />);
+
+      expect(screen.getByText('Needs My Review')).toBeInTheDocument();
+      expect(screen.queryByTitle('Edit')).not.toBeInTheDocument();
     });
   });
 

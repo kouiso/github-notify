@@ -4,11 +4,18 @@ import { Input, Spinner } from '@/components/ui';
 import { useSettings } from '@/hooks';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { cn } from '@/lib/utils/cn';
-import type { InboxItem } from '@/types';
+import type { InboxItem, NotificationItem } from '@/types';
 import type { CustomFilter, NotificationReason } from '@/types/settings';
 import { REASON_LABELS } from '@/types/settings';
 
 type FilterType = 'all' | 'unread' | string;
+
+// Review decision display config
+const REVIEW_DECISION_CONFIG: Record<string, { label: string; color: string }> = {
+  APPROVED: { label: 'Approved', color: 'text-[var(--color-gh-done)]' },
+  CHANGES_REQUESTED: { label: 'Changes', color: 'text-[var(--color-gh-fail)]' },
+  REVIEW_REQUIRED: { label: 'Pending', color: 'text-[var(--color-gh-review)]' },
+};
 
 interface InboxListProps {
   items: InboxItem[];
@@ -22,12 +29,26 @@ interface InboxListProps {
   selectedIndex: number;
   setSelectedIndex: (index: number) => void;
   selectedFilterId: string | null;
+  isSearchMode?: boolean;
+  searchItems?: NotificationItem[];
 }
 
 const DEFAULT_FILTERS: { value: FilterType; label: string }[] = [
   { value: 'all', label: 'すべて' },
   { value: 'unread', label: '未読' },
 ];
+
+// Reason → color mapping using GitHub semantic colors
+const REASON_COLORS: Record<string, { text: string; bg: string }> = {
+  review_requested: { text: 'text-[var(--color-gh-pr)]', bg: 'bg-[var(--color-gh-review-bg)]' },
+  mention: { text: 'text-[var(--color-gh-mention)]', bg: 'bg-[var(--color-gh-mention-bg)]' },
+  team_mention: { text: 'text-[var(--color-gh-mention)]', bg: 'bg-[var(--color-gh-mention-bg)]' },
+  assign: { text: 'text-[var(--color-gh-assign)]', bg: 'bg-[var(--color-gh-assign-bg)]' },
+  author: { text: 'text-muted-foreground', bg: 'bg-accent' },
+  ci_activity: { text: 'text-[var(--color-gh-ci)]', bg: 'bg-[var(--color-gh-ci-bg)]' },
+  comment: { text: 'text-muted-foreground', bg: 'bg-accent' },
+  state_change: { text: 'text-muted-foreground', bg: 'bg-accent' },
+};
 
 function matchesCustomFilter(item: InboxItem, filter: CustomFilter): boolean {
   if (filter.reasons.length > 0 && !filter.reasons.includes(item.reason as NotificationReason)) {
@@ -93,6 +114,7 @@ interface InboxListHeaderProps {
   onFilterChange: (filter: FilterType) => void;
   onSearchChange: (query: string) => void;
   onRefresh: () => void;
+  isSearchMode?: boolean;
 }
 
 function InboxListHeader({
@@ -106,31 +128,34 @@ function InboxListHeader({
   onFilterChange,
   onSearchChange,
   onRefresh,
+  isSearchMode = false,
 }: InboxListHeaderProps) {
   return (
-    <div className="flex items-center gap-2 px-4 py-2 border-b border-border/50">
-      <input
-        type="checkbox"
-        checked={isAllSelected}
-        onChange={onSelectAll}
-        className="flex-shrink-0"
-        title="Select all"
-      />
-      {hasSelection ? (
+    <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border/50">
+      {!isSearchMode && (
+        <input
+          type="checkbox"
+          checked={isAllSelected}
+          onChange={onSelectAll}
+          className="flex-shrink-0"
+          title="Select all"
+        />
+      )}
+      {!isSearchMode && hasSelection ? (
         <button
           onClick={onMarkSelectedAsDone}
-          className="px-2.5 py-1 text-[0.8125rem] text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-md transition-colors"
+          className="px-2.5 py-1 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-md transition-colors"
         >
           Done
         </button>
-      ) : (
+      ) : !isSearchMode ? (
         <div className="flex items-center gap-0.5">
           {DEFAULT_FILTERS.map((option) => (
             <button
               key={option.value}
               onClick={() => onFilterChange(option.value)}
               className={cn(
-                'px-2.5 py-1 text-[0.8125rem] rounded-md transition-colors',
+                'px-2.5 py-1 text-sm rounded-md transition-colors',
                 filter === option.value
                   ? 'bg-accent text-foreground font-medium'
                   : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
@@ -140,15 +165,15 @@ function InboxListHeader({
             </button>
           ))}
         </div>
-      )}
+      ) : null}
       <div className="flex-1" />
-      <div className="max-w-48">
+      <div className="max-w-52">
         <Input
           type="search"
           placeholder="Search..."
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
-          className="h-7 text-[0.8125rem] border-0 bg-accent/50 focus-visible:ring-1"
+          className="h-8 text-sm border-0 bg-accent/50 focus-visible:ring-1"
         />
       </div>
       <button
@@ -156,10 +181,56 @@ function InboxListHeader({
         disabled={isLoading}
         className="p-1.5 rounded-md hover:bg-accent transition-colors disabled:opacity-50"
       >
-        <RefreshIcon
-          className={cn('w-3.5 h-3.5 text-muted-foreground', isLoading && 'animate-spin')}
-        />
+        <RefreshIcon className={cn('w-4 h-4 text-muted-foreground', isLoading && 'animate-spin')} />
       </button>
+    </div>
+  );
+}
+
+// Quick filter tabs for reason-based switching within the active view
+interface ReasonTabsProps {
+  reasons: NotificationReason[];
+  activeReason: NotificationReason | null;
+  onSelect: (reason: NotificationReason | null) => void;
+  counts: Record<string, number>;
+}
+
+function ReasonTabs({ reasons, activeReason, onSelect, counts }: ReasonTabsProps) {
+  if (reasons.length <= 1) return null;
+
+  return (
+    <div className="flex items-center gap-1 px-4 py-1.5 border-b border-border/30 overflow-x-auto">
+      <button
+        onClick={() => onSelect(null)}
+        className={cn(
+          'px-2.5 py-1 text-[0.8125rem] rounded-md transition-colors whitespace-nowrap',
+          !activeReason
+            ? 'bg-accent text-foreground font-medium'
+            : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
+        )}
+      >
+        すべて
+      </button>
+      {reasons.map((reason) => {
+        const count = counts[reason] || 0;
+        return (
+          <button
+            key={reason}
+            onClick={() => onSelect(reason)}
+            className={cn(
+              'px-2.5 py-1 text-[0.8125rem] rounded-md transition-colors whitespace-nowrap flex items-center gap-1.5',
+              activeReason === reason
+                ? 'bg-accent text-foreground font-medium'
+                : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
+            )}
+          >
+            {REASON_LABELS[reason]}
+            {count > 0 && (
+              <span className="text-xs text-muted-foreground/70 tabular-nums">{count}</span>
+            )}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -176,6 +247,8 @@ export function InboxList({
   selectedIndex,
   setSelectedIndex,
   selectedFilterId,
+  isSearchMode = false,
+  searchItems,
 }: InboxListProps) {
   // Prefixed with _ to indicate intentionally unused (available for future use)
   void _onMarkAllAsRead;
@@ -184,6 +257,7 @@ export function InboxList({
   const [filter, setFilter] = useState<FilterType>('unread');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [reasonFilter, setReasonFilter] = useState<NotificationReason | null>(null);
   const selectedRef = useRef<HTMLDivElement>(null);
 
   const sidebarFilter: CustomFilter | null = selectedFilterId
@@ -192,8 +266,28 @@ export function InboxList({
   const activeCustomFilter: CustomFilter | null =
     settings.customFilters.find((f) => f.id === filter) ?? null;
 
-  // Filter items
+  // Reset reason filter when sidebar filter changes
+  useEffect(() => {
+    setReasonFilter(null);
+  }, [selectedFilterId]);
+
+  // Derive available reasons from active view for quick tabs
+  const activeReasons = useMemo((): NotificationReason[] => {
+    if (isSearchMode) return [];
+    if (sidebarFilter) return sidebarFilter.reasons as NotificationReason[];
+    // For Inbox view, collect all unique reasons from all filters
+    const allReasons = new Set<NotificationReason>();
+    for (const f of settings.customFilters) {
+      for (const r of f.reasons) {
+        allReasons.add(r as NotificationReason);
+      }
+    }
+    return [...allReasons];
+  }, [isSearchMode, sidebarFilter, settings.customFilters]);
+
+  // Filter items (inbox mode)
   const filteredItems = useMemo(() => {
+    if (isSearchMode) return [];
     let result = items;
     result = applySidebarFilterLogic(
       result,
@@ -203,8 +297,52 @@ export function InboxList({
     );
     result = applyViewFilterLogic(result, filter, activeCustomFilter);
     result = applySearchFilterLogic(result, searchQuery);
+    // Apply reason quick filter
+    if (reasonFilter) {
+      result = result.filter((item) => item.reason === reasonFilter);
+    }
     return result;
   }, [
+    isSearchMode,
+    items,
+    sidebarFilter,
+    selectedFilterId,
+    settings.customFilters,
+    filter,
+    activeCustomFilter,
+    searchQuery,
+    reasonFilter,
+  ]);
+
+  // Filter search items (search mode)
+  const filteredSearchItems = useMemo(() => {
+    if (!isSearchMode || !searchItems) return [];
+    if (!searchQuery.trim()) return searchItems;
+    const query = searchQuery.toLowerCase();
+    return searchItems.filter(
+      (item) =>
+        item.title.toLowerCase().includes(query) ||
+        `${item.repository.owner.login}/${item.repository.name}`.toLowerCase().includes(query),
+    );
+  }, [isSearchMode, searchItems, searchQuery]);
+
+  // Compute reason tab counts (from items before reason filter is applied)
+  const reasonCounts = useMemo(() => {
+    if (isSearchMode) return {};
+    let base = items;
+    base = applySidebarFilterLogic(base, sidebarFilter, selectedFilterId, settings.customFilters);
+    base = applyViewFilterLogic(base, filter, activeCustomFilter);
+    base = applySearchFilterLogic(base, searchQuery);
+
+    const counts: Record<string, number> = {};
+    for (const item of base) {
+      if (item.unread) {
+        counts[item.reason] = (counts[item.reason] || 0) + 1;
+      }
+    }
+    return counts;
+  }, [
+    isSearchMode,
     items,
     sidebarFilter,
     selectedFilterId,
@@ -214,9 +352,12 @@ export function InboxList({
     searchQuery,
   ]);
 
-  // Keyboard shortcuts
+  const displayItems = isSearchMode ? filteredSearchItems : filteredItems;
+  const displayCount = displayItems.length;
+
+  // Keyboard shortcuts (only for inbox mode)
   useKeyboardShortcuts({
-    items: filteredItems,
+    items: isSearchMode ? [] : filteredItems,
     selectedIndex,
     setSelectedIndex,
     onMarkAsRead,
@@ -236,6 +377,12 @@ export function InboxList({
     }
   };
 
+  const handleSearchItemClick = async (item: NotificationItem) => {
+    if (item.url) {
+      await open(item.url);
+    }
+  };
+
   const handleCheckboxChange = (id: string, checked: boolean) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -249,6 +396,7 @@ export function InboxList({
   };
 
   const handleSelectAll = () => {
+    if (isSearchMode) return;
     if (selectedIds.size === filteredItems.length) {
       setSelectedIds(new Set());
     } else {
@@ -263,7 +411,8 @@ export function InboxList({
     setSelectedIds(new Set());
   };
 
-  const isAllSelected = filteredItems.length > 0 && selectedIds.size === filteredItems.length;
+  const isAllSelected =
+    !isSearchMode && filteredItems.length > 0 && selectedIds.size === filteredItems.length;
   const hasSelection = selectedIds.size > 0;
 
   return (
@@ -279,85 +428,204 @@ export function InboxList({
         onFilterChange={setFilter}
         onSearchChange={setSearchQuery}
         onRefresh={onRefresh}
+        isSearchMode={isSearchMode}
       />
 
+      {/* Quick filter tabs by reason (hidden in search mode) */}
+      {!isSearchMode && (
+        <ReasonTabs
+          reasons={activeReasons}
+          activeReason={reasonFilter}
+          onSelect={setReasonFilter}
+          counts={reasonCounts}
+        />
+      )}
+
       {/* Status bar */}
-      <div className="flex items-center justify-between px-4 py-1 text-[0.75rem] text-muted-foreground">
+      <div className="flex items-center justify-between px-4 py-1.5 text-[0.8125rem] text-muted-foreground">
         <span>
-          {hasSelection ? `${selectedIds.size} selected` : `${filteredItems.length} notifications`}
+          {hasSelection
+            ? `${selectedIds.size} selected`
+            : isSearchMode
+              ? `${displayCount} results`
+              : `${displayCount} notifications`}
         </span>
         {lastUpdated && <span>{formatTime(lastUpdated)}</span>}
       </div>
 
       {/* Content */}
+      <InboxListContent
+        isSearchMode={isSearchMode}
+        isLoading={isLoading}
+        error={error}
+        filter={filter}
+        searchQuery={searchQuery}
+        displayCount={displayCount}
+        filteredSearchItems={filteredSearchItems}
+        filteredItems={filteredItems}
+        selectedIndex={selectedIndex}
+        selectedIds={selectedIds}
+        selectedRef={selectedRef}
+        onRefresh={onRefresh}
+        onSetFilter={setFilter}
+        onSearchItemClick={handleSearchItemClick}
+        onInboxItemClick={(item, index) => {
+          setSelectedIndex(index);
+          handleClick(item);
+        }}
+        onCheckboxChange={handleCheckboxChange}
+        onMarkAsRead={onMarkAsRead}
+      />
+
+      {/* ProTip footer (inbox mode only) */}
+      {!isSearchMode && (
+        <div className="px-4 py-1.5 border-t border-border/50 text-[0.8125rem] text-muted-foreground/60">
+          <kbd className="px-1 py-0.5 bg-accent rounded text-xs font-mono">e</kbd>
+          <span className="ml-1.5">to mark done</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Extracted content area to reduce cognitive complexity of InboxList
+function InboxListContent({
+  isSearchMode,
+  isLoading,
+  error,
+  filter,
+  searchQuery,
+  displayCount,
+  filteredSearchItems,
+  filteredItems,
+  selectedIndex,
+  selectedIds,
+  selectedRef,
+  onRefresh,
+  onSetFilter,
+  onSearchItemClick,
+  onInboxItemClick,
+  onCheckboxChange,
+  onMarkAsRead,
+}: {
+  isSearchMode: boolean;
+  isLoading: boolean;
+  error: string | null;
+  filter: FilterType;
+  searchQuery: string;
+  displayCount: number;
+  filteredSearchItems: NotificationItem[];
+  filteredItems: InboxItem[];
+  selectedIndex: number;
+  selectedIds: Set<string>;
+  selectedRef: React.RefObject<HTMLDivElement | null>;
+  onRefresh: () => void;
+  onSetFilter: (f: FilterType) => void;
+  onSearchItemClick: (item: NotificationItem) => void;
+  onInboxItemClick: (item: InboxItem, index: number) => void;
+  onCheckboxChange: (id: string, checked: boolean) => void;
+  onMarkAsRead: (id: string) => void;
+}) {
+  if (error) {
+    return (
       <div className="flex-1 overflow-y-auto scrollbar-thin">
-        {error && (
-          <div className="p-6 text-center text-destructive">
-            <p>{error}</p>
-            <button
-              onClick={onRefresh}
-              className="mt-2 px-3 py-1 text-[0.8125rem] text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-md transition-colors"
-            >
-              Retry
-            </button>
-          </div>
-        )}
-
-        {isLoading && items.length === 0 && (
-          <div className="flex items-center justify-center h-full">
-            <Spinner size="lg" />
-          </div>
-        )}
-
-        {!isLoading && filteredItems.length === 0 && !error && (
-          <div className="flex flex-col items-center justify-center h-full text-center px-8">
-            <p className="text-[0.9375rem] text-muted-foreground">
-              {filter === 'unread' ? 'No unread notifications' : 'No notifications'}
-            </p>
-            <p className="text-[0.8125rem] text-muted-foreground/60 mt-1 max-w-xs">
-              {filter === 'unread'
-                ? "You're all caught up."
-                : searchQuery
-                  ? 'No notifications match your search.'
-                  : 'New notifications will appear here.'}
-            </p>
-            {filter === 'unread' && (
-              <button
-                className="mt-3 px-3 py-1 text-[0.8125rem] text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-md transition-colors"
-                onClick={() => setFilter('all')}
-              >
-                View all
-              </button>
-            )}
-          </div>
-        )}
-
-        {filteredItems.length > 0 && (
-          <div>
-            {filteredItems.map((item, index) => (
-              <InboxRow
-                key={item.id}
-                ref={index === selectedIndex ? selectedRef : undefined}
-                item={item}
-                isSelected={index === selectedIndex}
-                isChecked={selectedIds.has(item.id)}
-                onCheckChange={(checked) => handleCheckboxChange(item.id, checked)}
-                onClick={() => {
-                  setSelectedIndex(index);
-                  handleClick(item);
-                }}
-                onMarkAsDone={() => onMarkAsRead(item.id)}
-              />
-            ))}
-          </div>
-        )}
+        <div className="p-6 text-center text-destructive">
+          <p className="text-base">{error}</p>
+          <button
+            onClick={onRefresh}
+            className="mt-2 px-3 py-1 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-md transition-colors"
+          >
+            Retry
+          </button>
+        </div>
       </div>
+    );
+  }
 
-      {/* ProTip footer */}
-      <div className="px-4 py-1.5 border-t border-border/50 text-[0.75rem] text-muted-foreground/60">
-        <kbd className="px-1 py-0.5 bg-accent rounded text-[0.6875rem] font-mono">e</kbd>
-        <span className="ml-1.5">to mark done</span>
+  if (isLoading && displayCount === 0) {
+    return (
+      <div className="flex-1 overflow-y-auto scrollbar-thin">
+        <div className="flex items-center justify-center h-full">
+          <Spinner size="lg" />
+        </div>
       </div>
+    );
+  }
+
+  if (!isLoading && displayCount === 0) {
+    return (
+      <div className="flex-1 overflow-y-auto scrollbar-thin">
+        <EmptyState
+          isSearchMode={isSearchMode}
+          filter={filter}
+          searchQuery={searchQuery}
+          onSetFilter={onSetFilter}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex-1 overflow-y-auto scrollbar-thin">
+      {isSearchMode
+        ? filteredSearchItems.map((item) => (
+            <SearchRow key={item.id} item={item} onClick={() => onSearchItemClick(item)} />
+          ))
+        : filteredItems.map((item, index) => (
+            <InboxRow
+              key={item.id}
+              ref={index === selectedIndex ? selectedRef : undefined}
+              item={item}
+              isSelected={index === selectedIndex}
+              isChecked={selectedIds.has(item.id)}
+              onCheckChange={(checked) => onCheckboxChange(item.id, checked)}
+              onClick={() => onInboxItemClick(item, index)}
+              onMarkAsDone={() => onMarkAsRead(item.id)}
+            />
+          ))}
+    </div>
+  );
+}
+
+function EmptyState({
+  isSearchMode,
+  filter,
+  searchQuery,
+  onSetFilter,
+}: {
+  isSearchMode: boolean;
+  filter: FilterType;
+  searchQuery: string;
+  onSetFilter: (f: FilterType) => void;
+}) {
+  const title = isSearchMode
+    ? 'No results'
+    : filter === 'unread'
+      ? 'No unread notifications'
+      : 'No notifications';
+
+  const description = isSearchMode
+    ? searchQuery
+      ? 'No items match your search.'
+      : 'No items found for this query.'
+    : filter === 'unread'
+      ? "You're all caught up."
+      : searchQuery
+        ? 'No notifications match your search.'
+        : 'New notifications will appear here.';
+
+  return (
+    <div className="flex flex-col items-center justify-center h-full text-center px-8">
+      <p className="text-base text-muted-foreground">{title}</p>
+      <p className="text-sm text-muted-foreground/60 mt-1 max-w-xs">{description}</p>
+      {!isSearchMode && filter === 'unread' && (
+        <button
+          className="mt-3 px-3 py-1 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-md transition-colors"
+          onClick={() => onSetFilter('all')}
+        >
+          View all
+        </button>
+      )}
     </div>
   );
 }
@@ -376,12 +644,13 @@ const InboxRow = forwardRef<HTMLDivElement, InboxRowProps>(
     const isPR = item.itemType === 'PullRequest';
     const isIssue = item.itemType === 'Issue';
     const reasonLabel = REASON_LABELS[item.reason as NotificationReason] || item.reason;
+    const colors = REASON_COLORS[item.reason] || { text: 'text-muted-foreground', bg: 'bg-accent' };
 
     return (
       <div
         ref={ref}
         className={cn(
-          'inbox-row flex items-center gap-3 px-4 py-2.5 transition-colors cursor-pointer group border-b border-border/30',
+          'inbox-row flex items-center gap-3 px-4 py-3 transition-colors cursor-pointer group border-b border-border/30',
           item.unread ? 'bg-background' : 'bg-background/60',
           isSelected && 'bg-accent',
           !isSelected && 'hover:bg-accent/30',
@@ -406,31 +675,40 @@ const InboxRow = forwardRef<HTMLDivElement, InboxRowProps>(
 
         {/* Status icon */}
         <div className="flex-shrink-0">
-          {isPR && <PRIcon className="w-4 h-4 text-[var(--color-gh-pr)]" />}
-          {isIssue && <IssueIcon className="w-4 h-4 text-[var(--color-gh-issue)]" />}
-          {!isPR && !isIssue && <NotificationIcon className="w-4 h-4 text-muted-foreground" />}
+          {isPR && <PRIcon className="w-4.5 h-4.5 text-[var(--color-gh-pr)]" />}
+          {isIssue && <IssueIcon className="w-4.5 h-4.5 text-[var(--color-gh-issue)]" />}
+          {!isPR && !isIssue && <NotificationIcon className="w-4.5 h-4.5 text-muted-foreground" />}
         </div>
 
         {/* Content — 2-line layout */}
         <div className="flex-1 min-w-0" onClick={onClick}>
           <span
             className={cn(
-              'text-[0.875rem] truncate block',
+              'text-[0.9375rem] truncate block leading-snug',
               item.unread ? 'font-medium text-foreground' : 'text-muted-foreground',
             )}
           >
             {item.title}
           </span>
-          <div className="flex items-center gap-2 mt-0.5">
-            <span className="text-[0.75rem] text-muted-foreground truncate">
+          <div className="flex items-center gap-2 mt-1">
+            <span className="text-[0.8125rem] text-muted-foreground truncate">
               {item.repositoryFullName}
             </span>
-            <span className="text-[0.75rem] text-muted-foreground/60">{reasonLabel}</span>
+            {/* Colored reason badge */}
+            <span
+              className={cn(
+                'inline-flex px-1.5 py-0.5 rounded text-xs font-medium flex-shrink-0',
+                colors.text,
+                colors.bg,
+              )}
+            >
+              {reasonLabel}
+            </span>
           </div>
         </div>
 
         {/* Timestamp */}
-        <span className="text-[0.75rem] text-muted-foreground flex-shrink-0 tabular-nums">
+        <span className="text-[0.8125rem] text-muted-foreground flex-shrink-0 tabular-nums">
           {formatRelativeTime(item.updatedAt)}
         </span>
 
@@ -443,7 +721,7 @@ const InboxRow = forwardRef<HTMLDivElement, InboxRowProps>(
               onMarkAsDone();
             }}
           >
-            <CheckIcon className="w-3.5 h-3.5 text-muted-foreground" />
+            <CheckIcon className="w-4 h-4 text-muted-foreground" />
           </button>
         </div>
       </div>
@@ -452,6 +730,61 @@ const InboxRow = forwardRef<HTMLDivElement, InboxRowProps>(
 );
 
 InboxRow.displayName = 'InboxRow';
+
+function SearchRow({ item, onClick }: { item: NotificationItem; onClick: () => void }) {
+  const isPR = item.itemType === 'pullrequest';
+  const reviewConfig = item.reviewDecision ? REVIEW_DECISION_CONFIG[item.reviewDecision] : null;
+
+  return (
+    <div
+      className="inbox-row flex items-center gap-3 px-4 py-3 transition-colors cursor-pointer border-b border-border/30 hover:bg-accent/30"
+      onClick={onClick}
+    >
+      {/* Type icon */}
+      <div className="flex-shrink-0">
+        {isPR ? (
+          <PRIcon className="w-4.5 h-4.5 text-[var(--color-gh-pr)]" />
+        ) : (
+          <IssueIcon className="w-4.5 h-4.5 text-[var(--color-gh-issue)]" />
+        )}
+      </div>
+
+      {/* Content — 2-line layout */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-[0.9375rem] text-foreground truncate leading-snug">
+            {item.title}
+          </span>
+          {item.isDraft && (
+            <span className="text-xs text-muted-foreground bg-accent px-1.5 py-0.5 rounded flex-shrink-0">
+              Draft
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2 mt-1">
+          <span className="text-[0.8125rem] text-muted-foreground truncate">
+            {item.repository.owner.login}/{item.repository.name}
+          </span>
+          {item.author && (
+            <span className="text-[0.8125rem] text-muted-foreground/70 flex-shrink-0">
+              by @{item.author.login}
+            </span>
+          )}
+          {reviewConfig && (
+            <span className={cn('text-xs font-medium flex-shrink-0', reviewConfig.color)}>
+              {reviewConfig.label}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Timestamp */}
+      <span className="text-[0.8125rem] text-muted-foreground flex-shrink-0 tabular-nums">
+        {formatRelativeTime(item.updatedAt)}
+      </span>
+    </div>
+  );
+}
 
 function formatTime(date: Date): string {
   return date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });

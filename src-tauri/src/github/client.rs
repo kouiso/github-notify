@@ -174,20 +174,14 @@ impl GitHubClient {
             AppError::Serialization(format!("Failed to parse search response: {}", e))
         })?;
 
-        let viewer_login = &search_response.data.viewer.login;
-
-        // Convert nodes to NotificationItems, filtering out self-authored items
+        // Convert nodes to NotificationItems, filtering out null nodes
+        // (null nodes appear when the authenticated user lacks access to a search result)
         let items: Vec<NotificationItem> = search_response
             .data
             .search
             .nodes
             .into_iter()
-            .filter(|node| {
-                // Exclude items authored by the current user
-                node.author_login()
-                    .map(|author| author != viewer_login)
-                    .unwrap_or(true)
-            })
+            .flatten()
             .map(|node| node.to_notification_item())
             .collect();
 
@@ -204,32 +198,34 @@ impl GitHubClient {
         Ok(response.items)
     }
 
-    /// Fetch inbox notifications with ETag support for conditional requests
-    /// Returns InboxResponse with not_modified=true if content hasn't changed (304)
+    /// Fetch inbox notifications with ETag support for conditional requests.
+    /// Paginates through all pages (up to MAX_PAGES) to get the full notification list.
     pub async fn fetch_inbox_with_etag(
         &self,
         all: bool,
         etag: Option<&str>,
     ) -> Result<InboxResponse, AppError> {
+        const MAX_PAGES: usize = 10; // Safety limit: 10 pages × 50 = 500 notifications max
+
         let token = self
             .token
             .as_ref()
             .ok_or_else(|| AppError::Auth("No token set".to_string()))?;
 
-        let url = if all {
+        let base_url = if all {
             format!("{}/notifications?all=true&per_page=50", GITHUB_API_BASE)
         } else {
             format!("{}/notifications?per_page=50", GITHUB_API_BASE)
         };
 
+        // First page request (with ETag for conditional caching)
         let mut request = self
             .client
-            .get(&url)
+            .get(&base_url)
             .header("Authorization", format!("Bearer {}", token))
             .header("User-Agent", "github-notify")
             .header("Accept", "application/vnd.github+json");
 
-        // Add If-None-Match header for conditional request
         if let Some(etag_value) = etag {
             request = request.header("If-None-Match", etag_value);
         }
@@ -250,14 +246,13 @@ impl GitHubClient {
             )));
         }
 
-        // Extract ETag from response headers
+        // Extract ETag and poll interval from first response
         let new_etag = response
             .headers()
             .get("etag")
             .and_then(|v| v.to_str().ok())
             .map(String::from);
 
-        // Extract X-Poll-Interval (GitHub's recommended polling interval)
         let poll_interval = response
             .headers()
             .get("x-poll-interval")
@@ -265,16 +260,62 @@ impl GitHubClient {
             .and_then(|s| s.parse().ok())
             .unwrap_or(60);
 
+        let next_url = parse_next_link(response.headers());
+
         let notifications: Vec<GitHubNotification> = response.json().await.map_err(|e| {
             AppError::Serialization(format!("Failed to parse notifications: {}", e))
         })?;
 
-        let items: Vec<InboxItem> = notifications
-            .into_iter()
-            .map(|n| n.to_inbox_item())
-            .collect();
+        let mut all_items: Vec<InboxItem> =
+            notifications.into_iter().map(|n| n.to_inbox_item()).collect();
 
-        Ok(InboxResponse::new(items, new_etag, poll_interval))
+        // Paginate through remaining pages
+        let mut current_next = next_url;
+        let mut page = 1;
+
+        while let Some(url) = current_next {
+            page += 1;
+            if page > MAX_PAGES {
+                log::warn!("Reached max pagination limit ({} pages)", MAX_PAGES);
+                break;
+            }
+
+            log::debug!("Fetching notification page {} ...", page);
+
+            let resp = self
+                .client
+                .get(&url)
+                .header("Authorization", format!("Bearer {}", token))
+                .header("User-Agent", "github-notify")
+                .header("Accept", "application/vnd.github+json")
+                .send()
+                .await?;
+
+            if !resp.status().is_success() {
+                break;
+            }
+
+            current_next = parse_next_link(resp.headers());
+
+            let page_notifications: Vec<GitHubNotification> =
+                resp.json().await.map_err(|e| {
+                    AppError::Serialization(format!("Failed to parse notifications page {}: {}", page, e))
+                })?;
+
+            if page_notifications.is_empty() {
+                break;
+            }
+
+            all_items.extend(page_notifications.into_iter().map(|n| n.to_inbox_item()));
+        }
+
+        log::info!(
+            "Fetched {} notifications across {} page(s)",
+            all_items.len(),
+            page
+        );
+
+        Ok(InboxResponse::new(all_items, new_etag, poll_interval))
     }
 
     /// Mark a notification as read
@@ -343,4 +384,20 @@ impl Default for GitHubClient {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Parse the GitHub `Link` header to extract the `rel="next"` URL.
+/// Format: `<https://api.github.com/...?page=2>; rel="next", <...>; rel="last"`
+fn parse_next_link(headers: &reqwest::header::HeaderMap) -> Option<String> {
+    let link_header = headers.get("link")?.to_str().ok()?;
+    for part in link_header.split(',') {
+        let part = part.trim();
+        if part.contains("rel=\"next\"") {
+            // Extract URL between < and >
+            let start = part.find('<')? + 1;
+            let end = part.find('>')?;
+            return Some(part[start..end].to_string());
+        }
+    }
+    None
 }

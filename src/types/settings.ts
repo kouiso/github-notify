@@ -135,6 +135,12 @@ export interface CustomFilter {
   enableSound: boolean; // Whether to play sound for this filter
   soundType: SoundType; // Type of sound to play
   repositories?: string[]; // Optional: filter by repository (owner/repo format)
+  searchQuery?: string; // If set, this view uses GitHub GraphQL search instead of notification reasons
+}
+
+// Check if a filter is a search-based view (uses GitHub Search API)
+export function isSearchView(filter: CustomFilter): boolean {
+  return typeof filter.searchQuery === 'string' && filter.searchQuery.trim().length > 0;
 }
 
 // Application settings
@@ -148,60 +154,115 @@ export interface AppSettings {
   activeFilterId: string | null; // Currently active custom filter (null = use preset)
 }
 
-// Default initial filters (pre-configured for first-time users)
+// Default initial views (pre-configured for first-time users)
 export const DEFAULT_INITIAL_FILTERS: CustomFilter[] = [
   {
-    id: 'default-review',
-    name: 'レビュー依頼',
-    reasons: ['review_requested'],
+    id: 'default-important',
+    name: '重要な通知',
+    reasons: ['review_requested', 'mention', 'team_mention', 'assign', 'author'],
     enableDesktopNotification: true,
     enableSound: true,
     soundType: 'default',
     repositories: [],
   },
   {
-    id: 'default-mention',
-    name: 'メンション',
-    reasons: ['mention', 'team_mention'],
-    enableDesktopNotification: true,
-    enableSound: true,
-    soundType: 'default',
-    repositories: [],
-  },
-  {
-    id: 'default-assign',
-    name: 'アサイン',
-    reasons: ['assign'],
-    enableDesktopNotification: true,
-    enableSound: true,
-    soundType: 'soft',
-    repositories: [],
-  },
-  {
-    id: 'default-author',
-    name: '自分のPR/Issue',
-    reasons: ['author'],
+    id: 'default-needs-review',
+    name: 'Needs My Review',
+    reasons: [],
     enableDesktopNotification: false,
     enableSound: false,
     soundType: 'default',
-    repositories: [],
+    searchQuery: 'is:open is:pr review-requested:@me -reviewed-by:@me',
+  },
+  {
+    id: 'default-my-prs',
+    name: 'My PRs',
+    reasons: [],
+    enableDesktopNotification: false,
+    enableSound: false,
+    soundType: 'default',
+    searchQuery: 'is:open is:pr author:@me',
   },
 ];
 
+// IDs of all current default views (used by migration)
+const ALL_DEFAULT_IDS = ['default-important', 'default-needs-review', 'default-my-prs'];
+
 /**
- * Ensure all default filters exist in loaded settings.
- * Adds any missing default filters (by id) without removing user-created filters.
+ * Migrate settings filters to the current default system.
+ * - Consolidates old 4-filter defaults into 1 combined "重要な通知" view
+ * - Removes filters that are redundant subsets of the new default
+ * - Ensures the combined default view exists
+ * - Ensures search-based default views (Needs My Review, My PRs) exist
  */
 export function migrateDefaultFilters(filters: CustomFilter[]): {
   filters: CustomFilter[];
   changed: boolean;
 } {
-  const existingIds = new Set(filters.map((f) => f.id));
-  const missing = DEFAULT_INITIAL_FILTERS.filter((d) => !existingIds.has(d.id));
-  if (missing.length === 0) {
-    return { filters, changed: false };
+  const OLD_DEFAULT_IDS = ['default-review', 'default-mention', 'default-assign', 'default-author'];
+  const hasNewDefault = filters.some((f) => f.id === 'default-important');
+  const hasNeedsReview = filters.some((f) => f.id === 'default-needs-review');
+  const hasMyPrs = filters.some((f) => f.id === 'default-my-prs');
+
+  // Check if already fully migrated
+  const hasOldDefaults = filters.some((f) => OLD_DEFAULT_IDS.includes(f.id));
+  if (hasNewDefault && hasNeedsReview && hasMyPrs && !hasOldDefaults) {
+    const newDefaultReasons = new Set(DEFAULT_INITIAL_FILTERS[0].reasons);
+    const hasRedundant = filters.some(
+      (f) =>
+        !ALL_DEFAULT_IDS.includes(f.id) &&
+        !isSearchView(f) &&
+        (!f.repositories || f.repositories.length === 0) &&
+        f.reasons.length > 0 &&
+        f.reasons.every((r) => newDefaultReasons.has(r)),
+    );
+    if (!hasRedundant) {
+      return { filters, changed: false };
+    }
   }
-  return { filters: [...filters, ...missing], changed: true };
+
+  const newDefaultReasons = new Set(DEFAULT_INITIAL_FILTERS[0].reasons);
+
+  // Remove old system defaults AND redundant subset filters
+  const kept = filters.filter((f) => {
+    // Always keep all current defaults
+    if (ALL_DEFAULT_IDS.includes(f.id)) return true;
+    // Remove old system defaults
+    if (OLD_DEFAULT_IDS.includes(f.id)) return false;
+    // Keep search views (user-created search views are intentional)
+    if (isSearchView(f)) return true;
+    // Remove filters whose reasons are entirely a subset of the new default
+    // (only if they have no repo scoping — those are intentionally narrow)
+    if (
+      (!f.repositories || f.repositories.length === 0) &&
+      f.reasons.length > 0 &&
+      f.reasons.every((r) => newDefaultReasons.has(r))
+    ) {
+      return false;
+    }
+    return true;
+  });
+
+  let result = [...kept];
+
+  // Add missing default views
+  if (!hasNewDefault) {
+    result = [DEFAULT_INITIAL_FILTERS[0], ...result];
+  }
+  if (!hasNeedsReview) {
+    // Insert after default-important
+    const importantIdx = result.findIndex((f) => f.id === 'default-important');
+    result.splice(importantIdx + 1, 0, DEFAULT_INITIAL_FILTERS[1]);
+  }
+  if (!hasMyPrs) {
+    // Insert after default-needs-review
+    const reviewIdx = result.findIndex((f) => f.id === 'default-needs-review');
+    result.splice(reviewIdx + 1, 0, DEFAULT_INITIAL_FILTERS[2]);
+  }
+
+  const changed =
+    result.length !== filters.length || result.some((f, i) => f.id !== filters[i]?.id);
+  return { filters: result, changed };
 }
 
 // Default settings
@@ -212,5 +273,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
   desktopNotifications: true,
   soundEnabled: true,
   customFilters: DEFAULT_INITIAL_FILTERS,
-  activeFilterId: null,
+  activeFilterId: 'dashboard',
 };
