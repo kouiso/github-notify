@@ -7,7 +7,7 @@ import type { InboxItem, NotificationItem } from '@/types';
 import type { CustomFilter } from '@/types/settings';
 import { isSearchView, type NotificationReason, REASON_LABELS } from '@/types/settings';
 
-const DEFAULT_VISIBLE = 3;
+const DEFAULT_VISIBLE = 5;
 
 // Reason → color mapping (same as inbox-list)
 const REASON_COLORS: Record<string, { text: string; bg: string }> = {
@@ -22,11 +22,34 @@ const REASON_COLORS: Record<string, { text: string; bg: string }> = {
 };
 
 // Review decision display config
-const REVIEW_DECISION_CONFIG: Record<string, { label: string; color: string }> = {
-  APPROVED: { label: 'Approved', color: 'text-[var(--color-gh-done)]' },
-  CHANGES_REQUESTED: { label: 'Changes', color: 'text-[var(--color-gh-fail)]' },
-  REVIEW_REQUIRED: { label: 'Pending', color: 'text-[var(--color-gh-review)]' },
+const REVIEW_DECISION_CONFIG: Record<string, { label: string; color: string; dotColor: string }> = {
+  APPROVED: {
+    label: 'Approved',
+    color: 'text-[var(--color-gh-done)]',
+    dotColor: 'bg-[var(--color-gh-done)]',
+  },
+  CHANGES_REQUESTED: {
+    label: 'Changes requested',
+    color: 'text-[var(--color-gh-fail)]',
+    dotColor: 'bg-[var(--color-gh-fail)]',
+  },
+  REVIEW_REQUIRED: {
+    label: 'Review pending',
+    color: 'text-[var(--color-gh-review)]',
+    dotColor: 'bg-[var(--color-gh-review)]',
+  },
 };
+
+// Urgency thresholds in milliseconds
+const URGENCY_WARNING_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
+const URGENCY_CRITICAL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+function getUrgencyLevel(dateString: string): 'normal' | 'warning' | 'critical' {
+  const diffMs = Date.now() - new Date(dateString).getTime();
+  if (diffMs >= URGENCY_CRITICAL_MS) return 'critical';
+  if (diffMs >= URGENCY_WARNING_MS) return 'warning';
+  return 'normal';
+}
 
 interface DashboardProps {
   inboxItems: InboxItem[];
@@ -96,6 +119,8 @@ export function Dashboard({
     });
   });
 
+  const isAnyLoading = isInboxLoading || needsReviewView.isLoading || myPrsView.isLoading;
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -107,38 +132,38 @@ export function Dashboard({
           title="Refresh all"
         >
           <RefreshIcon
-            className={cn(
-              'w-4 h-4 text-muted-foreground',
-              (isInboxLoading || needsReviewView.isLoading || myPrsView.isLoading) &&
-                'animate-spin',
-            )}
+            className={cn('w-4 h-4 text-muted-foreground', isAnyLoading && 'animate-spin')}
           />
         </button>
       </div>
 
       {/* Scrollable sections */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin px-5 py-4 space-y-5">
-        {/* Needs My Review section */}
+      <div className="flex-1 overflow-y-auto scrollbar-thin px-5 py-4 space-y-4">
+        {/* HERO: Needs My Review — primary action section */}
         {needsReviewFilter && (
-          <DashboardSection
-            title={needsReviewFilter.name}
+          <HeroSection
+            title="Review these PRs"
+            subtitle="These PRs are waiting for your review"
             count={needsReviewView.items.length}
             isLoading={needsReviewView.isLoading}
             error={needsReviewView.error}
+            icon={<EyeIcon className="w-4 h-4" />}
           >
             {needsReviewView.items.length > 0 && (
-              <SearchItemList items={needsReviewView.items} showReviewDecision={false} />
+              <SearchItemList items={needsReviewView.items} showReviewDecision showUrgency />
             )}
-          </DashboardSection>
+          </HeroSection>
         )}
 
         {/* My PRs section */}
         {myPrsFilter && (
           <DashboardSection
-            title={myPrsFilter.name}
+            title="Your open PRs"
+            subtitle="Track review status of your pull requests"
             count={myPrsView.items.length}
             isLoading={myPrsView.isLoading}
             error={myPrsView.error}
+            icon={<PRIcon className="w-3.5 h-3.5" />}
           >
             {myPrsView.items.length > 0 && (
               <SearchItemList items={myPrsView.items} showReviewDecision />
@@ -148,9 +173,11 @@ export function Dashboard({
 
         {/* Recent notifications section */}
         <DashboardSection
-          title="新着通知"
+          title="New notifications"
+          subtitle="Unread notifications from your repositories"
           count={unreadInboxItems.length}
           isLoading={isInboxLoading && inboxItems.length === 0}
+          icon={<BellIcon className="w-3.5 h-3.5" />}
         >
           {unreadInboxItems.length > 0 && (
             <InboxItemList items={unreadInboxItems} onMarkAsRead={onMarkInboxRead} />
@@ -161,33 +188,99 @@ export function Dashboard({
   );
 }
 
-// --- Section container ---
+// --- Hero section (primary action) ---
 
-interface DashboardSectionProps {
+interface HeroSectionProps {
   title: string;
+  subtitle: string;
   count: number;
   isLoading: boolean;
   error?: string | null;
+  icon: React.ReactNode;
   children: React.ReactNode;
 }
 
-function DashboardSection({ title, count, isLoading, error, children }: DashboardSectionProps) {
+function HeroSection({
+  title,
+  subtitle,
+  count,
+  isLoading,
+  error,
+  icon,
+  children,
+}: HeroSectionProps) {
   return (
-    <div className="rounded-lg border border-border/50 bg-card overflow-hidden">
+    <div className="rounded-lg border-2 border-primary/30 bg-primary/[0.03] overflow-hidden">
       {/* Section header */}
-      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border/30">
-        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
-        {!isLoading && (
-          <span className="text-xs text-muted-foreground tabular-nums">{count}件</span>
-        )}
-        {isLoading && <Spinner size="sm" />}
+      <div className="px-4 py-3 border-b border-primary/10">
+        <div className="flex items-center gap-2">
+          <div className="text-primary">{icon}</div>
+          <h3 className="text-sm font-bold text-foreground">{title}</h3>
+          {!isLoading && count > 0 && (
+            <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full bg-primary text-primary-foreground text-xs font-semibold">
+              {count}
+            </span>
+          )}
+          {isLoading && <Spinner size="sm" />}
+        </div>
+        <p className="text-xs text-muted-foreground mt-0.5 ml-6">{subtitle}</p>
       </div>
 
       {/* Section content */}
       <div>
         {error && <div className="px-4 py-3 text-sm text-destructive">{error}</div>}
         {!isLoading && !error && count === 0 && (
-          <div className="px-4 py-4 text-sm text-muted-foreground text-center">なし</div>
+          <div className="px-4 py-5 text-sm text-muted-foreground text-center">
+            All caught up! No PRs need your review.
+          </div>
+        )}
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// --- Section container ---
+
+interface DashboardSectionProps {
+  title: string;
+  subtitle: string;
+  count: number;
+  isLoading: boolean;
+  error?: string | null;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+}
+
+function DashboardSection({
+  title,
+  subtitle,
+  count,
+  isLoading,
+  error,
+  icon,
+  children,
+}: DashboardSectionProps) {
+  return (
+    <div className="rounded-lg border border-border/50 bg-card overflow-hidden">
+      {/* Section header */}
+      <div className="px-4 py-2.5 border-b border-border/30">
+        <div className="flex items-center gap-2">
+          <div className="text-muted-foreground">{icon}</div>
+          <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+          {!isLoading && (
+            <span className="text-xs text-muted-foreground tabular-nums">{count}</span>
+          )}
+          {isLoading && <Spinner size="sm" />}
+        </div>
+        <p className="text-xs text-muted-foreground/70 mt-0.5 ml-[1.375rem]">{subtitle}</p>
+      </div>
+
+      {/* Section content */}
+      <div>
+        {error && <div className="px-4 py-3 text-sm text-destructive">{error}</div>}
+        {!isLoading && !error && count === 0 && (
+          <div className="px-4 py-4 text-sm text-muted-foreground text-center">None</div>
         )}
         {children}
       </div>
@@ -200,9 +293,11 @@ function DashboardSection({ title, count, isLoading, error, children }: Dashboar
 function SearchItemList({
   items,
   showReviewDecision,
+  showUrgency = false,
 }: {
   items: NotificationItem[];
   showReviewDecision: boolean;
+  showUrgency?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const visibleItems = expanded ? items : items.slice(0, DEFAULT_VISIBLE);
@@ -220,6 +315,7 @@ function SearchItemList({
           key={item.id}
           item={item}
           showReviewDecision={showReviewDecision}
+          showUrgency={showUrgency}
           onClick={() => handleClick(item)}
         />
       ))}
@@ -228,7 +324,7 @@ function SearchItemList({
           onClick={() => setExpanded(!expanded)}
           className="w-full px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/30 transition-colors text-center"
         >
-          {expanded ? '折りたたむ' : `もっと見る (+${items.length - DEFAULT_VISIBLE})`}
+          {expanded ? 'Show less' : `Show ${items.length - DEFAULT_VISIBLE} more`}
         </button>
       )}
     </div>
@@ -266,7 +362,7 @@ function InboxItemList({
           onClick={() => setExpanded(!expanded)}
           className="w-full px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/30 transition-colors text-center"
         >
-          {expanded ? '折りたたむ' : `もっと見る (+${items.length - DEFAULT_VISIBLE})`}
+          {expanded ? 'Show less' : `Show ${items.length - DEFAULT_VISIBLE} more`}
         </button>
       )}
     </div>
@@ -278,20 +374,46 @@ function InboxItemList({
 function SearchRow({
   item,
   showReviewDecision,
+  showUrgency = false,
   onClick,
 }: {
   item: NotificationItem;
   showReviewDecision: boolean;
+  showUrgency?: boolean;
   onClick: () => void;
 }) {
   const isPR = item.itemType === 'pullrequest';
   const reviewConfig = item.reviewDecision ? REVIEW_DECISION_CONFIG[item.reviewDecision] : null;
+  const urgency = showUrgency ? getUrgencyLevel(item.updatedAt) : 'normal';
+  const visibleLabels = item.labels.slice(0, 3);
 
   return (
     <div
-      className="flex items-center gap-3 px-4 py-2.5 hover:bg-accent/30 cursor-pointer transition-colors border-b border-border/20 last:border-b-0"
+      className={cn(
+        'flex items-center gap-3 px-4 py-2.5 hover:bg-accent/30 cursor-pointer transition-colors border-b border-border/20 last:border-b-0',
+        urgency === 'critical' && 'bg-destructive/[0.04]',
+        urgency === 'warning' && 'bg-[var(--color-gh-review)]/[0.04]',
+      )}
       onClick={onClick}
     >
+      {/* Urgency indicator */}
+      {showUrgency && (
+        <div className="w-1.5 flex-shrink-0">
+          {urgency === 'critical' && (
+            <span
+              className="block w-1.5 h-1.5 rounded-full bg-destructive"
+              title="7+ days waiting"
+            />
+          )}
+          {urgency === 'warning' && (
+            <span
+              className="block w-1.5 h-1.5 rounded-full bg-[var(--color-gh-review)]"
+              title="3+ days waiting"
+            />
+          )}
+        </div>
+      )}
+
       {/* Type icon */}
       <div className="flex-shrink-0">
         {isPR ? (
@@ -313,23 +435,34 @@ function SearchRow({
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2 mt-0.5">
-          <span className="text-[0.8125rem] text-muted-foreground truncate">
+        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+          <span className="text-[0.8125rem] text-muted-foreground">
             {item.repository.owner.login}/{item.repository.name}
+            <span className="text-muted-foreground/50">#{item.number}</span>
           </span>
           {item.author && (
             <span className="text-[0.8125rem] text-muted-foreground/70 flex-shrink-0">
-              by @{item.author.login}
+              @{item.author.login}
             </span>
+          )}
+          {/* Labels */}
+          {visibleLabels.map((label) => (
+            <LabelChip key={label.name} name={label.name} color={label.color} />
+          ))}
+          {item.labels.length > 3 && (
+            <span className="text-xs text-muted-foreground/50">+{item.labels.length - 3}</span>
           )}
         </div>
       </div>
 
-      {/* Review decision badge (for My PRs) */}
+      {/* Review decision badge */}
       {showReviewDecision && reviewConfig && (
-        <span className={cn('text-xs font-medium flex-shrink-0', reviewConfig.color)}>
-          {reviewConfig.label}
-        </span>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <span className={cn('w-2 h-2 rounded-full flex-shrink-0', reviewConfig.dotColor)} />
+          <span className={cn('text-xs font-medium', reviewConfig.color)}>
+            {reviewConfig.label}
+          </span>
+        </div>
       )}
 
       {/* Timestamp */}
@@ -360,7 +493,7 @@ function InboxRow({ item, onClick }: { item: InboxItem; onClick: () => void }) {
       <div className="flex-shrink-0">
         {isPR && <PRIcon className="w-4 h-4 text-[var(--color-gh-pr)]" />}
         {isIssue && <IssueIcon className="w-4 h-4 text-[var(--color-gh-issue)]" />}
-        {!isPR && !isIssue && <NotificationIcon className="w-4 h-4 text-muted-foreground" />}
+        {!isPR && !isIssue && <BellIcon className="w-4 h-4 text-muted-foreground" />}
       </div>
 
       {/* Content */}
@@ -397,6 +530,25 @@ function InboxRow({ item, onClick }: { item: InboxItem; onClick: () => void }) {
   );
 }
 
+// --- Label chip ---
+
+function LabelChip({ name, color }: { name: string; color: string }) {
+  // GitHub label colors are hex without #
+  const hex = color.startsWith('#') ? color : `#${color}`;
+  return (
+    <span
+      className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.6875rem] font-medium leading-none flex-shrink-0 max-w-[8rem] truncate"
+      style={{
+        backgroundColor: `${hex}20`,
+        color: hex,
+        border: `1px solid ${hex}40`,
+      }}
+    >
+      {name}
+    </span>
+  );
+}
+
 // --- Utilities ---
 
 function formatRelativeTime(dateString: string): string {
@@ -407,12 +559,12 @@ function formatRelativeTime(dateString: string): string {
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);
 
-  if (diffMins < 1) return 'たった今';
-  if (diffMins < 60) return `${diffMins}分前`;
-  if (diffHours < 24) return `${diffHours}時間前`;
-  if (diffDays < 7) return `${diffDays}日前`;
+  if (diffMins < 1) return 'now';
+  if (diffMins < 60) return `${diffMins}m`;
+  if (diffHours < 24) return `${diffHours}h`;
+  if (diffDays < 7) return `${diffDays}d`;
 
-  return date.toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' });
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
 // --- Icons ---
@@ -476,7 +628,25 @@ function IssueIcon({ className }: { className?: string }) {
   );
 }
 
-function NotificationIcon({ className }: { className?: string }) {
+function EyeIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function BellIcon({ className }: { className?: string }) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
