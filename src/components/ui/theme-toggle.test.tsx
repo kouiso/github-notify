@@ -23,7 +23,7 @@ describe('ThemeToggle', () => {
     vi.clearAllMocks();
   });
 
-  describe('Normal Cases (正常系)', () => {
+  describe('正常系', () => {
     it('light テーマのとき、正しいアイコンとラベルを表示する', () => {
       mockUseTheme.mockReturnValue({
         theme: 'light',
@@ -33,9 +33,9 @@ describe('ThemeToggle', () => {
 
       render(<ThemeToggle />);
 
-      expect(screen.getByText('☀️')).toBeDefined();
-      expect(screen.getByText('ライト')).toBeDefined();
-      expect(screen.getByTitle('テーマ: ライト')).toBeDefined();
+      expect(screen.getByText('☀️')).toBeInTheDocument();
+      expect(screen.getByText('ライト')).toBeInTheDocument();
+      expect(screen.getByTitle('テーマ: ライト')).toBeInTheDocument();
     });
 
     it('dark テーマのとき、正しいアイコンとラベルを表示する', () => {
@@ -47,9 +47,9 @@ describe('ThemeToggle', () => {
 
       render(<ThemeToggle />);
 
-      expect(screen.getByText('🌙')).toBeDefined();
-      expect(screen.getByText('ダーク')).toBeDefined();
-      expect(screen.getByTitle('テーマ: ダーク')).toBeDefined();
+      expect(screen.getByText('🌙')).toBeInTheDocument();
+      expect(screen.getByText('ダーク')).toBeInTheDocument();
+      expect(screen.getByTitle('テーマ: ダーク')).toBeInTheDocument();
     });
 
     it('system テーマのとき、正しいアイコンとラベルを表示する', () => {
@@ -61,9 +61,9 @@ describe('ThemeToggle', () => {
 
       render(<ThemeToggle />);
 
-      expect(screen.getByText('💻')).toBeDefined();
-      expect(screen.getByText('システム')).toBeDefined();
-      expect(screen.getByTitle('テーマ: システム')).toBeDefined();
+      expect(screen.getByText('💻')).toBeInTheDocument();
+      expect(screen.getByText('システム')).toBeInTheDocument();
+      expect(screen.getByTitle('テーマ: システム')).toBeInTheDocument();
     });
 
     it('ボタンクリックで light → dark に切り替わる', async () => {
@@ -147,7 +147,7 @@ describe('ThemeToggle', () => {
     });
   });
 
-  describe('Edge Cases (境界値・特殊ケース)', () => {
+  describe('境界値・特殊ケース', () => {
     it('variant="icon" のとき、ラベルなしでアイコンのみ表示', () => {
       mockUseTheme.mockReturnValue({
         theme: 'light',
@@ -157,9 +157,9 @@ describe('ThemeToggle', () => {
 
       render(<ThemeToggle variant="icon" />);
 
-      expect(screen.getByText('☀️')).toBeDefined();
+      expect(screen.getByText('☀️')).toBeInTheDocument();
       expect(screen.queryByText('ライト')).toBeNull();
-      expect(screen.getByTestId('theme-toggle-icon')).toBeDefined();
+      expect(screen.getByTestId('theme-toggle-icon')).toBeInTheDocument();
     });
 
     it('variant="icon" でもクリックでテーマが切り替わる', async () => {
@@ -193,7 +193,7 @@ describe('ThemeToggle', () => {
     });
   });
 
-  describe('Error Cases (エラーハンドリング)', () => {
+  describe('エラーハンドリング', () => {
     it('setTheme がエラーを投げても UI がクラッシュしない', async () => {
       const mockSetThemeLocal = vi.fn().mockRejectedValue(new Error('Failed to save theme'));
       mockUseTheme.mockReturnValue({
@@ -215,7 +215,7 @@ describe('ThemeToggle', () => {
       );
 
       // UIはクラッシュしない（ボタンは引き続き存在する）
-      expect(screen.getByTestId('theme-toggle-button')).toBeDefined();
+      expect(screen.getByTestId('theme-toggle-button')).toBeInTheDocument();
     });
   });
 });

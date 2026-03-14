@@ -16,6 +16,15 @@ export interface AuthState {
   error: string | null;
 }
 
+const isTauriEnv = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+
+// Tauri IPCはエラーをstring型で返すため、instanceof Errorだけでは不十分
+const extractErrorMessage = (err: unknown, fallback: string): string => {
+  if (err instanceof Error) return err.message;
+  if (typeof err === 'string') return err;
+  return fallback;
+};
+
 export function useAuth() {
   const [state, setState] = useState<AuthState>({
     isAuthenticated: false,
@@ -27,6 +36,11 @@ export function useAuth() {
   });
 
   const verifyToken = useCallback(async () => {
+    if (!isTauriEnv()) {
+      setState((prev) => ({ ...prev, isLoading: false }));
+      return;
+    }
+
     setState((prev) => ({ ...prev, isLoading: true }));
 
     try {
@@ -47,7 +61,7 @@ export function useAuth() {
         isLoading: false,
         isAuthenticated: false,
         user: null,
-        error: err instanceof Error ? err.message : 'Failed to verify token',
+        error: extractErrorMessage(err, 'Failed to verify token'),
       }));
     }
   }, []);
@@ -87,7 +101,7 @@ export function useAuth() {
         setState((prev) => ({
           ...prev,
           isPolling: false,
-          error: err instanceof Error ? err.message : 'Authentication failed',
+          error: extractErrorMessage(err, 'Authentication failed'),
         }));
       }
     };
@@ -100,6 +114,11 @@ export function useAuth() {
   }, [state.deviceFlow, state.isPolling]);
 
   const startDeviceFlow = useCallback(async () => {
+    if (!isTauriEnv()) {
+      setState((prev) => ({ ...prev, error: 'Tauri環境でのみ利用可能です' }));
+      throw new Error('Tauri環境でのみ利用可能です');
+    }
+
     setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
     try {
@@ -119,7 +138,7 @@ export function useAuth() {
       setState((prev) => ({
         ...prev,
         isLoading: false,
-        error: err instanceof Error ? err.message : 'Failed to start authentication',
+        error: extractErrorMessage(err, 'Failed to start authentication'),
       }));
       throw err;
     }
@@ -134,6 +153,11 @@ export function useAuth() {
   }, []);
 
   const loginWithToken = useCallback(async (token: string) => {
+    if (!isTauriEnv()) {
+      setState((prev) => ({ ...prev, error: 'Tauri環境でのみ利用可能です' }));
+      return false;
+    }
+
     setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
     try {
@@ -162,13 +186,15 @@ export function useAuth() {
       setState((prev) => ({
         ...prev,
         isLoading: false,
-        error: err instanceof Error ? err.message : 'Failed to save token',
+        error: extractErrorMessage(err, 'Failed to save token'),
       }));
       return false;
     }
   }, []);
 
   const logout = useCallback(async () => {
+    if (!isTauriEnv()) return;
+
     try {
       await commands.clearGitHubToken();
       setState((prev) => ({

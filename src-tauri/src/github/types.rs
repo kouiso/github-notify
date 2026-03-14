@@ -69,13 +69,6 @@ pub struct NotificationItem {
     pub review_decision: Option<String>,
 }
 
-/// GraphQL response for viewer (needed for deserialization even if unused)
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-pub struct Viewer {
-    pub login: String,
-}
-
 /// GraphQL search response
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -85,16 +78,12 @@ pub struct SearchResponse {
 
 #[derive(Debug, Deserialize)]
 pub struct SearchData {
-    #[allow(dead_code)]
-    pub viewer: Viewer,
     pub search: SearchResult,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchResult {
-    #[allow(dead_code)]
-    pub issue_count: i32,
     pub nodes: Vec<Option<SearchNode>>,
 }
 
@@ -183,10 +172,6 @@ pub struct DeviceCodeResponse {
 #[derive(Debug, Deserialize)]
 pub struct AccessTokenResponse {
     pub access_token: Option<String>,
-    #[allow(dead_code)]
-    pub token_type: Option<String>,
-    #[allow(dead_code)]
-    pub scope: Option<String>,
     pub error: Option<String>,
     pub error_description: Option<String>,
 }
@@ -314,8 +299,6 @@ pub struct NotificationSubject {
 
 #[derive(Debug, Deserialize)]
 pub struct NotificationRepository {
-    #[allow(dead_code)]
-    pub id: i64,
     pub name: String,
     pub full_name: String,
     pub owner: NotificationOwner,

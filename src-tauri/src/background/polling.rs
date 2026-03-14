@@ -142,20 +142,17 @@ impl Default for AppState {
 pub async fn start_polling(
     app: AppHandle,
     state: tauri::State<'_, AppState>,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let mut polling = state.polling.lock().await;
     if polling.is_running() {
         return Ok(());
     }
-    polling
-        .start(app, state.http_client.clone())
-        .await
-        .map_err(|e| e.to_string())
+    polling.start(app, state.http_client.clone()).await
 }
 
 /// ポーリングサービスを停止するTauriコマンド
 #[tauri::command]
-pub async fn stop_polling(state: tauri::State<'_, AppState>) -> Result<(), String> {
+pub async fn stop_polling(state: tauri::State<'_, AppState>) -> Result<(), AppError> {
     let mut polling = state.polling.lock().await;
     polling.stop();
     Ok(())
@@ -163,7 +160,7 @@ pub async fn stop_polling(state: tauri::State<'_, AppState>) -> Result<(), Strin
 
 /// ポーリング稼働状態を確認するTauriコマンド
 #[tauri::command]
-pub async fn is_polling_running(state: tauri::State<'_, AppState>) -> Result<bool, String> {
+pub async fn is_polling_running(state: tauri::State<'_, AppState>) -> Result<bool, AppError> {
     let polling = state.polling.lock().await;
     Ok(polling.is_running())
 }

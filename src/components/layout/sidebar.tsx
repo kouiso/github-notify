@@ -358,7 +358,7 @@ export function Sidebar({
 
               {editingFilter.enableSound && editingFilter.enableDesktopNotification && (
                 <div className="ml-6 flex gap-2">
-                  {(['default', 'soft', 'chime'] as SoundType[]).map((type) => (
+                  {(['default', 'soft', 'chime'] satisfies SoundType[]).map((type) => (
                     <button
                       key={type}
                       onClick={() => setEditingFilter({ ...editingFilter, soundType: type })}

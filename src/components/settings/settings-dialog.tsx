@@ -403,11 +403,13 @@ function SettingsDialogContent({ open, onOpenChange, user, onLogout }: SettingsD
                           サウンドの種類:
                         </p>
                         <div className="flex gap-2">
-                          {[
-                            { value: 'default' as SoundType, label: '標準' },
-                            { value: 'soft' as SoundType, label: 'ソフト' },
-                            { value: 'chime' as SoundType, label: 'チャイム' },
-                          ].map((option) => (
+                          {(
+                            [
+                              { value: 'default', label: '標準' },
+                              { value: 'soft', label: 'ソフト' },
+                              { value: 'chime', label: 'チャイム' },
+                            ] satisfies { value: SoundType; label: string }[]
+                          ).map((option) => (
                             <button
                               key={option.value}
                               onClick={() =>

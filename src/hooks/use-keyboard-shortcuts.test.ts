@@ -178,9 +178,9 @@ describe('useKeyboardShortcuts', () => {
         useKeyboardShortcuts({ items, selectedIndex: 0, setSelectedIndex, onMarkAsRead }),
       );
       fireKeyDown('Enter');
-      // 少し待ってから open が呼ばれていないことを確認
-      await new Promise((r) => setTimeout(r, 10));
-      expect(mockOpen).not.toHaveBeenCalled();
+      await vi.waitFor(() => {
+        expect(mockOpen).not.toHaveBeenCalled();
+      });
     });
 
     it('selectedIndex が範囲外のとき Enter で何も起きない', async () => {
@@ -188,9 +188,10 @@ describe('useKeyboardShortcuts', () => {
         useKeyboardShortcuts({ items, selectedIndex: -1, setSelectedIndex, onMarkAsRead }),
       );
       fireKeyDown('Enter');
-      await new Promise((r) => setTimeout(r, 10));
-      expect(mockOpen).not.toHaveBeenCalled();
-      expect(onMarkAsRead).not.toHaveBeenCalled();
+      await vi.waitFor(() => {
+        expect(mockOpen).not.toHaveBeenCalled();
+        expect(onMarkAsRead).not.toHaveBeenCalled();
+      });
     });
   });
 

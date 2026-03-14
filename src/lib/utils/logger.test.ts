@@ -34,7 +34,7 @@ describe('Logger', () => {
       logger.info('テストメッセージ');
 
       expect(consoleInfoSpy).toHaveBeenCalledOnce();
-      const calledWith = consoleInfoSpy.mock.calls[0][0] as string;
+      const calledWith = String(consoleInfoSpy.mock.calls[0][0]);
       expect(calledWith).toMatch(/\[INFO\]/);
       expect(calledWith).toContain('テストメッセージ');
     });
@@ -43,7 +43,7 @@ describe('Logger', () => {
       const { logger } = await import('./logger');
       logger.info('テストメッセージ', { component: 'Header', action: 'mount' });
 
-      const calledWith = consoleInfoSpy.mock.calls[0][0] as string;
+      const calledWith = String(consoleInfoSpy.mock.calls[0][0]);
       expect(calledWith).toContain('component=Header');
       expect(calledWith).toContain('action=mount');
     });
@@ -53,7 +53,7 @@ describe('Logger', () => {
       logger.warn('警告メッセージ');
 
       expect(consoleWarnSpy).toHaveBeenCalledOnce();
-      const calledWith = consoleWarnSpy.mock.calls[0][0] as string;
+      const calledWith = String(consoleWarnSpy.mock.calls[0][0]);
       expect(calledWith).toMatch(/\[WARN\]/);
       expect(calledWith).toContain('警告メッセージ');
     });
@@ -62,7 +62,7 @@ describe('Logger', () => {
       const { logger } = await import('./logger');
       logger.warn('警告', { component: 'Modal' });
 
-      const calledWith = consoleWarnSpy.mock.calls[0][0] as string;
+      const calledWith = String(consoleWarnSpy.mock.calls[0][0]);
       expect(calledWith).toContain('component=Modal');
     });
 
@@ -72,7 +72,7 @@ describe('Logger', () => {
       logger.error('エラーが発生', err);
 
       expect(consoleErrorSpy).toHaveBeenCalledOnce();
-      const calledArg0 = consoleErrorSpy.mock.calls[0][0] as string;
+      const calledArg0 = String(consoleErrorSpy.mock.calls[0][0]);
       expect(calledArg0).toMatch(/\[ERROR\]/);
       expect(calledArg0).toContain('エラーが発生');
       expect(calledArg0).toContain('テストエラー');
@@ -83,7 +83,7 @@ describe('Logger', () => {
       const { logger } = await import('./logger');
       logger.error('エラー', 'string error value');
 
-      const calledArg0 = consoleErrorSpy.mock.calls[0][0] as string;
+      const calledArg0 = String(consoleErrorSpy.mock.calls[0][0]);
       expect(calledArg0).toContain('string error value');
     });
 
@@ -91,7 +91,7 @@ describe('Logger', () => {
       const { logger } = await import('./logger');
       logger.error('エラー', undefined, { component: 'App' });
 
-      const calledArg0 = consoleErrorSpy.mock.calls[0][0] as string;
+      const calledArg0 = String(consoleErrorSpy.mock.calls[0][0]);
       expect(calledArg0).toContain('component=App');
     });
 
@@ -100,7 +100,7 @@ describe('Logger', () => {
       logger.debug('デバッグメッセージ');
 
       expect(consoleDebugSpy).toHaveBeenCalledOnce();
-      const calledWith = consoleDebugSpy.mock.calls[0][0] as string;
+      const calledWith = String(consoleDebugSpy.mock.calls[0][0]);
       expect(calledWith).toMatch(/\[DEBUG\]/);
       expect(calledWith).toContain('デバッグメッセージ');
     });
@@ -109,7 +109,7 @@ describe('Logger', () => {
       const { logger } = await import('./logger');
       logger.debug('デバッグ', { action: 'fetch' });
 
-      const calledWith = consoleDebugSpy.mock.calls[0][0] as string;
+      const calledWith = String(consoleDebugSpy.mock.calls[0][0]);
       expect(calledWith).toContain('action=fetch');
     });
 
@@ -117,7 +117,7 @@ describe('Logger', () => {
       const { logger } = await import('./logger');
       logger.info('タイムスタンプ確認');
 
-      const calledWith = consoleInfoSpy.mock.calls[0][0] as string;
+      const calledWith = String(consoleInfoSpy.mock.calls[0][0]);
       expect(calledWith).toMatch(/\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
     });
   });
@@ -167,7 +167,7 @@ describe('Logger', () => {
       const { logger } = await import('./logger');
       logger.info('コンテキストなし');
 
-      const calledWith = consoleInfoSpy.mock.calls[0][0] as string;
+      const calledWith = String(consoleInfoSpy.mock.calls[0][0]);
       expect(calledWith).not.toMatch(/\[[\w]+=[\w]+\]/);
     });
 
@@ -175,7 +175,7 @@ describe('Logger', () => {
       const { logger } = await import('./logger');
       logger.info('複数コンテキスト', { component: 'A', action: 'B' });
 
-      const calledWith = consoleInfoSpy.mock.calls[0][0] as string;
+      const calledWith = String(consoleInfoSpy.mock.calls[0][0]);
       expect(calledWith).toContain('component=A, action=B');
     });
 
@@ -183,7 +183,7 @@ describe('Logger', () => {
       const { logger } = await import('./logger');
       logger.info('エラーなし');
 
-      const calledWith = consoleInfoSpy.mock.calls[0][0] as string;
+      const calledWith = String(consoleInfoSpy.mock.calls[0][0]);
       expect(calledWith).not.toContain('Error:');
     });
 
@@ -191,7 +191,7 @@ describe('Logger', () => {
       const { logger } = await import('./logger');
       logger.error('エラー', { code: 404 });
 
-      const calledArg0 = consoleErrorSpy.mock.calls[0][0] as string;
+      const calledArg0 = String(consoleErrorSpy.mock.calls[0][0]);
       expect(calledArg0).toContain('Error:');
     });
   });

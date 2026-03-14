@@ -129,10 +129,10 @@ describe('useAuth', () => {
       expect(result.current.isAuthenticated).toBe(false);
     });
 
-    it('Error 以外のエラーの場合、フォールバックメッセージが使われる', async () => {
+    it('文字列エラーの場合、その文字列がそのまま表示される', async () => {
       mockVerifyGitHubToken.mockRejectedValue('unexpected');
       const { result } = renderHook(() => useAuth());
-      await waitFor(() => expect(result.current.error).toBe('Failed to verify token'));
+      await waitFor(() => expect(result.current.error).toBe('unexpected'));
     });
   });
 
@@ -171,7 +171,7 @@ describe('useAuth', () => {
         try {
           await result.current.startDeviceFlow();
         } catch {
-          // エラーは呼び出し元に再スローされる
+          // startDeviceFlowはエラーを再スローするため、テスト側でキャッチして未処理エラーを防ぐ
         }
       });
 
@@ -179,7 +179,7 @@ describe('useAuth', () => {
       expect(result.current.isLoading).toBe(false);
     });
 
-    it('Error 以外のエラーでフォールバックメッセージが使われる', async () => {
+    it('文字列エラーの場合、その文字列がそのまま表示される', async () => {
       mockStartDeviceFlow.mockRejectedValue('string error');
       const { result } = renderHook(() => useAuth());
       await waitFor(() => expect(result.current.isLoading).toBe(false));
@@ -188,11 +188,11 @@ describe('useAuth', () => {
         try {
           await result.current.startDeviceFlow();
         } catch {
-          // 再スロー
+          // startDeviceFlowはエラーを再スローするため、テスト側でキャッチして未処理エラーを防ぐ
         }
       });
 
-      expect(result.current.error).toBe('Failed to start authentication');
+      expect(result.current.error).toBe('string error');
     });
   });
 

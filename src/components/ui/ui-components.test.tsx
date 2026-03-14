@@ -28,7 +28,7 @@ describe('Badge', () => {
   describe('正常系', () => {
     it('子要素のテキストをレンダリングする', () => {
       render(<Badge>テスト</Badge>);
-      expect(screen.getByText('テスト')).toBeDefined();
+      expect(screen.getByText('テスト')).toBeInTheDocument();
     });
 
     it('デフォルトバリアントでレンダリングされる', () => {
@@ -77,32 +77,32 @@ describe('Card', () => {
   describe('正常系', () => {
     it('Card がレンダリングされる', () => {
       render(<Card data-testid="card">中身</Card>);
-      expect(screen.getByTestId('card')).toBeDefined();
+      expect(screen.getByTestId('card')).toBeInTheDocument();
     });
 
     it('CardHeader がレンダリングされる', () => {
       render(<CardHeader data-testid="header">ヘッダー</CardHeader>);
-      expect(screen.getByTestId('header')).toBeDefined();
+      expect(screen.getByTestId('header')).toBeInTheDocument();
     });
 
     it('CardTitle がレンダリングされる', () => {
       render(<CardTitle>タイトル</CardTitle>);
-      expect(screen.getByText('タイトル')).toBeDefined();
+      expect(screen.getByText('タイトル')).toBeInTheDocument();
     });
 
     it('CardDescription がレンダリングされる', () => {
       render(<CardDescription>説明文</CardDescription>);
-      expect(screen.getByText('説明文')).toBeDefined();
+      expect(screen.getByText('説明文')).toBeInTheDocument();
     });
 
     it('CardContent がレンダリングされる', () => {
       render(<CardContent data-testid="content">コンテンツ</CardContent>);
-      expect(screen.getByTestId('content')).toBeDefined();
+      expect(screen.getByTestId('content')).toBeInTheDocument();
     });
 
     it('CardFooter がレンダリングされる', () => {
       render(<CardFooter data-testid="footer">フッター</CardFooter>);
-      expect(screen.getByTestId('footer')).toBeDefined();
+      expect(screen.getByTestId('footer')).toBeInTheDocument();
     });
 
     it('全サブコンポーネントを組み合わせてレンダリングできる', () => {
@@ -116,10 +116,10 @@ describe('Card', () => {
           <CardFooter>フッター</CardFooter>
         </Card>,
       );
-      expect(screen.getByText('見出し')).toBeDefined();
-      expect(screen.getByText('詳細説明')).toBeDefined();
-      expect(screen.getByText('本文')).toBeDefined();
-      expect(screen.getByText('フッター')).toBeDefined();
+      expect(screen.getByText('見出し')).toBeInTheDocument();
+      expect(screen.getByText('詳細説明')).toBeInTheDocument();
+      expect(screen.getByText('本文')).toBeInTheDocument();
+      expect(screen.getByText('フッター')).toBeInTheDocument();
     });
 
     it('Card に追加 className が適用される', () => {
@@ -170,7 +170,7 @@ describe('Dialog', () => {
           </DialogContent>
         </Dialog>,
       );
-      expect(screen.getByText('ダイアログ')).toBeDefined();
+      expect(screen.getByText('ダイアログ')).toBeInTheDocument();
     });
 
     it('DialogTrigger クリックでダイアログが開く（非制御モード）', async () => {
@@ -186,7 +186,7 @@ describe('Dialog', () => {
 
       expect(screen.queryByText('内容')).toBeNull();
       await user.click(screen.getByText('開く'));
-      expect(screen.getByText('内容')).toBeDefined();
+      expect(screen.getByText('内容')).toBeInTheDocument();
     });
 
     it('onOpenChange が制御コールバックとして呼ばれる', async () => {
@@ -231,7 +231,7 @@ describe('Dialog', () => {
           </DialogContent>
         </Dialog>,
       );
-      expect(screen.getByTestId('dlg-header')).toBeDefined();
+      expect(screen.getByTestId('dlg-header')).toBeInTheDocument();
     });
 
     it('DialogFooter がレンダリングされる', () => {
@@ -243,7 +243,7 @@ describe('Dialog', () => {
           </DialogContent>
         </Dialog>,
       );
-      expect(screen.getByTestId('dlg-footer')).toBeDefined();
+      expect(screen.getByTestId('dlg-footer')).toBeInTheDocument();
     });
 
     it('DialogDescription がレンダリングされる', () => {
@@ -255,7 +255,7 @@ describe('Dialog', () => {
           </DialogContent>
         </Dialog>,
       );
-      expect(screen.getByText('補足説明')).toBeDefined();
+      expect(screen.getByText('補足説明')).toBeInTheDocument();
     });
 
     it('DialogTitle が h2 要素としてレンダリングされる', () => {
@@ -295,7 +295,7 @@ describe('Spinner', () => {
     it('デフォルトサイズでレンダリングされる', () => {
       render(<Spinner data-testid="spinner" />);
       const el = screen.getByTestId('spinner');
-      expect(el).toBeDefined();
+      expect(el).toBeInTheDocument();
       expect(el.className).toContain('h-6');
       expect(el.className).toContain('w-6');
     });
