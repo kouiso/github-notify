@@ -1,21 +1,24 @@
 use tauri::AppHandle;
 use tauri_plugin_notification::NotificationExt;
 
+use crate::background::AppState;
 use crate::error::AppError;
 use crate::github::client::GitHubClient;
 use crate::github::types::{InboxItem, NotificationItem};
 use crate::storage;
 
-/// Fetch notifications for a given query
+/// 指定クエリでGitHub通知を取得する
 #[tauri::command]
 pub async fn fetch_notifications(
     app: AppHandle,
+    state: tauri::State<'_, AppState>,
     query: String,
 ) -> Result<Vec<NotificationItem>, AppError> {
     let token = storage::get_token(&app)?
         .ok_or_else(|| AppError::Auth("No GitHub token configured".to_string()))?;
 
-    let client = GitHubClient::with_token(token);
+    // AppStateの共有Clientを使い接続プールを再利用する
+    let client = GitHubClient::with_shared_client(state.http_client.clone(), token);
     let mut items = client.fetch_notifications(&query, 50).await?;
 
     // Mark items as read based on stored read state
@@ -100,37 +103,51 @@ pub fn play_sound(app: AppHandle, sound_type: Option<String>) -> Result<(), AppE
 // Inbox Commands (REST API - no query needed!)
 // ============================================
 
-/// Fetch inbox notifications
+/// インボックス通知を取得する
 #[tauri::command]
-pub async fn fetch_inbox(app: AppHandle, all: Option<bool>) -> Result<Vec<InboxItem>, AppError> {
+pub async fn fetch_inbox(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+    all: Option<bool>,
+) -> Result<Vec<InboxItem>, AppError> {
     let token = storage::get_token(&app)?
         .ok_or_else(|| AppError::Auth("No GitHub token configured".to_string()))?;
 
-    let client = GitHubClient::with_token(token);
+    // AppStateの共有Clientを使い接続プールを再利用する
+    let client = GitHubClient::with_shared_client(state.http_client.clone(), token);
     let items = client.fetch_inbox(all.unwrap_or(false)).await?;
 
     Ok(items)
 }
 
-/// Mark an inbox notification as read
+/// インボックスの特定通知を既読にする
 #[tauri::command]
-pub async fn mark_inbox_read(app: AppHandle, thread_id: String) -> Result<(), AppError> {
+pub async fn mark_inbox_read(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+    thread_id: String,
+) -> Result<(), AppError> {
     let token = storage::get_token(&app)?
         .ok_or_else(|| AppError::Auth("No GitHub token configured".to_string()))?;
 
-    let client = GitHubClient::with_token(token);
+    // AppStateの共有Clientを使い接続プールを再利用する
+    let client = GitHubClient::with_shared_client(state.http_client.clone(), token);
     client.mark_notification_read(&thread_id).await?;
 
     Ok(())
 }
 
-/// Mark ALL inbox notifications as read
+/// インボックスの全通知を既読にする
 #[tauri::command]
-pub async fn mark_all_inbox_read(app: AppHandle) -> Result<(), AppError> {
+pub async fn mark_all_inbox_read(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), AppError> {
     let token = storage::get_token(&app)?
         .ok_or_else(|| AppError::Auth("No GitHub token configured".to_string()))?;
 
-    let client = GitHubClient::with_token(token);
+    // AppStateの共有Clientを使い接続プールを再利用する
+    let client = GitHubClient::with_shared_client(state.http_client.clone(), token);
     client.mark_all_notifications_read().await?;
 
     Ok(())

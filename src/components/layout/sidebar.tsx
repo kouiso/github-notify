@@ -9,7 +9,6 @@ import { SidebarFooter } from './sidebar-footer';
 
 interface SidebarProps {
   items: InboxItem[];
-  unreadCount: number;
   onOpenSettings: () => void;
   user: { login: string; avatarUrl?: string } | null;
   selectedFilterId: string | null;
@@ -28,7 +27,7 @@ const ALL_REASONS: NotificationReason[] = [
 ];
 
 function matchesFilter(item: InboxItem, filter: CustomFilter): boolean {
-  if (filter.reasons.length > 0 && !filter.reasons.includes(item.reason as NotificationReason)) {
+  if (filter.reasons.length > 0 && !filter.reasons.includes(item.reason)) {
     return false;
   }
   if (filter.repositories && filter.repositories.length > 0) {
@@ -41,18 +40,15 @@ function matchesFilter(item: InboxItem, filter: CustomFilter): boolean {
 
 export function Sidebar({
   items,
-  unreadCount: _unreadCount,
   onOpenSettings,
   user,
   selectedFilterId,
   onSelectFilter,
 }: SidebarProps) {
-  void _unreadCount;
   const { settings, updateSettings } = useSettings();
   const [editingFilter, setEditingFilter] = useState<CustomFilter | null>(null);
   const [repoInput, setRepoInput] = useState('');
 
-  // Extract unique repos from notifications for suggestions
   const knownRepos = useMemo(() => {
     const repos = new Set<string>();
     for (const item of items) {
@@ -119,16 +115,13 @@ export function Sidebar({
 
   return (
     <div className="flex flex-col h-full bg-card border-r border-border/50">
-      {/* Header */}
       <div className="px-4 py-2.5" data-tauri-drag-region>
         <h1 className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">
           GitHub Notify
         </h1>
       </div>
 
-      {/* Navigation */}
       <div className="flex-1 overflow-y-auto scrollbar-thin">
-        {/* Dashboard */}
         <div className="px-2 py-1 space-y-0.5">
           <SidebarItem
             icon={<DashboardIcon className="w-[1.125rem] h-[1.125rem]" />}
@@ -145,7 +138,6 @@ export function Sidebar({
           />
         </div>
 
-        {/* User's views */}
         <div className="px-2 py-1">
           <p className="px-3 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
             Views
@@ -171,7 +163,6 @@ export function Sidebar({
             ))}
           </div>
 
-          {/* New view — inline subtle link */}
           <button
             onClick={handleNewView}
             className="w-full flex items-center gap-2.5 px-3 py-2 text-[0.9375rem] text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-md transition-colors"
@@ -182,10 +173,8 @@ export function Sidebar({
         </div>
       </div>
 
-      {/* Footer */}
       <SidebarFooter user={user} onOpenSettings={onOpenSettings} />
 
-      {/* Edit/Create View Dialog */}
       <Dialog
         open={editingFilter !== null}
         onOpenChange={(open) => {
@@ -236,7 +225,6 @@ export function Sidebar({
                   リポジトリで絞り込み（空 = すべて）:
                 </p>
 
-                {/* Selected repos as chips */}
                 {editingFilter.repositories && editingFilter.repositories.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
                     {editingFilter.repositories.map((repo) => (
@@ -262,7 +250,6 @@ export function Sidebar({
                   </div>
                 )}
 
-                {/* Add repo input */}
                 <div className="flex gap-1.5">
                   <Input
                     placeholder="owner/repo"
@@ -301,7 +288,6 @@ export function Sidebar({
                   </Button>
                 </div>
 
-                {/* Suggestions from existing notifications */}
                 {(() => {
                   const selectedRepos = new Set(editingFilter.repositories || []);
                   const suggestions = knownRepos.filter((r) => !selectedRepos.has(r));
@@ -476,7 +462,6 @@ function SidebarItem({
   );
 }
 
-// Icons
 function InboxIcon({ className }: { className?: string }) {
   return (
     <svg

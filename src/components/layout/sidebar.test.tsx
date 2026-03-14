@@ -62,7 +62,6 @@ function createMockFilter(overrides: Partial<CustomFilter> = {}): CustomFilter {
 
 const defaultProps = {
   items: [] as InboxItem[],
-  unreadCount: 0,
   onOpenSettings: vi.fn(),
   user: { login: 'testuser', avatarUrl: 'https://avatar.example.com/testuser.png' },
   selectedFilterId: null as string | null,
@@ -135,7 +134,7 @@ describe('Sidebar', () => {
         createMockItem({ id: '3', reason: 'review_requested', unread: false }),
       ];
 
-      render(<Sidebar {...defaultProps} items={items} unreadCount={2} />);
+      render(<Sidebar {...defaultProps} items={items} />);
 
       const allButton = screen.getByText('Inbox').closest('button')!;
       expect(within(allButton).getByText('1')).toBeInTheDocument();
@@ -155,7 +154,7 @@ describe('Sidebar', () => {
         createMockItem({ id: '3', reason: 'mention', unread: true }),
       ];
 
-      render(<Sidebar {...defaultProps} items={items} unreadCount={3} />);
+      render(<Sidebar {...defaultProps} items={items} />);
 
       const filterButton = screen.getByText('レビュー依頼').closest('button')!;
       expect(within(filterButton).getByText('2')).toBeInTheDocument();
@@ -185,7 +184,7 @@ describe('Sidebar', () => {
         }),
       ];
 
-      render(<Sidebar {...defaultProps} items={items} unreadCount={2} />);
+      render(<Sidebar {...defaultProps} items={items} />);
 
       const filterButton = screen.getByText('CI リポ指定').closest('button')!;
       expect(within(filterButton).getByText('1')).toBeInTheDocument();

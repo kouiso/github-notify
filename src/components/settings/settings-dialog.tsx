@@ -4,7 +4,7 @@ import { useSettings, useTheme } from '@/hooks';
 import { cn } from '@/lib/utils/cn';
 import {
   type CustomFilter,
-  type FILTER_TEMPLATES,
+  type FilterTemplate,
   type NotificationReason,
   REASON_LABELS,
   type SoundType,
@@ -78,8 +78,7 @@ function SettingsDialogContent({ open, onOpenChange, user, onLogout }: SettingsD
     onOpenChange(false);
   };
 
-  // Filter management
-  const handleAddFilter = (template?: (typeof FILTER_TEMPLATES)[0]) => {
+  const handleAddFilter = (template?: FilterTemplate) => {
     const newFilter: CustomFilter = {
       id: crypto.randomUUID(),
       name: template?.name || '新しいフィルター',
@@ -136,7 +135,6 @@ function SettingsDialogContent({ open, onOpenChange, user, onLogout }: SettingsD
           <DialogTitle>設定</DialogTitle>
         </DialogHeader>
 
-        {/* Tabs */}
         <div className="flex gap-1 border-b">
           {TABS.map((tab) => (
             <button
@@ -155,10 +153,8 @@ function SettingsDialogContent({ open, onOpenChange, user, onLogout }: SettingsD
         </div>
 
         <div className="py-4 max-h-[60vh] overflow-y-auto scrollbar-thin">
-          {/* Filters Tab */}
           {activeTab === 'filters' && (
             <div className="space-y-4">
-              {/* Desktop notifications toggle */}
               <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
                 <div>
                   <p className="font-semibold text-[0.9375rem]">デスクトップ通知</p>
@@ -172,7 +168,6 @@ function SettingsDialogContent({ open, onOpenChange, user, onLogout }: SettingsD
                 />
               </div>
 
-              {/* Sound notifications toggle */}
               <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
                 <div>
                   <p className="font-semibold text-[0.9375rem]">通知音</p>
@@ -183,7 +178,6 @@ function SettingsDialogContent({ open, onOpenChange, user, onLogout }: SettingsD
                 <ToggleSwitch enabled={settings.soundEnabled} onToggle={handleSoundToggle} />
               </div>
 
-              {/* Philosophy explanation */}
               <div className="p-4 border-l-4 border-primary bg-primary/5 rounded">
                 <p className="font-semibold mb-1.5 text-[0.9375rem]">💡 通知の考え方</p>
                 <p className="text-[0.875rem] text-muted-foreground leading-relaxed">
@@ -192,7 +186,6 @@ function SettingsDialogContent({ open, onOpenChange, user, onLogout }: SettingsD
                 </p>
               </div>
 
-              {/* Notification Filters Section */}
               <div className="p-4 border rounded-lg space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
@@ -203,7 +196,6 @@ function SettingsDialogContent({ open, onOpenChange, user, onLogout }: SettingsD
                   </div>
                 </div>
 
-                {/* Quick filter templates */}
                 {!editingFilter && settings.customFilters.length === 0 && (
                   <div className="space-y-2">
                     <p className="text-[0.8125rem] font-bold text-muted-foreground uppercase tracking-wide">
@@ -292,7 +284,6 @@ function SettingsDialogContent({ open, onOpenChange, user, onLogout }: SettingsD
                   </div>
                 )}
 
-                {/* Editing filter */}
                 {editingFilter ? (
                   <div className="space-y-4 p-4 border rounded-lg">
                     <div className="flex items-center justify-between">
@@ -379,7 +370,6 @@ function SettingsDialogContent({ open, onOpenChange, user, onLogout }: SettingsD
                       )}
                     </label>
 
-                    {/* Sound notification toggle */}
                     <label className="flex items-center gap-2 text-[0.9375rem] cursor-pointer">
                       <input
                         type="checkbox"
@@ -407,7 +397,6 @@ function SettingsDialogContent({ open, onOpenChange, user, onLogout }: SettingsD
                       )}
                     </label>
 
-                    {/* Sound type selector */}
                     {editingFilter.enableSound && editingFilter.enableDesktopNotification && (
                       <div className="ml-6 space-y-1">
                         <p className="text-[0.8125rem] text-muted-foreground font-medium">
@@ -455,7 +444,6 @@ function SettingsDialogContent({ open, onOpenChange, user, onLogout }: SettingsD
                   </div>
                 ) : (
                   <>
-                    {/* Existing filters */}
                     {settings.customFilters.length > 0 && (
                       <div className="space-y-2">
                         {settings.customFilters.map((filter) => (
@@ -519,7 +507,6 @@ function SettingsDialogContent({ open, onOpenChange, user, onLogout }: SettingsD
                       </div>
                     )}
 
-                    {/* Add filter button */}
                     {!editingFilter && (
                       <Button
                         variant="outline"
@@ -536,7 +523,6 @@ function SettingsDialogContent({ open, onOpenChange, user, onLogout }: SettingsD
             </div>
           )}
 
-          {/* Appearance Tab */}
           {activeTab === 'appearance' && (
             <div className="space-y-4">
               <div className="space-y-3">
@@ -560,7 +546,6 @@ function SettingsDialogContent({ open, onOpenChange, user, onLogout }: SettingsD
                 </div>
               </div>
 
-              {/* About section */}
               <div className="space-y-2 pt-4 border-t">
                 <h3 className="text-[0.9375rem] font-semibold">このアプリについて</h3>
                 <div className="text-[0.9375rem] text-muted-foreground space-y-1">
@@ -571,7 +556,6 @@ function SettingsDialogContent({ open, onOpenChange, user, onLogout }: SettingsD
             </div>
           )}
 
-          {/* Account Tab */}
           {activeTab === 'account' && (
             <div className="space-y-4">
               {user && (

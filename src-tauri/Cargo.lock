@@ -1529,7 +1529,6 @@ dependencies = [
 name = "github-notify"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "chrono",
  "log",
  "reqwest",
@@ -1544,7 +1543,6 @@ dependencies = [
  "tauri-plugin-store",
  "thiserror 2.0.17",
  "tokio",
- "uuid",
 ]
 
 [[package]]

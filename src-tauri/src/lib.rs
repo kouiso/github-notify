@@ -37,9 +37,10 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 if let Ok(Some(_token)) = storage::get_token(&handle) {
                     let state = handle.state::<AppState>();
+                    let http_client = state.http_client.clone();
                     let mut polling = state.polling.lock().await;
-                    if let Err(e) = polling.start(handle.clone()).await {
-                        log::error!("Failed to start background polling: {}", e);
+                    if let Err(e) = polling.start(handle.clone(), http_client).await {
+                        log::error!("バックグラウンドポーリングの開始に失敗: {}", e);
                     }
                 }
             });
@@ -49,10 +50,14 @@ pub fn run() {
             let quit = MenuItem::with_id(app, "quit", "終了", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show, &quit])?;
 
-            let _tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
+            // アイコンが取得できない場合は graceful degradation（トレイアイコンなしで続行）
+            let mut tray_builder = TrayIconBuilder::new()
                 .tooltip("GitHub Notify")
-                .menu(&menu)
+                .menu(&menu);
+            if let Some(icon) = app.default_window_icon() {
+                tray_builder = tray_builder.icon(icon.clone());
+            }
+            let _tray = tray_builder
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => {
                         if let Some(window) = app.get_webview_window("main") {
@@ -91,13 +96,6 @@ pub fn run() {
             commands::get_github_token,
             commands::verify_github_token,
             commands::clear_github_token,
-            // Stream commands
-            commands::get_streams,
-            commands::create_stream,
-            commands::update_stream,
-            commands::delete_stream,
-            commands::reorder_streams,
-            commands::update_stream_unread_count,
             // Notification commands
             commands::fetch_notifications,
             commands::mark_as_read,

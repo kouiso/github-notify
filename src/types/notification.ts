@@ -1,3 +1,5 @@
+import type { NotificationReason } from './settings';
+
 export type ItemState = 'open' | 'closed' | 'merged';
 export type NotificationType = 'issue' | 'pullrequest';
 
@@ -35,12 +37,12 @@ export interface NotificationItem {
   reviewDecision?: string | null;
 }
 
-// Inbox item from REST API (no query needed!)
+// REST API経由の受信トレイアイテム（GraphQLクエリ不要）
 export interface InboxItem {
   id: string;
   title: string;
   url: string | null;
-  reason: string;
+  reason: NotificationReason;
   unread: boolean;
   updatedAt: string;
   itemType: string;

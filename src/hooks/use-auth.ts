@@ -52,12 +52,11 @@ export function useAuth() {
     }
   }, []);
 
-  // Verify token on mount
   useEffect(() => {
     verifyToken();
   }, [verifyToken]);
 
-  // Poll for token during device flow
+  // デバイスフロー認証中にポーリングでトークン取得を試みる
   useEffect(() => {
     if (!state.deviceFlow || !state.isPolling) return;
 
@@ -83,7 +82,6 @@ export function useAuth() {
           return;
         }
 
-        // Continue polling
         timeoutId = setTimeout(poll, interval);
       } catch (err) {
         setState((prev) => ({
@@ -114,7 +112,6 @@ export function useAuth() {
         isPolling: true,
       }));
 
-      // Open the verification URL in browser
       await open(deviceFlow.verificationUri);
 
       return deviceFlow;

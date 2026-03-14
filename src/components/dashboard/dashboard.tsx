@@ -5,11 +5,10 @@ import { useSearchView } from '@/hooks/use-search-view';
 import { cn } from '@/lib/utils/cn';
 import type { InboxItem, NotificationItem } from '@/types';
 import type { CustomFilter } from '@/types/settings';
-import { isSearchView, type NotificationReason, REASON_LABELS } from '@/types/settings';
+import { isSearchView, REASON_LABELS } from '@/types/settings';
 
 const DEFAULT_VISIBLE = 5;
 
-// Reason → color mapping (same as inbox-list)
 const REASON_COLORS: Record<string, { text: string; bg: string }> = {
   review_requested: { text: 'text-[var(--color-gh-pr)]', bg: 'bg-[var(--color-gh-review-bg)]' },
   mention: { text: 'text-[var(--color-gh-mention)]', bg: 'bg-[var(--color-gh-mention-bg)]' },
@@ -21,7 +20,6 @@ const REASON_COLORS: Record<string, { text: string; bg: string }> = {
   state_change: { text: 'text-muted-foreground', bg: 'bg-accent' },
 };
 
-// Review decision display config
 const REVIEW_DECISION_CONFIG: Record<string, { label: string; color: string; dotColor: string }> = {
   APPROVED: {
     label: 'Approved',
@@ -40,9 +38,8 @@ const REVIEW_DECISION_CONFIG: Record<string, { label: string; color: string; dot
   },
 };
 
-// Urgency thresholds in milliseconds
-const URGENCY_WARNING_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
-const URGENCY_CRITICAL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const URGENCY_WARNING_MS = 3 * 24 * 60 * 60 * 1000;
+const URGENCY_CRITICAL_MS = 7 * 24 * 60 * 60 * 1000;
 
 function getUrgencyLevel(dateString: string): 'normal' | 'warning' | 'critical' {
   const diffMs = Date.now() - new Date(dateString).getTime();
@@ -60,7 +57,6 @@ interface DashboardProps {
   userLogin?: string;
 }
 
-/** Replace @me placeholder with actual GitHub login */
 function resolveQuery(query: string, userLogin?: string): string {
   if (!userLogin) return query;
   return query.replace(/@me\b/g, userLogin);
@@ -76,40 +72,36 @@ export function Dashboard({
 }: DashboardProps) {
   const needsReviewView = useSearchView();
   const myPrsView = useSearchView();
+  const { fetch: fetchNeedsReview, refresh: refreshNeedsReview } = needsReviewView;
+  const { fetch: fetchMyPrs, refresh: refreshMyPrs } = myPrsView;
 
-  // Find search view filters
   const needsReviewFilter = filters.find((f) => f.id === 'default-needs-review');
   const myPrsFilter = filters.find((f) => f.id === 'default-my-prs');
 
-  // Fetch search views on mount
   useEffect(() => {
     if (needsReviewFilter && isSearchView(needsReviewFilter) && needsReviewFilter.searchQuery) {
-      needsReviewView.fetch(resolveQuery(needsReviewFilter.searchQuery, userLogin));
+      fetchNeedsReview(resolveQuery(needsReviewFilter.searchQuery, userLogin));
     }
-  }, [needsReviewFilter, userLogin]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [needsReviewFilter, userLogin, fetchNeedsReview]);
 
   useEffect(() => {
     if (myPrsFilter && isSearchView(myPrsFilter) && myPrsFilter.searchQuery) {
-      myPrsView.fetch(resolveQuery(myPrsFilter.searchQuery, userLogin));
+      fetchMyPrs(resolveQuery(myPrsFilter.searchQuery, userLogin));
     }
-  }, [myPrsFilter, userLogin]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [myPrsFilter, userLogin, fetchMyPrs]);
 
   const handleRefreshAll = useCallback(() => {
     onRefresh();
-    needsReviewView.refresh();
-    myPrsView.refresh();
-  }, [onRefresh, needsReviewView, myPrsView]);
+    refreshNeedsReview();
+    refreshMyPrs();
+  }, [onRefresh, refreshNeedsReview, refreshMyPrs]);
 
-  // Filter inbox to unread items that match notification filters
   const notificationFilters = filters.filter((f) => !isSearchView(f));
   const unreadInboxItems = inboxItems.filter((item) => {
     if (!item.unread) return false;
     if (notificationFilters.length === 0) return true;
     return notificationFilters.some((filter) => {
-      if (
-        filter.reasons.length > 0 &&
-        !filter.reasons.includes(item.reason as NotificationReason)
-      ) {
+      if (filter.reasons.length > 0 && !filter.reasons.includes(item.reason)) {
         return false;
       }
       if (filter.repositories && filter.repositories.length > 0) {
@@ -123,7 +115,6 @@ export function Dashboard({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
       <div className="flex items-center justify-between px-5 py-3 border-b border-border/50">
         <h2 className="text-base font-semibold">Dashboard</h2>
         <button
@@ -137,9 +128,7 @@ export function Dashboard({
         </button>
       </div>
 
-      {/* Scrollable sections */}
       <div className="flex-1 overflow-y-auto scrollbar-thin px-5 py-4 space-y-4">
-        {/* HERO: Needs My Review — primary action section */}
         {needsReviewFilter && (
           <HeroSection
             title="Review these PRs"
@@ -155,7 +144,6 @@ export function Dashboard({
           </HeroSection>
         )}
 
-        {/* My PRs section */}
         {myPrsFilter && (
           <DashboardSection
             title="Your open PRs"
@@ -171,7 +159,6 @@ export function Dashboard({
           </DashboardSection>
         )}
 
-        {/* Recent notifications section */}
         <DashboardSection
           title="New notifications"
           subtitle="Unread notifications from your repositories"
@@ -187,8 +174,6 @@ export function Dashboard({
     </div>
   );
 }
-
-// --- Hero section (primary action) ---
 
 interface HeroSectionProps {
   title: string;
@@ -211,7 +196,6 @@ function HeroSection({
 }: HeroSectionProps) {
   return (
     <div className="rounded-lg border-2 border-primary/30 bg-primary/[0.03] overflow-hidden">
-      {/* Section header */}
       <div className="px-4 py-3 border-b border-primary/10">
         <div className="flex items-center gap-2">
           <div className="text-primary">{icon}</div>
@@ -226,7 +210,6 @@ function HeroSection({
         <p className="text-xs text-muted-foreground mt-0.5 ml-6">{subtitle}</p>
       </div>
 
-      {/* Section content */}
       <div>
         {error && <div className="px-4 py-3 text-sm text-destructive">{error}</div>}
         {!isLoading && !error && count === 0 && (
@@ -239,8 +222,6 @@ function HeroSection({
     </div>
   );
 }
-
-// --- Section container ---
 
 interface DashboardSectionProps {
   title: string;
@@ -263,7 +244,6 @@ function DashboardSection({
 }: DashboardSectionProps) {
   return (
     <div className="rounded-lg border border-border/50 bg-card overflow-hidden">
-      {/* Section header */}
       <div className="px-4 py-2.5 border-b border-border/30">
         <div className="flex items-center gap-2">
           <div className="text-muted-foreground">{icon}</div>
@@ -276,7 +256,6 @@ function DashboardSection({
         <p className="text-xs text-muted-foreground/70 mt-0.5 ml-[1.375rem]">{subtitle}</p>
       </div>
 
-      {/* Section content */}
       <div>
         {error && <div className="px-4 py-3 text-sm text-destructive">{error}</div>}
         {!isLoading && !error && count === 0 && (
@@ -287,8 +266,6 @@ function DashboardSection({
     </div>
   );
 }
-
-// --- Search item list with expand/collapse ---
 
 function SearchItemList({
   items,
@@ -331,8 +308,6 @@ function SearchItemList({
   );
 }
 
-// --- Inbox item list with expand/collapse ---
-
 function InboxItemList({
   items,
   onMarkAsRead,
@@ -369,8 +344,6 @@ function InboxItemList({
   );
 }
 
-// --- Row components ---
-
 function SearchRow({
   item,
   showReviewDecision,
@@ -396,7 +369,6 @@ function SearchRow({
       )}
       onClick={onClick}
     >
-      {/* Urgency indicator */}
       {showUrgency && (
         <div className="w-1.5 flex-shrink-0">
           {urgency === 'critical' && (
@@ -414,7 +386,6 @@ function SearchRow({
         </div>
       )}
 
-      {/* Type icon */}
       <div className="flex-shrink-0">
         {isPR ? (
           <PRIcon className="w-4 h-4 text-[var(--color-gh-pr)]" />
@@ -423,7 +394,6 @@ function SearchRow({
         )}
       </div>
 
-      {/* Content */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <span className="text-[0.9375rem] text-foreground truncate leading-snug">
@@ -445,7 +415,6 @@ function SearchRow({
               @{item.author.login}
             </span>
           )}
-          {/* Labels */}
           {visibleLabels.map((label) => (
             <LabelChip key={label.name} name={label.name} color={label.color} />
           ))}
@@ -455,7 +424,6 @@ function SearchRow({
         </div>
       </div>
 
-      {/* Review decision badge */}
       {showReviewDecision && reviewConfig && (
         <div className="flex items-center gap-1.5 flex-shrink-0">
           <span className={cn('w-2 h-2 rounded-full flex-shrink-0', reviewConfig.dotColor)} />
@@ -465,7 +433,6 @@ function SearchRow({
         </div>
       )}
 
-      {/* Timestamp */}
       <span className="text-[0.8125rem] text-muted-foreground flex-shrink-0 tabular-nums">
         {formatRelativeTime(item.updatedAt)}
       </span>
@@ -476,7 +443,7 @@ function SearchRow({
 function InboxRow({ item, onClick }: { item: InboxItem; onClick: () => void }) {
   const isPR = item.itemType === 'PullRequest';
   const isIssue = item.itemType === 'Issue';
-  const reasonLabel = REASON_LABELS[item.reason as NotificationReason] || item.reason;
+  const reasonLabel = REASON_LABELS[item.reason] || item.reason;
   const colors = REASON_COLORS[item.reason] || { text: 'text-muted-foreground', bg: 'bg-accent' };
 
   return (
@@ -484,19 +451,16 @@ function InboxRow({ item, onClick }: { item: InboxItem; onClick: () => void }) {
       className="flex items-center gap-3 px-4 py-2.5 hover:bg-accent/30 cursor-pointer transition-colors border-b border-border/20 last:border-b-0"
       onClick={onClick}
     >
-      {/* Unread dot */}
       <div className="w-1.5 flex-shrink-0">
         {item.unread && <span className="block w-1.5 h-1.5 rounded-full bg-primary" />}
       </div>
 
-      {/* Type icon */}
       <div className="flex-shrink-0">
         {isPR && <PRIcon className="w-4 h-4 text-[var(--color-gh-pr)]" />}
         {isIssue && <IssueIcon className="w-4 h-4 text-[var(--color-gh-issue)]" />}
         {!isPR && !isIssue && <BellIcon className="w-4 h-4 text-muted-foreground" />}
       </div>
 
-      {/* Content */}
       <div className="flex-1 min-w-0">
         <span
           className={cn(
@@ -522,7 +486,6 @@ function InboxRow({ item, onClick }: { item: InboxItem; onClick: () => void }) {
         </div>
       </div>
 
-      {/* Timestamp */}
       <span className="text-[0.8125rem] text-muted-foreground flex-shrink-0 tabular-nums">
         {formatRelativeTime(item.updatedAt)}
       </span>
@@ -530,10 +493,8 @@ function InboxRow({ item, onClick }: { item: InboxItem; onClick: () => void }) {
   );
 }
 
-// --- Label chip ---
-
 function LabelChip({ name, color }: { name: string; color: string }) {
-  // GitHub label colors are hex without #
+  // GitHubのラベルカラーは#なしのhexで渡されるため補完する
   const hex = color.startsWith('#') ? color : `#${color}`;
   return (
     <span
@@ -548,8 +509,6 @@ function LabelChip({ name, color }: { name: string; color: string }) {
     </span>
   );
 }
-
-// --- Utilities ---
 
 function formatRelativeTime(dateString: string): string {
   const date = new Date(dateString);
@@ -566,8 +525,6 @@ function formatRelativeTime(dateString: string): string {
 
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
-
-// --- Icons ---
 
 function RefreshIcon({ className }: { className?: string }) {
   return (

@@ -10,7 +10,6 @@ import { REASON_LABELS } from '@/types/settings';
 
 type FilterType = 'all' | 'unread' | string;
 
-// Review decision display config
 const REVIEW_DECISION_CONFIG: Record<string, { label: string; color: string }> = {
   APPROVED: { label: 'Approved', color: 'text-[var(--color-gh-done)]' },
   CHANGES_REQUESTED: { label: 'Changes', color: 'text-[var(--color-gh-fail)]' },
@@ -23,9 +22,7 @@ interface InboxListProps {
   error: string | null;
   lastUpdated: Date | null;
   onMarkAsRead: (threadId: string) => void;
-  onMarkAllAsRead: () => void;
   onRefresh: () => void;
-  unreadCount: number;
   selectedIndex: number;
   setSelectedIndex: (index: number) => void;
   selectedFilterId: string | null;
@@ -38,7 +35,6 @@ const DEFAULT_FILTERS: { value: FilterType; label: string }[] = [
   { value: 'unread', label: '未読' },
 ];
 
-// Reason → color mapping using GitHub semantic colors
 const REASON_COLORS: Record<string, { text: string; bg: string }> = {
   review_requested: { text: 'text-[var(--color-gh-pr)]', bg: 'bg-[var(--color-gh-review-bg)]' },
   mention: { text: 'text-[var(--color-gh-mention)]', bg: 'bg-[var(--color-gh-mention-bg)]' },
@@ -51,7 +47,7 @@ const REASON_COLORS: Record<string, { text: string; bg: string }> = {
 };
 
 function matchesCustomFilter(item: InboxItem, filter: CustomFilter): boolean {
-  if (filter.reasons.length > 0 && !filter.reasons.includes(item.reason as NotificationReason)) {
+  if (filter.reasons.length > 0 && !filter.reasons.includes(item.reason)) {
     return false;
   }
   if (filter.repositories && filter.repositories.length > 0) {
@@ -187,7 +183,6 @@ function InboxListHeader({
   );
 }
 
-// Quick filter tabs for reason-based switching within the active view
 interface ReasonTabsProps {
   reasons: NotificationReason[];
   activeReason: NotificationReason | null;
@@ -241,18 +236,13 @@ export function InboxList({
   error,
   lastUpdated,
   onMarkAsRead,
-  onMarkAllAsRead: _onMarkAllAsRead,
   onRefresh,
-  unreadCount: _unreadCount,
   selectedIndex,
   setSelectedIndex,
   selectedFilterId,
   isSearchMode = false,
   searchItems,
 }: InboxListProps) {
-  // Prefixed with _ to indicate intentionally unused (available for future use)
-  void _onMarkAllAsRead;
-  void _unreadCount;
   const { settings } = useSettings();
   const [filter, setFilter] = useState<FilterType>('unread');
   const [searchQuery, setSearchQuery] = useState('');
@@ -266,26 +256,23 @@ export function InboxList({
   const activeCustomFilter: CustomFilter | null =
     settings.customFilters.find((f) => f.id === filter) ?? null;
 
-  // Reset reason filter when sidebar filter changes
   useEffect(() => {
     setReasonFilter(null);
   }, [selectedFilterId]);
 
-  // Derive available reasons from active view for quick tabs
+  // アクティブなビューに含まれる理由種別を収集してクイックタブに表示する
   const activeReasons = useMemo((): NotificationReason[] => {
     if (isSearchMode) return [];
-    if (sidebarFilter) return sidebarFilter.reasons as NotificationReason[];
-    // For Inbox view, collect all unique reasons from all filters
+    if (sidebarFilter) return sidebarFilter.reasons;
     const allReasons = new Set<NotificationReason>();
     for (const f of settings.customFilters) {
       for (const r of f.reasons) {
-        allReasons.add(r as NotificationReason);
+        allReasons.add(r);
       }
     }
     return [...allReasons];
   }, [isSearchMode, sidebarFilter, settings.customFilters]);
 
-  // Filter items (inbox mode)
   const filteredItems = useMemo(() => {
     if (isSearchMode) return [];
     let result = items;
@@ -297,7 +284,6 @@ export function InboxList({
     );
     result = applyViewFilterLogic(result, filter, activeCustomFilter);
     result = applySearchFilterLogic(result, searchQuery);
-    // Apply reason quick filter
     if (reasonFilter) {
       result = result.filter((item) => item.reason === reasonFilter);
     }
@@ -314,7 +300,6 @@ export function InboxList({
     reasonFilter,
   ]);
 
-  // Filter search items (search mode)
   const filteredSearchItems = useMemo(() => {
     if (!isSearchMode || !searchItems) return [];
     if (!searchQuery.trim()) return searchItems;
@@ -326,7 +311,7 @@ export function InboxList({
     );
   }, [isSearchMode, searchItems, searchQuery]);
 
-  // Compute reason tab counts (from items before reason filter is applied)
+  // 理由クイックフィルター適用前のベース件数を集計してタブに表示する
   const reasonCounts = useMemo(() => {
     if (isSearchMode) return {};
     let base = items;
@@ -355,7 +340,6 @@ export function InboxList({
   const displayItems = isSearchMode ? filteredSearchItems : filteredItems;
   const displayCount = displayItems.length;
 
-  // Keyboard shortcuts (only for inbox mode)
   useKeyboardShortcuts({
     items: isSearchMode ? [] : filteredItems,
     selectedIndex,
@@ -363,10 +347,9 @@ export function InboxList({
     onMarkAsRead,
   });
 
-  // Scroll selected item into view
   useEffect(() => {
     selectedRef.current?.scrollIntoView({ block: 'nearest' });
-  }, []);
+  }, [selectedIndex]);
 
   const handleClick = async (item: InboxItem) => {
     if (item.url) {
@@ -431,7 +414,6 @@ export function InboxList({
         isSearchMode={isSearchMode}
       />
 
-      {/* Quick filter tabs by reason (hidden in search mode) */}
       {!isSearchMode && (
         <ReasonTabs
           reasons={activeReasons}
@@ -441,7 +423,6 @@ export function InboxList({
         />
       )}
 
-      {/* Status bar */}
       <div className="flex items-center justify-between px-4 py-1.5 text-[0.8125rem] text-muted-foreground">
         <span>
           {hasSelection
@@ -453,7 +434,6 @@ export function InboxList({
         {lastUpdated && <span>{formatTime(lastUpdated)}</span>}
       </div>
 
-      {/* Content */}
       <InboxListContent
         isSearchMode={isSearchMode}
         isLoading={isLoading}
@@ -477,7 +457,6 @@ export function InboxList({
         onMarkAsRead={onMarkAsRead}
       />
 
-      {/* ProTip footer (inbox mode only) */}
       {!isSearchMode && (
         <div className="px-4 py-1.5 border-t border-border/50 text-[0.8125rem] text-muted-foreground/60">
           <kbd className="px-1 py-0.5 bg-accent rounded text-xs font-mono">e</kbd>
@@ -488,7 +467,6 @@ export function InboxList({
   );
 }
 
-// Extracted content area to reduce cognitive complexity of InboxList
 function InboxListContent({
   isSearchMode,
   isLoading,
@@ -643,7 +621,7 @@ const InboxRow = forwardRef<HTMLDivElement, InboxRowProps>(
   ({ item, isSelected, isChecked, onCheckChange, onClick, onMarkAsDone }, ref) => {
     const isPR = item.itemType === 'PullRequest';
     const isIssue = item.itemType === 'Issue';
-    const reasonLabel = REASON_LABELS[item.reason as NotificationReason] || item.reason;
+    const reasonLabel = REASON_LABELS[item.reason] || item.reason;
     const colors = REASON_COLORS[item.reason] || { text: 'text-muted-foreground', bg: 'bg-accent' };
 
     return (
@@ -656,12 +634,10 @@ const InboxRow = forwardRef<HTMLDivElement, InboxRowProps>(
           !isSelected && 'hover:bg-accent/30',
         )}
       >
-        {/* Unread indicator */}
         <div className="w-1.5 flex-shrink-0">
           {item.unread && <span className="block w-1.5 h-1.5 rounded-full bg-primary" />}
         </div>
 
-        {/* Checkbox */}
         <input
           type="checkbox"
           checked={isChecked}
@@ -673,14 +649,12 @@ const InboxRow = forwardRef<HTMLDivElement, InboxRowProps>(
           className="flex-shrink-0"
         />
 
-        {/* Status icon */}
         <div className="flex-shrink-0">
           {isPR && <PRIcon className="w-4.5 h-4.5 text-[var(--color-gh-pr)]" />}
           {isIssue && <IssueIcon className="w-4.5 h-4.5 text-[var(--color-gh-issue)]" />}
           {!isPR && !isIssue && <NotificationIcon className="w-4.5 h-4.5 text-muted-foreground" />}
         </div>
 
-        {/* Content — 2-line layout */}
         <div className="flex-1 min-w-0" onClick={onClick}>
           <span
             className={cn(
@@ -694,7 +668,6 @@ const InboxRow = forwardRef<HTMLDivElement, InboxRowProps>(
             <span className="text-[0.8125rem] text-muted-foreground truncate">
               {item.repositoryFullName}
             </span>
-            {/* Colored reason badge */}
             <span
               className={cn(
                 'inline-flex px-1.5 py-0.5 rounded text-xs font-medium flex-shrink-0',
@@ -707,12 +680,10 @@ const InboxRow = forwardRef<HTMLDivElement, InboxRowProps>(
           </div>
         </div>
 
-        {/* Timestamp */}
         <span className="text-[0.8125rem] text-muted-foreground flex-shrink-0 tabular-nums">
           {formatRelativeTime(item.updatedAt)}
         </span>
 
-        {/* Row actions (show on hover) */}
         <div className="row-actions flex-shrink-0">
           <button
             className="p-1 rounded hover:bg-accent transition-colors"
@@ -740,7 +711,6 @@ function SearchRow({ item, onClick }: { item: NotificationItem; onClick: () => v
       className="inbox-row flex items-center gap-3 px-4 py-3 transition-colors cursor-pointer border-b border-border/30 hover:bg-accent/30"
       onClick={onClick}
     >
-      {/* Type icon */}
       <div className="flex-shrink-0">
         {isPR ? (
           <PRIcon className="w-4.5 h-4.5 text-[var(--color-gh-pr)]" />
@@ -749,7 +719,6 @@ function SearchRow({ item, onClick }: { item: NotificationItem; onClick: () => v
         )}
       </div>
 
-      {/* Content — 2-line layout */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <span className="text-[0.9375rem] text-foreground truncate leading-snug">
@@ -778,7 +747,6 @@ function SearchRow({ item, onClick }: { item: NotificationItem; onClick: () => v
         </div>
       </div>
 
-      {/* Timestamp */}
       <span className="text-[0.8125rem] text-muted-foreground flex-shrink-0 tabular-nums">
         {formatRelativeTime(item.updatedAt)}
       </span>
@@ -806,7 +774,6 @@ function formatRelativeTime(dateString: string): string {
   return date.toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' });
 }
 
-// Icons
 function RefreshIcon({ className }: { className?: string }) {
   return (
     <svg

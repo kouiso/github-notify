@@ -7,7 +7,6 @@ import {
   type CustomFilter,
   DEFAULT_INITIAL_FILTERS,
   migrateDefaultFilters,
-  type NotificationReason,
 } from '@/types/settings';
 
 export function useInbox() {
@@ -15,10 +14,9 @@ export function useInbox() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [showAll, setShowAll] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
 
-  // Smart batching: track previous item IDs and first load flag
+  // 初回ロード判定と新着検出のため、前回のID集合を保持する
   const previousIdsRef = useRef<Set<string>>(new Set());
   const isFirstLoadRef = useRef(true);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -32,13 +30,13 @@ export function useInbox() {
     customFilters: DEFAULT_INITIAL_FILTERS,
   });
 
-  // Load settings on mount (outside of SettingsProvider context)
+  // SettingsProviderコンテキスト外で動作するため、独自にマウント時に設定を読み込む
   useEffect(() => {
     if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
       commands
         .getAppSettings()
         .then((settings) => {
-          const { filters } = migrateDefaultFilters(settings.customFilters as CustomFilter[]);
+          const { filters } = migrateDefaultFilters(settings.customFilters);
           settingsRef.current = {
             desktopNotifications: settings.desktopNotifications,
             soundEnabled: settings.soundEnabled ?? true,
@@ -52,10 +50,8 @@ export function useInbox() {
     }
   }, []);
 
-  // Check if an item matches any of the custom filters
   const checkFilterMatch = useCallback((item: InboxItem, filter: CustomFilter): boolean => {
-    const reasonMatches =
-      filter.reasons.length === 0 || filter.reasons.includes(item.reason as NotificationReason);
+    const reasonMatches = filter.reasons.length === 0 || filter.reasons.includes(item.reason);
     if (!reasonMatches) {
       return false;
     }
@@ -81,7 +77,6 @@ export function useInbox() {
     [checkFilterMatch],
   );
 
-  // Check if a notification item matches a custom filter
   const matchesFilter = useCallback(
     (item: InboxItem, filter: CustomFilter): boolean => {
       return checkFilterMatch(item, filter);
@@ -89,12 +84,10 @@ export function useInbox() {
     [checkFilterMatch],
   );
 
-  // Get matching filter that should trigger desktop notification
   const getMatchingFilter = useCallback(
     (item: InboxItem): CustomFilter | null => {
       const { customFilters } = settingsRef.current;
 
-      // Find the first filter with desktop notifications enabled that matches this item
       return (
         customFilters.find(
           (filter) => filter.enableDesktopNotification && matchesFilter(item, filter),
@@ -104,7 +97,6 @@ export function useInbox() {
     [matchesFilter],
   );
 
-  // Send desktop notification with smart batching and sound support
   const getNotifiableItems = useCallback(
     (newItems: InboxItem[]): Array<{ item: InboxItem; filter: CustomFilter }> => {
       const items: Array<{ item: InboxItem; filter: CustomFilter }> = [];
@@ -196,26 +188,20 @@ export function useInbox() {
     try {
       setIsLoading(true);
       setError(null);
-      const data = await commands.fetchInbox(showAll);
+      const data = await commands.fetchInbox(false);
 
-      // Filter items based on active notification reasons
       const filteredData = data.filter(shouldShowItem);
 
-      // Detect new unread items (not in previous set)
       const previousIds = previousIdsRef.current;
       const newUnreadItems = filteredData.filter(
         (item) => item.unread && !previousIds.has(item.id),
       );
 
-      // Send desktop notification for new items
       if (newUnreadItems.length > 0) {
         await sendDesktopNotification(newUnreadItems);
       }
 
-      // Update previous IDs (use filtered data)
       previousIdsRef.current = new Set(filteredData.map((item) => item.id));
-
-      // Mark first load as complete
       isFirstLoadRef.current = false;
 
       setItems(filteredData);
@@ -225,7 +211,7 @@ export function useInbox() {
     } finally {
       setIsLoading(false);
     }
-  }, [showAll, sendDesktopNotification, shouldShowItem]);
+  }, [sendDesktopNotification, shouldShowItem]);
 
   useEffect(() => {
     if (settingsLoaded) {
@@ -233,9 +219,9 @@ export function useInbox() {
     }
   }, [settingsLoaded, fetchItems]);
 
-  // Listen for backend push events (from background polling service)
+  // バックグラウンドポーリングサービスからのプッシュイベントを受信する
   useEffect(() => {
-    // Skip if not in Tauri context
+    // Tauri環境外ではスキップ（ブラウザプレビュー対応）
     if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) {
       return;
     }
@@ -244,27 +230,20 @@ export function useInbox() {
       const unlisten = await listen<InboxItem[]>('inbox-updated', (event) => {
         const newItems = event.payload;
 
-        // Filter items based on active notification reasons
         const filteredItems = newItems.filter(shouldShowItem);
 
-        // Detect new unread items
         const previousIds = previousIdsRef.current;
         const newUnreadItems = filteredItems.filter(
           (item) => item.unread && !previousIds.has(item.id),
         );
 
-        // Send desktop notification for new items
         if (newUnreadItems.length > 0 && !isFirstLoadRef.current) {
           sendDesktopNotification(newUnreadItems);
         }
 
-        // Update previous IDs (use filtered data)
         previousIdsRef.current = new Set(filteredItems.map((item) => item.id));
-
-        // Mark first load as complete
         isFirstLoadRef.current = false;
 
-        // Update state
         setItems(filteredItems);
         setLastUpdated(new Date());
         setIsLoading(false);
@@ -280,7 +259,7 @@ export function useInbox() {
     };
   }, [sendDesktopNotification, shouldShowItem]);
 
-  // Reload settings periodically to pick up changes
+  // 設定変更をポーリングで拾うため定期リロードする（SettingsProviderに依存しない設計のため）
   useEffect(() => {
     const loadSettings = async () => {
       if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
@@ -289,10 +268,9 @@ export function useInbox() {
           settingsRef.current = {
             desktopNotifications: settings.desktopNotifications,
             soundEnabled: settings.soundEnabled ?? true,
-            customFilters: settings.customFilters as CustomFilter[],
+            customFilters: settings.customFilters,
           };
 
-          // Re-filter items when settings change
           setItems((prev) => prev.filter(shouldShowItem));
         } catch (err) {
           logger.error('Failed to load settings', err);
@@ -300,7 +278,6 @@ export function useInbox() {
       }
     };
 
-    // Reload settings every 30 seconds
     const interval = setInterval(loadSettings, 30 * 1000);
     return () => clearInterval(interval);
   }, [shouldShowItem]);
@@ -331,7 +308,7 @@ export function useInbox() {
 
   const unreadCount = items.filter((item) => item.unread).length;
 
-  // Update tray badge when unread count changes
+  // 未読数に応じてシステムトレイのバッジを更新する
   useEffect(() => {
     if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
       commands.updateTrayBadge(unreadCount).catch((err) => {
@@ -345,8 +322,6 @@ export function useInbox() {
     isLoading,
     error,
     lastUpdated,
-    showAll,
-    setShowAll,
     markAsRead,
     markAllAsRead,
     refresh,

@@ -24,7 +24,7 @@ export function useSearchView() {
     setState((prev) => ({ ...prev, isLoading: true, error: null }));
     try {
       const items = await commands.fetchNotifications(query);
-      // Only update if this is still the latest query
+      // 後発のクエリで上書きされた場合は古い結果を反映しない
       if (lastQueryRef.current === query) {
         setState({
           items,

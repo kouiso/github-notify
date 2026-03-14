@@ -13,13 +13,12 @@ export default function App() {
   const inbox = useInbox();
   const { settings } = useSettings();
   const searchView = useSearchView();
+  const { fetch: fetchSearchView } = searchView;
 
-  // Apply theme on mount + keyboard shortcut
   const { theme, setTheme } = useTheme();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [selectedFilterId, setSelectedFilterId] = useState<string | null>('dashboard');
 
-  // Cmd/Ctrl+Shift+T: cycle theme (light → dark → system → light)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'T') {
@@ -32,9 +31,8 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [theme, setTheme]);
 
-  // Handle window close to hide instead of quit (only in Tauri context)
+  // ウィンドウ閉じ操作をアプリ終了ではなく非表示にする（トレイ常駐のため）
   useEffect(() => {
-    // Check if we're in Tauri context
     if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) {
       return;
     }
@@ -51,12 +49,11 @@ export default function App() {
     };
   }, []);
 
-  // Fetch search view data when selecting a search-based filter
   const selectedFilter = selectedFilterId
     ? settings.customFilters.find((f) => f.id === selectedFilterId)
     : null;
 
-  // Replace @me with actual login for GitHub search queries
+  // GitHub Search APIの@meプレースホルダを実ログイン名に置換する
   const userLogin = auth.user?.login;
 
   useEffect(() => {
@@ -64,11 +61,10 @@ export default function App() {
       const resolved = userLogin
         ? selectedFilter.searchQuery.replace(/@me\b/g, userLogin)
         : selectedFilter.searchQuery;
-      searchView.fetch(resolved);
+      fetchSearchView(resolved);
     }
-  }, [selectedFilterId, userLogin]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedFilterId, userLogin, selectedFilter, fetchSearchView]);
 
-  // Show login screen if not authenticated
   if (auth.isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
@@ -91,17 +87,14 @@ export default function App() {
     );
   }
 
-  // Determine what main content to show
   const isDashboard = selectedFilterId === 'dashboard';
   const isSearchMode = selectedFilter && isSearchView(selectedFilter);
 
   return (
     <div className="flex h-screen bg-background">
-      {/* Sidebar */}
       <div className="w-56 flex-shrink-0">
         <Sidebar
           items={inbox.items}
-          unreadCount={inbox.unreadCount}
           onOpenSettings={() => setSettingsOpen(true)}
           user={auth.user}
           selectedFilterId={selectedFilterId}
@@ -109,7 +102,6 @@ export default function App() {
         />
       </div>
 
-      {/* Main content */}
       <div className="flex-1 min-w-0">
         {isDashboard ? (
           <Dashboard
@@ -127,9 +119,7 @@ export default function App() {
             error={searchView.error}
             lastUpdated={searchView.lastUpdated}
             onMarkAsRead={inbox.markAsRead}
-            onMarkAllAsRead={inbox.markAllAsRead}
             onRefresh={searchView.refresh}
-            unreadCount={inbox.unreadCount}
             selectedIndex={inbox.selectedIndex}
             setSelectedIndex={inbox.setSelectedIndex}
             selectedFilterId={selectedFilterId}
@@ -143,9 +133,7 @@ export default function App() {
             error={inbox.error}
             lastUpdated={inbox.lastUpdated}
             onMarkAsRead={inbox.markAsRead}
-            onMarkAllAsRead={inbox.markAllAsRead}
             onRefresh={inbox.refresh}
-            unreadCount={inbox.unreadCount}
             selectedIndex={inbox.selectedIndex}
             setSelectedIndex={inbox.setSelectedIndex}
             selectedFilterId={selectedFilterId}
@@ -153,7 +141,6 @@ export default function App() {
         )}
       </div>
 
-      {/* Settings Dialog */}
       <SettingsDialog
         open={settingsOpen}
         onOpenChange={setSettingsOpen}

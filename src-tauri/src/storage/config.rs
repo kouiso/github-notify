@@ -1,12 +1,10 @@
 use serde::{Deserialize, Serialize};
 use tauri_plugin_store::StoreExt;
-use uuid::Uuid;
 
 use crate::error::AppError;
 
 const STORE_FILE: &str = "github-notify.json";
 const TOKEN_KEY: &str = "github_token";
-const STREAMS_KEY: &str = "streams";
 const READ_ITEMS_KEY: &str = "read_items";
 const SETTINGS_KEY: &str = "app_settings";
 
@@ -112,34 +110,6 @@ fn default_initial_filters() -> Vec<CustomFilter> {
     ]
 }
 
-/// A stream definition for filtering notifications
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Stream {
-    pub id: String,
-    pub name: String,
-    pub query: String,
-    #[serde(default)]
-    pub icon: Option<String>,
-    #[serde(default)]
-    pub color: Option<String>,
-    #[serde(default)]
-    pub unread_count: i32,
-}
-
-impl Stream {
-    pub fn new(name: String, query: String) -> Self {
-        Self {
-            id: Uuid::new_v4().to_string(),
-            name,
-            query,
-            icon: None,
-            color: None,
-            unread_count: 0,
-        }
-    }
-}
-
 /// Save the GitHub token to the store
 pub fn save_token(app: &tauri::AppHandle, token: &str) -> Result<(), AppError> {
     let store = app
@@ -177,40 +147,22 @@ pub fn clear_token(app: &tauri::AppHandle) -> Result<(), AppError> {
     Ok(())
 }
 
-/// Get all streams from the store
-pub fn get_streams(app: &tauri::AppHandle) -> Result<Vec<Stream>, AppError> {
-    let store = app
-        .store(STORE_FILE)
-        .map_err(|e| AppError::Storage(e.to_string()))?;
-
-    let streams = store
-        .get(STREAMS_KEY)
-        .and_then(|v| serde_json::from_value::<Vec<Stream>>(v.clone()).ok());
-
-    Ok(streams.unwrap_or_default())
-}
-
-/// Save streams to the store
-pub fn save_streams(app: &tauri::AppHandle, streams: &[Stream]) -> Result<(), AppError> {
-    let store = app
-        .store(STORE_FILE)
-        .map_err(|e| AppError::Storage(e.to_string()))?;
-
-    store.set(STREAMS_KEY, serde_json::json!(streams));
-    store.save().map_err(|e| AppError::Storage(e.to_string()))?;
-
-    Ok(())
-}
-
 /// Get the set of read item IDs
 pub fn get_read_items(app: &tauri::AppHandle) -> Result<Vec<String>, AppError> {
     let store = app
         .store(STORE_FILE)
         .map_err(|e| AppError::Storage(e.to_string()))?;
 
-    let items = store
-        .get(READ_ITEMS_KEY)
-        .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok());
+    let items = store.get(READ_ITEMS_KEY).and_then(|v| {
+        // デシリアライズ失敗時は警告を出しデフォルト値にフォールバック
+        match serde_json::from_value::<Vec<String>>(v.clone()) {
+            Ok(items) => Some(items),
+            Err(e) => {
+                log::warn!("read_itemsのデシリアライズに失敗しました（デフォルト値を使用）: {}", e);
+                None
+            }
+        }
+    });
 
     Ok(items.unwrap_or_default())
 }
@@ -277,9 +229,16 @@ pub fn get_settings(app: &tauri::AppHandle) -> Result<AppSettings, AppError> {
         .store(STORE_FILE)
         .map_err(|e| AppError::Storage(e.to_string()))?;
 
-    let settings = store
-        .get(SETTINGS_KEY)
-        .and_then(|v| serde_json::from_value::<AppSettings>(v.clone()).ok());
+    let settings = store.get(SETTINGS_KEY).and_then(|v| {
+        // デシリアライズ失敗時は警告を出しデフォルト値にフォールバック
+        match serde_json::from_value::<AppSettings>(v.clone()) {
+            Ok(s) => Some(s),
+            Err(e) => {
+                log::warn!("app_settingsのデシリアライズに失敗しました（デフォルト値を使用）: {}", e);
+                None
+            }
+        }
+    });
 
     Ok(settings.unwrap_or_default())
 }

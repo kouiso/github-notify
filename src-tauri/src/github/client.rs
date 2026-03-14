@@ -24,17 +24,13 @@ pub struct GitHubClient {
 }
 
 impl GitHubClient {
-    pub fn new() -> Self {
+    /// AppStateが保持する共有Clientを受け取るコンストラクタ。
+    /// Clientの再生成を避け、接続プールを再利用する。
+    pub fn with_shared_client(client: Client, token: String) -> Self {
         Self {
-            client: Client::new(),
-            token: None,
-        }
-    }
-
-    pub fn with_token(token: String) -> Self {
-        Self {
-            client: Client::new(),
-            token: Some(token),
+            client,
+            // 空文字列はトークン未設定を示す（デバイスフロー完了前など）
+            token: if token.is_empty() { None } else { Some(token) },
         }
     }
 
@@ -44,6 +40,7 @@ impl GitHubClient {
             .client
             .post(GITHUB_DEVICE_CODE_URL)
             .header("Accept", "application/json")
+            .header("User-Agent", "github-notify")
             .form(&[("client_id", GITHUB_CLIENT_ID), ("scope", "repo read:org")])
             .send()
             .await?;
@@ -66,6 +63,7 @@ impl GitHubClient {
             .client
             .post(GITHUB_ACCESS_TOKEN_URL)
             .header("Accept", "application/json")
+            .header("User-Agent", "github-notify")
             .form(&[
                 ("client_id", GITHUB_CLIENT_ID),
                 ("device_code", device_code),
@@ -377,12 +375,6 @@ impl GitHubClient {
         }
 
         Ok(())
-    }
-}
-
-impl Default for GitHubClient {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

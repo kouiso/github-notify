@@ -21,10 +21,6 @@ pub enum AppError {
     #[error("Audio error: {0}")]
     Audio(String),
 
-    #[allow(dead_code)]
-    #[error("Invalid configuration: {0}")]
-    Config(String),
-
     #[error("Serialization error: {0}")]
     Serialization(String),
 }

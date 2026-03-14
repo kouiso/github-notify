@@ -1,6 +1,7 @@
 use serde::Serialize;
 use tauri::AppHandle;
 
+use crate::background::AppState;
 use crate::error::AppError;
 use crate::github::client::GitHubClient;
 use crate::github::types::TokenVerification;
@@ -17,10 +18,13 @@ pub struct DeviceFlowInfo {
     pub interval: i32,
 }
 
-/// Start GitHub OAuth device flow authentication
+/// GitHub OAuthデバイスフロー認証を開始する
 #[tauri::command]
-pub async fn start_device_flow() -> Result<DeviceFlowInfo, AppError> {
-    let client = GitHubClient::new();
+pub async fn start_device_flow(
+    state: tauri::State<'_, AppState>,
+) -> Result<DeviceFlowInfo, AppError> {
+    // トークン取得前のため空トークンでClientのみ共有する
+    let client = GitHubClient::with_shared_client(state.http_client.clone(), String::new());
     let response = client.start_device_flow().await?;
 
     Ok(DeviceFlowInfo {
@@ -32,13 +36,15 @@ pub async fn start_device_flow() -> Result<DeviceFlowInfo, AppError> {
     })
 }
 
-/// Poll for access token during device flow
+/// デバイスフローのアクセストークンをポーリングする
 #[tauri::command]
 pub async fn poll_device_flow(
     app: AppHandle,
+    state: tauri::State<'_, AppState>,
     device_code: String,
 ) -> Result<TokenVerification, AppError> {
-    let client = GitHubClient::new();
+    // トークン取得前のため空トークンでClientのみ共有する
+    let client = GitHubClient::with_shared_client(state.http_client.clone(), String::new());
     let response = client.poll_for_token(&device_code).await?;
 
     // Check if we got an error
@@ -76,8 +82,8 @@ pub async fn poll_device_flow(
         // Save the token
         storage::save_token(&app, &token)?;
 
-        // Verify and get user info
-        let client = GitHubClient::with_token(token);
+        // トークン取得完了後は共有Clientを使って検証する
+        let client = GitHubClient::with_shared_client(state.http_client.clone(), token);
         let verification = client.verify_token().await?;
         return Ok(verification);
     }
@@ -89,13 +95,15 @@ pub async fn poll_device_flow(
     })
 }
 
-/// Save and verify a GitHub token (for PAT fallback)
+/// GitHubトークンを保存・検証する（PAT入力時）
 #[tauri::command]
 pub async fn save_github_token(
     app: AppHandle,
+    state: tauri::State<'_, AppState>,
     token: String,
 ) -> Result<TokenVerification, AppError> {
-    let client = GitHubClient::with_token(token.clone());
+    // AppStateの共有Clientを使い接続プールを再利用する
+    let client = GitHubClient::with_shared_client(state.http_client.clone(), token.clone());
     let verification = client.verify_token().await?;
 
     if verification.valid {
@@ -111,14 +119,18 @@ pub fn get_github_token(app: AppHandle) -> Result<Option<String>, AppError> {
     storage::get_token(&app)
 }
 
-/// Verify the stored token
+/// 保存済みトークンを検証する
 #[tauri::command]
-pub async fn verify_github_token(app: AppHandle) -> Result<TokenVerification, AppError> {
+pub async fn verify_github_token(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<TokenVerification, AppError> {
     let token = storage::get_token(&app)?;
 
     match token {
         Some(t) => {
-            let client = GitHubClient::with_token(t);
+            // AppStateの共有Clientを使い接続プールを再利用する
+            let client = GitHubClient::with_shared_client(state.http_client.clone(), t);
             client.verify_token().await
         }
         None => Ok(TokenVerification {

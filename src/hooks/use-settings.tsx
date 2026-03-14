@@ -1,19 +1,12 @@
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from 'react';
 import { getAppSettings, saveAppSettings } from '@/lib/tauri/commands';
 import { logger } from '@/lib/utils/logger';
-import {
-  type AppSettings,
-  DEFAULT_SETTINGS,
-  migrateDefaultFilters,
-  type NotificationReason,
-  PRESETS,
-} from '@/types';
+import { type AppSettings, DEFAULT_SETTINGS, migrateDefaultFilters } from '@/types';
 
 interface SettingsContextValue {
   settings: AppSettings;
   isLoading: boolean;
   updateSettings: (updates: Partial<AppSettings>) => Promise<void>;
-  getActiveReasons: () => NotificationReason[];
 }
 
 const SettingsContext = createContext<SettingsContextValue | null>(null);
@@ -22,9 +15,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load settings on mount
   useEffect(() => {
-    // Check if we're in Tauri context
+    // Tauri環境外ではスキップ（ブラウザプレビュー対応）
     if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) {
       setIsLoading(false);
       return;
@@ -32,7 +24,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
     getAppSettings()
       .then(async (loaded) => {
-        // Migrate: ensure all default filters exist for existing users
+        // 既存ユーザー向けにデフォルトフィルタの追加漏れを補完する
         const { filters, changed } = migrateDefaultFilters(loaded.customFilters);
         if (changed) {
           loaded.customFilters = filters;
@@ -52,13 +44,11 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       });
   }, []);
 
-  // Update settings
   const updateSettings = useCallback(
     async (updates: Partial<AppSettings>) => {
       const newSettings = { ...settings, ...updates };
       setSettings(newSettings);
 
-      // Check if we're in Tauri context
       if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
         try {
           await saveAppSettings(newSettings);
@@ -70,17 +60,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     [settings],
   );
 
-  // Get active notification reasons based on preset or custom selection
-  const getActiveReasons = useCallback((): NotificationReason[] => {
-    if (settings.notificationPreset === 'custom') {
-      return settings.customReasons;
-    }
-    const preset = PRESETS.find((p) => p.id === settings.notificationPreset);
-    return preset?.reasons || [];
-  }, [settings]);
-
   return (
-    <SettingsContext.Provider value={{ settings, isLoading, updateSettings, getActiveReasons }}>
+    <SettingsContext.Provider value={{ settings, isLoading, updateSettings }}>
       {children}
     </SettingsContext.Provider>
   );

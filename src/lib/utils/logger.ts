@@ -1,8 +1,4 @@
-/**
- * Logging utility
- * Ready for future integration with error tracking services like Sentry
- * Based on pink-labo implementation with Tauri-specific adaptations
- */
+// 将来のエラートラッキングサービス（Sentry等）統合に備えたロギングユーティリティ
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -38,51 +34,31 @@ class Logger {
     return `[${timestamp}] [${level.toUpperCase()}] ${message}${contextStr}${errorStr}`;
   }
 
-  /**
-   * Debug level logging (development only)
-   */
   debug(message: string, context?: LogContext): void {
     if (!this.isDevelopment) return;
-    // biome-ignore lint/suspicious/noConsole: debug logging is allowed
+    // biome-ignore lint/suspicious/noConsole: ロギングユーティリティのため許可
     console.debug(this.formatMessage('debug', message, undefined, context));
   }
 
-  /**
-   * Info level logging
-   */
   info(message: string, context?: LogContext): void {
-    // biome-ignore lint/suspicious/noConsole: info logging is allowed
+    // biome-ignore lint/suspicious/noConsole: ロギングユーティリティのため許可
     console.info(this.formatMessage('info', message, undefined, context));
   }
 
-  /**
-   * Warning level logging
-   */
   warn(message: string, context?: LogContext): void {
-    // biome-ignore lint/suspicious/noConsole: warn logging is allowed
+    // biome-ignore lint/suspicious/noConsole: ロギングユーティリティのため許可
     console.warn(this.formatMessage('warn', message, undefined, context));
   }
 
-  /**
-   * Error level logging
-   */
   error(message: string, error?: unknown, context?: LogContext): void {
     const formattedMessage = this.formatMessage('error', message, error, context);
 
-    // Development: use console.error with full details
     if (this.isDevelopment) {
-      // biome-ignore lint/suspicious/noConsole: error logging is allowed
+      // biome-ignore lint/suspicious/noConsole: ロギングユーティリティのため許可
       console.error(formattedMessage, error);
     } else {
-      // Production: ready for future error tracking service integration
-      // Example: Sentry integration
-      // if (typeof window !== 'undefined' && window.Sentry) {
-      //   window.Sentry.captureException(error, {
-      //     tags: context,
-      //     extra: { message },
-      //   });
-      // }
-      // biome-ignore lint/suspicious/noConsole: error logging is allowed
+      // 本番環境: Sentry等のエラートラッキングサービス統合用の拡張ポイント
+      // biome-ignore lint/suspicious/noConsole: ロギングユーティリティのため許可
       console.error(formattedMessage, error);
     }
   }

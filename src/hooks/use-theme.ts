@@ -10,7 +10,6 @@ function prefersDark(): boolean {
 export function useTheme() {
   const { settings, updateSettings } = useSettings();
 
-  // Determine effective theme
   const effectiveTheme = useMemo(() => {
     if (settings.theme === 'system') {
       return prefersDark() ? 'dark' : 'light';
@@ -18,7 +17,6 @@ export function useTheme() {
     return settings.theme;
   }, [settings.theme]);
 
-  // Apply theme to document
   useEffect(() => {
     const root = document.documentElement;
     if (effectiveTheme === 'dark') {
@@ -28,7 +26,7 @@ export function useTheme() {
     }
   }, [effectiveTheme]);
 
-  // Listen for system theme changes when in system mode
+  // systemモード時にOS側のテーマ変更を検知して即反映する
   useEffect(() => {
     if (settings.theme !== 'system') return;
 

@@ -1,4 +1,3 @@
-// Notification reason types from GitHub API
 export type NotificationReason =
   | 'review_requested'
   | 'mention'
@@ -9,9 +8,11 @@ export type NotificationReason =
   | 'comment'
   | 'state_change'
   | 'subscribed'
-  | 'security_alert';
+  | 'security_alert'
+  | 'manual'
+  | 'push'
+  | 'your_activity';
 
-// Reason labels for display
 export const REASON_LABELS: Record<NotificationReason, string> = {
   review_requested: 'レビュー依頼',
   mention: 'メンション',
@@ -23,9 +24,11 @@ export const REASON_LABELS: Record<NotificationReason, string> = {
   state_change: '状態変更',
   subscribed: '購読中',
   security_alert: 'セキュリティ',
+  manual: '手動',
+  push: 'プッシュ',
+  your_activity: '自分の操作',
 };
 
-// Notification preset definition
 export interface NotificationPreset {
   id: string;
   name: string;
@@ -33,7 +36,7 @@ export interface NotificationPreset {
   reasons: NotificationReason[];
 }
 
-// Available presets (built-in) - Simplified to "none" only
+// プリセットを「なし」のみに簡素化し、カスタムフィルタで柔軟に対応する設計
 export const PRESETS: NotificationPreset[] = [
   {
     id: 'none',
@@ -43,10 +46,8 @@ export const PRESETS: NotificationPreset[] = [
   },
 ];
 
-// Sound type for notifications
 export type SoundType = 'default' | 'soft' | 'chime';
 
-// Filter templates - commonly used filters that users can add
 export interface FilterTemplate {
   name: string;
   description: string;
@@ -56,105 +57,35 @@ export interface FilterTemplate {
   soundType: SoundType;
 }
 
-export const FILTER_TEMPLATES: FilterTemplate[] = [
-  {
-    name: 'レビュー依頼',
-    description: 'PRのレビューを依頼された時',
-    reasons: ['review_requested'],
-    enableDesktopNotification: true,
-    enableSound: true,
-    soundType: 'default',
-  },
-  {
-    name: 'メンション',
-    description: '@で名前を呼ばれた時',
-    reasons: ['mention', 'team_mention'],
-    enableDesktopNotification: true,
-    enableSound: true,
-    soundType: 'default',
-  },
-  {
-    name: 'アサイン',
-    description: 'Issue/PRにアサインされた時',
-    reasons: ['assign'],
-    enableDesktopNotification: true,
-    enableSound: true,
-    soundType: 'soft',
-  },
-  {
-    name: '自分のPR/Issue',
-    description: '自分が作成したものへの反応',
-    reasons: ['author'],
-    enableDesktopNotification: false,
-    enableSound: false,
-    soundType: 'default',
-  },
-  {
-    name: 'CI/CD（全リポジトリ）',
-    description: 'CI/CDの実行結果',
-    reasons: ['ci_activity'],
-    enableDesktopNotification: false,
-    enableSound: false,
-    soundType: 'default',
-  },
-  {
-    name: 'CI/CD（リポジトリ指定）',
-    description: '特定リポジトリのCI/CD結果のみ',
-    reasons: ['ci_activity'],
-    enableDesktopNotification: false,
-    enableSound: false,
-    soundType: 'default',
-  },
-  {
-    name: 'コメント',
-    description: 'ディスカッションへのコメント',
-    reasons: ['comment'],
-    enableDesktopNotification: false,
-    enableSound: false,
-    soundType: 'default',
-  },
-  {
-    name: 'ステータス変更',
-    description: 'Open/Close/Mergeなどの状態変更',
-    reasons: ['state_change'],
-    enableDesktopNotification: false,
-    enableSound: false,
-    soundType: 'default',
-  },
-];
-
-// Theme type
 export type Theme = 'light' | 'dark' | 'system';
 
-// Custom filter group (user-created)
 export interface CustomFilter {
   id: string;
   name: string;
   reasons: NotificationReason[];
-  enableDesktopNotification: boolean; // Whether to send desktop notifications for this filter
-  enableSound: boolean; // Whether to play sound for this filter
-  soundType: SoundType; // Type of sound to play
-  repositories?: string[]; // Optional: filter by repository (owner/repo format)
-  searchQuery?: string; // If set, this view uses GitHub GraphQL search instead of notification reasons
+  enableDesktopNotification: boolean;
+  enableSound: boolean;
+  soundType: SoundType;
+  repositories?: string[];
+  // searchQueryが設定されている場合、通知reason絞り込みではなくGitHub GraphQL検索を使う
+  searchQuery?: string;
 }
 
-// Check if a filter is a search-based view (uses GitHub Search API)
 export function isSearchView(filter: CustomFilter): boolean {
   return typeof filter.searchQuery === 'string' && filter.searchQuery.trim().length > 0;
 }
 
-// Application settings
 export interface AppSettings {
   theme: Theme;
   notificationPreset: string;
   customReasons: NotificationReason[];
   desktopNotifications: boolean;
-  soundEnabled: boolean; // Global sound toggle
-  customFilters: CustomFilter[]; // User-created filter groups
-  activeFilterId: string | null; // Currently active custom filter (null = use preset)
+  soundEnabled: boolean;
+  customFilters: CustomFilter[];
+  activeFilterId: string | null;
 }
 
-// Default initial views (pre-configured for first-time users)
+// 初回ユーザー向けのデフォルトビュー定義
 export const DEFAULT_INITIAL_FILTERS: CustomFilter[] = [
   {
     id: 'default-important',
@@ -185,15 +116,13 @@ export const DEFAULT_INITIAL_FILTERS: CustomFilter[] = [
   },
 ];
 
-// IDs of all current default views (used by migration)
 const ALL_DEFAULT_IDS = ['default-important', 'default-needs-review', 'default-my-prs'];
 
 /**
- * Migrate settings filters to the current default system.
- * - Consolidates old 4-filter defaults into 1 combined "重要な通知" view
- * - Removes filters that are redundant subsets of the new default
- * - Ensures the combined default view exists
- * - Ensures search-based default views (Needs My Review, My PRs) exist
+ * 設定フィルタを現在のデフォルト体系にマイグレーションする。
+ * - 旧4分割デフォルトを統合「重要な通知」ビューに集約
+ * - 新デフォルトの部分集合となる冗長フィルタを除去
+ * - 検索ベースのデフォルトビュー（Needs My Review, My PRs）の存在を保証
  */
 export function migrateDefaultFilters(filters: CustomFilter[]): {
   filters: CustomFilter[];
@@ -204,8 +133,7 @@ export function migrateDefaultFilters(filters: CustomFilter[]): {
   const hasNeedsReview = filters.some((f) => f.id === 'default-needs-review');
   const hasMyPrs = filters.some((f) => f.id === 'default-my-prs');
 
-  // Ensure existing default search views have their searchQuery set
-  // (fixes migration gap where filters were created without searchQuery)
+  // searchQuery未設定で作成されたデフォルト検索ビューを検出して補完する
   const needsSearchQueryFix = filters.some((f) => {
     if (f.id === 'default-needs-review') {
       return !f.searchQuery && DEFAULT_INITIAL_FILTERS[1].searchQuery;
@@ -216,7 +144,7 @@ export function migrateDefaultFilters(filters: CustomFilter[]): {
     return false;
   });
 
-  // Check if already fully migrated
+  // マイグレーション済みなら早期リターン
   const hasOldDefaults = filters.some((f) => OLD_DEFAULT_IDS.includes(f.id));
   if (hasNewDefault && hasNeedsReview && hasMyPrs && !hasOldDefaults && !needsSearchQueryFix) {
     const newDefaultReasons = new Set(DEFAULT_INITIAL_FILTERS[0].reasons);
@@ -235,16 +163,12 @@ export function migrateDefaultFilters(filters: CustomFilter[]): {
 
   const newDefaultReasons = new Set(DEFAULT_INITIAL_FILTERS[0].reasons);
 
-  // Remove old system defaults AND redundant subset filters
+  // 旧デフォルトと新デフォルトの部分集合フィルタを除去
   const kept = filters.filter((f) => {
-    // Always keep all current defaults
     if (ALL_DEFAULT_IDS.includes(f.id)) return true;
-    // Remove old system defaults
     if (OLD_DEFAULT_IDS.includes(f.id)) return false;
-    // Keep search views (user-created search views are intentional)
     if (isSearchView(f)) return true;
-    // Remove filters whose reasons are entirely a subset of the new default
-    // (only if they have no repo scoping — those are intentionally narrow)
+    // リポジトリ指定なし＆reason全てが新デフォルトに包含される → 冗長なので除去
     if (
       (!f.repositories || f.repositories.length === 0) &&
       f.reasons.length > 0 &&
@@ -257,22 +181,19 @@ export function migrateDefaultFilters(filters: CustomFilter[]): {
 
   let result = [...kept];
 
-  // Add missing default views
   if (!hasNewDefault) {
     result = [DEFAULT_INITIAL_FILTERS[0], ...result];
   }
   if (!hasNeedsReview) {
-    // Insert after default-important
     const importantIdx = result.findIndex((f) => f.id === 'default-important');
     result.splice(importantIdx + 1, 0, DEFAULT_INITIAL_FILTERS[1]);
   }
   if (!hasMyPrs) {
-    // Insert after default-needs-review
     const reviewIdx = result.findIndex((f) => f.id === 'default-needs-review');
     result.splice(reviewIdx + 1, 0, DEFAULT_INITIAL_FILTERS[2]);
   }
 
-  // Patch searchQuery on existing default search views that are missing it
+  // searchQuery未設定のデフォルト検索ビューを補完
   result = result.map((f) => {
     if (
       f.id === 'default-needs-review' &&
@@ -294,7 +215,6 @@ export function migrateDefaultFilters(filters: CustomFilter[]): {
   return { filters: result, changed };
 }
 
-// Default settings
 export const DEFAULT_SETTINGS: AppSettings = {
   theme: 'system',
   notificationPreset: 'none',
