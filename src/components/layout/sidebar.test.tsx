@@ -366,4 +366,321 @@ describe('Sidebar', () => {
       expect(avatar).toBeInTheDocument();
     });
   });
+
+  describe('ビューダイアログ: キャンセル操作', () => {
+    it('キャンセルボタンクリックでダイアログが閉じる', async () => {
+      const user = userEvent.setup();
+      render(<Sidebar {...defaultProps} />);
+
+      await user.click(screen.getByText('New view'));
+      expect(screen.getByText('ビューを作成')).toBeInTheDocument();
+
+      await user.click(screen.getByText('キャンセル'));
+      expect(screen.queryByText('ビューを作成')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('ビューダイアログ: 通知種類の切り替え', () => {
+    it('Reasonチェックボックスをオンにすると選択される', async () => {
+      const user = userEvent.setup();
+      render(<Sidebar {...defaultProps} />);
+
+      await user.click(screen.getByText('New view'));
+
+      // 「レビュー依頼」チェックボックスをONにする
+      const reviewLabel = screen.getByText('レビュー依頼');
+      const checkbox = reviewLabel.closest('label')!.querySelector('input[type="checkbox"]')!;
+      expect(checkbox).not.toBeChecked();
+      await user.click(checkbox);
+      expect(checkbox).toBeChecked();
+    });
+
+    it('オン済みのReasonチェックボックスをクリックするとオフになる', async () => {
+      const user = userEvent.setup();
+      const filter = createMockFilter({ id: 'f1', name: 'テスト', reasons: ['review_requested'] });
+      mockSettings = { ...DEFAULT_SETTINGS, customFilters: [filter] };
+
+      render(<Sidebar {...defaultProps} />);
+
+      // 編集ダイアログを開く
+      await user.click(screen.getByTitle('Edit'));
+
+      const reviewLabel = screen.getByText('レビュー依頼');
+      const checkbox = reviewLabel.closest('label')!.querySelector('input[type="checkbox"]')!;
+      // 既存フィルターで review_requested が選択されているためチェック済み
+      expect(checkbox).toBeChecked();
+      await user.click(checkbox);
+      expect(checkbox).not.toBeChecked();
+    });
+  });
+
+  describe('ビューダイアログ: デスクトップ通知・通知音', () => {
+    it('デスクトップ通知チェックボックスを切り替えられる', async () => {
+      const user = userEvent.setup();
+      render(<Sidebar {...defaultProps} />);
+
+      await user.click(screen.getByText('New view'));
+
+      const desktopLabel = screen.getByText('デスクトップ通知');
+      const checkbox = desktopLabel.closest('label')!.querySelector('input[type="checkbox"]')!;
+      expect(checkbox).not.toBeChecked();
+      await user.click(checkbox);
+      expect(checkbox).toBeChecked();
+    });
+
+    it('デスクトップ通知をONにすると通知音が有効化される', async () => {
+      const user = userEvent.setup();
+      render(<Sidebar {...defaultProps} />);
+
+      await user.click(screen.getByText('New view'));
+
+      // デスクトップ通知をON
+      const desktopLabel = screen.getByText('デスクトップ通知');
+      await user.click(desktopLabel.closest('label')!.querySelector('input[type="checkbox"]')!);
+
+      // 通知音チェックボックスが有効になる
+      const soundLabel = screen.getByText('通知音');
+      const soundCheckbox = soundLabel.closest('label')!.querySelector('input[type="checkbox"]')!;
+      expect(soundCheckbox).not.toBeDisabled();
+    });
+
+    it('デスクトップ通知と通知音をONにするとサウンドタイプボタンが表示される', async () => {
+      const user = userEvent.setup();
+      render(<Sidebar {...defaultProps} />);
+
+      await user.click(screen.getByText('New view'));
+
+      const desktopLabel = screen.getByText('デスクトップ通知');
+      await user.click(desktopLabel.closest('label')!.querySelector('input[type="checkbox"]')!);
+
+      const soundLabel = screen.getByText('通知音');
+      await user.click(soundLabel.closest('label')!.querySelector('input[type="checkbox"]')!);
+
+      // サウンドタイプボタンが表示される
+      expect(screen.getByText('標準')).toBeInTheDocument();
+      expect(screen.getByText('ソフト')).toBeInTheDocument();
+      expect(screen.getByText('チャイム')).toBeInTheDocument();
+    });
+
+    it('サウンドタイプボタンをクリックすると選択が変わる', async () => {
+      const user = userEvent.setup();
+      render(<Sidebar {...defaultProps} />);
+
+      await user.click(screen.getByText('New view'));
+
+      const desktopLabel = screen.getByText('デスクトップ通知');
+      await user.click(desktopLabel.closest('label')!.querySelector('input[type="checkbox"]')!);
+
+      const soundLabel = screen.getByText('通知音');
+      await user.click(soundLabel.closest('label')!.querySelector('input[type="checkbox"]')!);
+
+      // 「ソフト」を選択して保存
+      await user.click(screen.getByText('ソフト'));
+      await user.click(screen.getByText('保存'));
+
+      expect(mockUpdateSettings).toHaveBeenCalledWith({
+        customFilters: expect.arrayContaining([expect.objectContaining({ soundType: 'soft' })]),
+      });
+    });
+  });
+
+  describe('ビューダイアログ: リポジトリ操作', () => {
+    it('追加ボタンクリックでリポジトリを追加できる', async () => {
+      const user = userEvent.setup();
+      render(<Sidebar {...defaultProps} />);
+
+      await user.click(screen.getByText('New view'));
+
+      const repoInput = screen.getByPlaceholderText('owner/repo');
+      await user.type(repoInput, 'owner/new-repo');
+      await user.click(screen.getByText('追加'));
+
+      // 入力欄がクリアされる
+      expect(repoInput).toHaveValue('');
+      // 追加されたリポジトリタグが表示される（owner/new-repo → new-repo）
+      expect(screen.getByText('new-repo')).toBeInTheDocument();
+    });
+
+    it('Enterキーでリポジトリを追加できる', async () => {
+      const user = userEvent.setup();
+      render(<Sidebar {...defaultProps} />);
+
+      await user.click(screen.getByText('New view'));
+
+      const repoInput = screen.getByPlaceholderText('owner/repo');
+      await user.type(repoInput, 'owner/enter-repo');
+      await user.keyboard('{Enter}');
+
+      expect(repoInput).toHaveValue('');
+      expect(screen.getByText('enter-repo')).toBeInTheDocument();
+    });
+
+    it('重複リポジトリは追加されない', async () => {
+      const user = userEvent.setup();
+      render(<Sidebar {...defaultProps} />);
+
+      await user.click(screen.getByText('New view'));
+
+      const repoInput = screen.getByPlaceholderText('owner/repo');
+      await user.type(repoInput, 'owner/dup-repo');
+      await user.click(screen.getByText('追加'));
+      // 同じものを再度追加しようとする
+      await user.type(repoInput, 'owner/dup-repo');
+      await user.click(screen.getByText('追加'));
+
+      // dup-repo は1件のみ表示される
+      const tags = screen.getAllByText('dup-repo');
+      expect(tags).toHaveLength(1);
+    });
+
+    it('リポジトリタグの削除ボタンでタグを削除できる', async () => {
+      const user = userEvent.setup();
+      render(<Sidebar {...defaultProps} />);
+
+      await user.click(screen.getByText('New view'));
+
+      // リポジトリを追加
+      const repoInput = screen.getByPlaceholderText('owner/repo');
+      await user.type(repoInput, 'owner/del-repo');
+      await user.click(screen.getByText('追加'));
+
+      // タグが表示される
+      expect(screen.getByText('del-repo')).toBeInTheDocument();
+
+      // タグの削除ボタン（×アイコン）をクリック
+      const tag = screen.getByText('del-repo').closest('span')!;
+      const deleteBtn = tag.querySelector('button')!;
+      await user.click(deleteBtn);
+
+      // タグが消える
+      expect(screen.queryByText('del-repo')).not.toBeInTheDocument();
+    });
+
+    it('通知アイテムのあるリポジトリがサジェストとして表示される', async () => {
+      const user = userEvent.setup();
+      const items = [createMockItem({ repositoryFullName: 'owner/suggested-repo' })];
+      render(<Sidebar {...defaultProps} items={items} />);
+
+      await user.click(screen.getByText('New view'));
+
+      // サジェストリポジトリが表示される
+      expect(screen.getByText('+ suggested-repo')).toBeInTheDocument();
+    });
+
+    it('サジェストリポジトリをクリックするとリポジトリが追加される', async () => {
+      const user = userEvent.setup();
+      const items = [createMockItem({ repositoryFullName: 'owner/click-repo' })];
+      render(<Sidebar {...defaultProps} items={items} />);
+
+      await user.click(screen.getByText('New view'));
+      await user.click(screen.getByText('+ click-repo'));
+
+      // タグが追加される
+      expect(screen.getByText('click-repo')).toBeInTheDocument();
+    });
+
+    it('追加済みリポジトリはサジェストから消える', async () => {
+      const user = userEvent.setup();
+      const items = [createMockItem({ repositoryFullName: 'owner/hidden-repo' })];
+      render(<Sidebar {...defaultProps} items={items} />);
+
+      await user.click(screen.getByText('New view'));
+
+      // まずサジェストが表示されている
+      expect(screen.getByText('+ hidden-repo')).toBeInTheDocument();
+
+      // クリックして追加
+      await user.click(screen.getByText('+ hidden-repo'));
+
+      // サジェストから消える（タグとして表示されるのみ）
+      expect(screen.queryByText('+ hidden-repo')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('アクティブ状態', () => {
+    it('selectedFilterId が "dashboard" のとき Dashboard がアクティブスタイルになる', () => {
+      render(<Sidebar {...defaultProps} selectedFilterId="dashboard" />);
+
+      const dashboardBtn = screen.getByText('Dashboard').closest('button')!;
+      expect(dashboardBtn.className).toContain('bg-accent');
+    });
+
+    it('selectedFilterId が null のとき Inbox がアクティブスタイルになる', () => {
+      render(<Sidebar {...defaultProps} selectedFilterId={null} />);
+
+      const inboxBtn = screen.getByText('Inbox').closest('button')!;
+      expect(inboxBtn.className).toContain('bg-accent');
+    });
+
+    it('選択中のカスタムビューがアクティブスタイルになる', () => {
+      const filter = createMockFilter({ id: 'f1', name: 'アクティブビュー' });
+      mockSettings = { ...DEFAULT_SETTINGS, customFilters: [filter] };
+
+      render(<Sidebar {...defaultProps} selectedFilterId="f1" />);
+
+      const filterBtn = screen.getByText('アクティブビュー').closest('button')!;
+      expect(filterBtn.className).toContain('bg-accent');
+    });
+  });
+
+  describe('通知ドット表示', () => {
+    it('enableDesktopNotification が true のビューに通知ドットが表示される', () => {
+      const filter = createMockFilter({
+        id: 'f1',
+        name: '通知あり',
+        enableDesktopNotification: true,
+      });
+      mockSettings = { ...DEFAULT_SETTINGS, customFilters: [filter] };
+
+      render(<Sidebar {...defaultProps} />);
+
+      const filterBtn = screen.getByText('通知あり').closest('button')!;
+      // 通知ドット（bg-primary rounded-full）の存在確認
+      const dot = filterBtn.querySelector('.bg-primary.rounded-full');
+      expect(dot).toBeInTheDocument();
+    });
+
+    it('enableDesktopNotification が false のビューに通知ドットが表示されない', () => {
+      const filter = createMockFilter({
+        id: 'f1',
+        name: '通知なし',
+        enableDesktopNotification: false,
+      });
+      mockSettings = { ...DEFAULT_SETTINGS, customFilters: [filter] };
+
+      render(<Sidebar {...defaultProps} />);
+
+      const filterBtn = screen.getByText('通知なし').closest('button')!;
+      const dot = filterBtn.querySelector('.bg-primary.rounded-full');
+      expect(dot).not.toBeInTheDocument();
+    });
+  });
+
+  describe('カウント表示: 境界値', () => {
+    it('カウントが100以上のとき "99+" を表示する', () => {
+      const filter = createMockFilter({ id: 'f1', name: '大量通知', reasons: ['mention'] });
+      mockSettings = { ...DEFAULT_SETTINGS, customFilters: [filter] };
+
+      // 100件の未読通知を生成
+      const items = Array.from({ length: 100 }, (_, i) =>
+        createMockItem({ id: String(i), reason: 'mention', unread: true }),
+      );
+
+      render(<Sidebar {...defaultProps} items={items} />);
+
+      const filterBtn = screen.getByText('大量通知').closest('button')!;
+      expect(within(filterBtn).getByText('99+')).toBeInTheDocument();
+    });
+
+    it('カウントが0のときカウントバッジを表示しない', () => {
+      const filter = createMockFilter({ id: 'f1', name: 'ゼロ通知', reasons: ['mention'] });
+      mockSettings = { ...DEFAULT_SETTINGS, customFilters: [filter] };
+
+      render(<Sidebar {...defaultProps} items={[]} />);
+
+      const filterBtn = screen.getByText('ゼロ通知').closest('button')!;
+      // 数値テキストが存在しない
+      expect(within(filterBtn).queryByText('0')).not.toBeInTheDocument();
+    });
+  });
 });
