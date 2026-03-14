@@ -1,38 +1,27 @@
 import { open } from '@tauri-apps/plugin-shell';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Spinner } from '@/components/ui';
 import { useSearchView } from '@/hooks/use-search-view';
 import { cn } from '@/lib/utils/cn';
-import type { InboxItem, NotificationItem } from '@/types';
+import type { NotificationItem } from '@/types';
 import type { CustomFilter } from '@/types/settings';
-import { isSearchView, REASON_LABELS } from '@/types/settings';
+import { isSearchView } from '@/types/settings';
 
 const DEFAULT_VISIBLE = 5;
 
-const REASON_COLORS: Record<string, { text: string; bg: string }> = {
-  review_requested: { text: 'text-[var(--color-gh-pr)]', bg: 'bg-[var(--color-gh-review-bg)]' },
-  mention: { text: 'text-[var(--color-gh-mention)]', bg: 'bg-[var(--color-gh-mention-bg)]' },
-  team_mention: { text: 'text-[var(--color-gh-mention)]', bg: 'bg-[var(--color-gh-mention-bg)]' },
-  assign: { text: 'text-[var(--color-gh-assign)]', bg: 'bg-[var(--color-gh-assign-bg)]' },
-  author: { text: 'text-muted-foreground', bg: 'bg-accent' },
-  ci_activity: { text: 'text-[var(--color-gh-ci)]', bg: 'bg-[var(--color-gh-ci-bg)]' },
-  comment: { text: 'text-muted-foreground', bg: 'bg-accent' },
-  state_change: { text: 'text-muted-foreground', bg: 'bg-accent' },
-};
-
 const REVIEW_DECISION_CONFIG: Record<string, { label: string; color: string; dotColor: string }> = {
   APPROVED: {
-    label: 'Approved',
+    label: '承認済み',
     color: 'text-[var(--color-gh-done)]',
     dotColor: 'bg-[var(--color-gh-done)]',
   },
   CHANGES_REQUESTED: {
-    label: 'Changes requested',
+    label: '修正リクエスト',
     color: 'text-[var(--color-gh-fail)]',
     dotColor: 'bg-[var(--color-gh-fail)]',
   },
   REVIEW_REQUIRED: {
-    label: 'Review pending',
+    label: 'レビュー待ち',
     color: 'text-[var(--color-gh-review)]',
     dotColor: 'bg-[var(--color-gh-review)]',
   },
@@ -49,11 +38,8 @@ function getUrgencyLevel(dateString: string): 'normal' | 'warning' | 'critical' 
 }
 
 interface DashboardProps {
-  inboxItems: InboxItem[];
   filters: CustomFilter[];
-  onMarkInboxRead: (threadId: string) => void;
   onRefresh: () => void;
-  isInboxLoading: boolean;
   userLogin?: string;
 }
 
@@ -62,33 +48,66 @@ function resolveQuery(query: string, userLogin?: string): string {
   return query.replace(/@me\b/g, userLogin);
 }
 
-export function Dashboard({
-  inboxItems,
-  filters,
-  onMarkInboxRead,
-  onRefresh,
-  isInboxLoading,
-  userLogin,
-}: DashboardProps) {
+export function Dashboard({ filters, onRefresh, userLogin }: DashboardProps) {
   const needsReviewView = useSearchView();
   const myPrsView = useSearchView();
   const { fetch: fetchNeedsReview, refresh: refreshNeedsReview } = needsReviewView;
   const { fetch: fetchMyPrs, refresh: refreshMyPrs } = myPrsView;
 
+  // リポジトリフィルタ（"all" = 全リポジトリ, それ以外 = "owner/" プレフィックス）
+  const [selectedRepo, setSelectedRepo] = useState('all');
+  const [repoDropdownOpen, setRepoDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
   const needsReviewFilter = filters.find((f) => f.id === 'default-needs-review');
   const myPrsFilter = filters.find((f) => f.id === 'default-my-prs');
 
+  // リポジトリフィルタ付きクエリを構築
+  const buildQuery = useCallback(
+    (baseQuery: string): string => {
+      let q = resolveQuery(baseQuery, userLogin);
+      if (selectedRepo !== 'all') {
+        q += ` org:${selectedRepo}`;
+      }
+      return q;
+    },
+    [userLogin, selectedRepo],
+  );
+
   useEffect(() => {
     if (needsReviewFilter && isSearchView(needsReviewFilter) && needsReviewFilter.searchQuery) {
-      fetchNeedsReview(resolveQuery(needsReviewFilter.searchQuery, userLogin));
+      fetchNeedsReview(buildQuery(needsReviewFilter.searchQuery));
     }
-  }, [needsReviewFilter, userLogin, fetchNeedsReview]);
+  }, [needsReviewFilter, buildQuery, fetchNeedsReview]);
 
   useEffect(() => {
     if (myPrsFilter && isSearchView(myPrsFilter) && myPrsFilter.searchQuery) {
-      fetchMyPrs(resolveQuery(myPrsFilter.searchQuery, userLogin));
+      fetchMyPrs(buildQuery(myPrsFilter.searchQuery));
     }
-  }, [myPrsFilter, userLogin, fetchMyPrs]);
+  }, [myPrsFilter, buildQuery, fetchMyPrs]);
+
+  // org一覧は結果が増えたときだけ蓄積する（フィルタ切替で消えないように）
+  const knownOrgsRef = useRef(new Set<string>());
+  const repoOrgs = useMemo(() => {
+    for (const item of [...needsReviewView.items, ...myPrsView.items]) {
+      if (item.repository?.owner?.login) {
+        knownOrgsRef.current.add(item.repository.owner.login);
+      }
+    }
+    return [...knownOrgsRef.current].sort();
+  }, [needsReviewView.items, myPrsView.items]);
+
+  // ドロップダウン外クリックで閉じる
+  useEffect(() => {
+    if (!repoDropdownOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setRepoDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [repoDropdownOpen]);
 
   const handleRefreshAll = useCallback(() => {
     onRefresh();
@@ -96,31 +115,64 @@ export function Dashboard({
     refreshMyPrs();
   }, [onRefresh, refreshNeedsReview, refreshMyPrs]);
 
-  const notificationFilters = filters.filter((f) => !isSearchView(f));
-  const unreadInboxItems = inboxItems.filter((item) => {
-    if (!item.unread) return false;
-    if (notificationFilters.length === 0) return true;
-    return notificationFilters.some((filter) => {
-      if (filter.reasons.length > 0 && !filter.reasons.includes(item.reason)) {
-        return false;
-      }
-      if (filter.repositories && filter.repositories.length > 0) {
-        if (!filter.repositories.includes(item.repositoryFullName)) return false;
-      }
-      return true;
-    });
-  });
-
-  const isAnyLoading = isInboxLoading || needsReviewView.isLoading || myPrsView.isLoading;
+  const isAnyLoading = needsReviewView.isLoading || myPrsView.isLoading;
 
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-5 py-3 border-b border-border/50">
-        <h2 className="text-base font-semibold">Dashboard</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-base font-semibold">ダッシュボード</h2>
+          <div className="relative" ref={dropdownRef}>
+            <button
+              onClick={() => setRepoDropdownOpen(!repoDropdownOpen)}
+              className={cn(
+                'flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors border',
+                selectedRepo === 'all'
+                  ? 'text-muted-foreground border-border/50 hover:bg-accent/50'
+                  : 'text-foreground border-primary/40 bg-primary/10',
+              )}
+            >
+              <FunnelIcon className="w-3 h-3" />
+              <span>{selectedRepo === 'all' ? 'すべて' : selectedRepo}</span>
+              <ChevronIcon className="w-3 h-3" />
+            </button>
+            {repoDropdownOpen && (
+              <div className="absolute top-full left-0 mt-1 min-w-[10rem] rounded-md border border-border bg-popover shadow-lg z-20 py-1">
+                <button
+                  onClick={() => {
+                    setSelectedRepo('all');
+                    setRepoDropdownOpen(false);
+                  }}
+                  className={cn(
+                    'w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors',
+                    selectedRepo === 'all' && 'font-medium text-primary',
+                  )}
+                >
+                  すべて
+                </button>
+                {repoOrgs.map((org) => (
+                  <button
+                    key={org}
+                    onClick={() => {
+                      setSelectedRepo(org);
+                      setRepoDropdownOpen(false);
+                    }}
+                    className={cn(
+                      'w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors',
+                      selectedRepo === org && 'font-medium text-primary',
+                    )}
+                  >
+                    {org}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
         <button
           onClick={handleRefreshAll}
           className="p-1.5 rounded-md hover:bg-accent transition-colors"
-          title="Refresh all"
+          title="すべて更新"
         >
           <RefreshIcon
             className={cn('w-4 h-4 text-muted-foreground', isAnyLoading && 'animate-spin')}
@@ -131,8 +183,8 @@ export function Dashboard({
       <div className="flex-1 overflow-y-auto scrollbar-thin px-5 py-4 space-y-4">
         {needsReviewFilter && (
           <HeroSection
-            title="Review these PRs"
-            subtitle="These PRs are waiting for your review"
+            title="レビューするPR"
+            subtitle="あなたがレビュワーに指定されていて、まだレビューしていないPRです"
             count={needsReviewView.items.length}
             isLoading={needsReviewView.isLoading}
             error={needsReviewView.error}
@@ -146,8 +198,8 @@ export function Dashboard({
 
         {myPrsFilter && (
           <DashboardSection
-            title="Your open PRs"
-            subtitle="Track review status of your pull requests"
+            title="自分のPR"
+            subtitle="自分が作成したオープン中のPRと、そのレビュー状況です"
             count={myPrsView.items.length}
             isLoading={myPrsView.isLoading}
             error={myPrsView.error}
@@ -158,18 +210,6 @@ export function Dashboard({
             )}
           </DashboardSection>
         )}
-
-        <DashboardSection
-          title="New notifications"
-          subtitle="Unread notifications from your repositories"
-          count={unreadInboxItems.length}
-          isLoading={isInboxLoading && inboxItems.length === 0}
-          icon={<BellIcon className="w-3.5 h-3.5" />}
-        >
-          {unreadInboxItems.length > 0 && (
-            <InboxItemList items={unreadInboxItems} onMarkAsRead={onMarkInboxRead} />
-          )}
-        </DashboardSection>
       </div>
     </div>
   );
@@ -196,7 +236,7 @@ function HeroSection({
 }: HeroSectionProps) {
   return (
     <div className="rounded-lg border-2 border-primary/30 bg-primary/[0.03] overflow-hidden">
-      <div className="px-4 py-3 border-b border-primary/10">
+      <div className="px-4 py-3 border-b border-primary/10 sticky top-0 z-10 bg-primary/[0.03] backdrop-blur-sm">
         <div className="flex items-center gap-2">
           <div className="text-primary">{icon}</div>
           <h3 className="text-sm font-bold text-foreground">{title}</h3>
@@ -208,13 +248,25 @@ function HeroSection({
           {isLoading && <Spinner size="sm" />}
         </div>
         <p className="text-xs text-muted-foreground mt-0.5 ml-6">{subtitle}</p>
+        {!isLoading && count > 0 && (
+          <div className="flex items-center gap-3 mt-1.5 ml-6">
+            <span className="flex items-center gap-1 text-[0.6875rem] text-muted-foreground">
+              <span className="w-1.5 h-1.5 rounded-full bg-destructive inline-block" />
+              7日以上
+            </span>
+            <span className="flex items-center gap-1 text-[0.6875rem] text-muted-foreground">
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-gh-review)] inline-block" />
+              3日以上
+            </span>
+          </div>
+        )}
       </div>
 
       <div>
         {error && <div className="px-4 py-3 text-sm text-destructive">{error}</div>}
         {!isLoading && !error && count === 0 && (
           <div className="px-4 py-5 text-sm text-muted-foreground text-center">
-            All caught up! No PRs need your review.
+            レビュー待ちのPRはありません
           </div>
         )}
         {children}
@@ -244,7 +296,7 @@ function DashboardSection({
 }: DashboardSectionProps) {
   return (
     <div className="rounded-lg border border-border/50 bg-card overflow-hidden">
-      <div className="px-4 py-2.5 border-b border-border/30">
+      <div className="px-4 py-2.5 border-b border-border/30 sticky top-0 z-10 bg-card backdrop-blur-sm">
         <div className="flex items-center gap-2">
           <div className="text-muted-foreground">{icon}</div>
           <h3 className="text-sm font-semibold text-foreground">{title}</h3>
@@ -259,7 +311,7 @@ function DashboardSection({
       <div>
         {error && <div className="px-4 py-3 text-sm text-destructive">{error}</div>}
         {!isLoading && !error && count === 0 && (
-          <div className="px-4 py-4 text-sm text-muted-foreground text-center">None</div>
+          <div className="px-4 py-4 text-sm text-muted-foreground text-center">なし</div>
         )}
         {children}
       </div>
@@ -301,43 +353,7 @@ function SearchItemList({
           onClick={() => setExpanded(!expanded)}
           className="w-full px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/30 transition-colors text-center"
         >
-          {expanded ? 'Show less' : `Show ${items.length - DEFAULT_VISIBLE} more`}
-        </button>
-      )}
-    </div>
-  );
-}
-
-function InboxItemList({
-  items,
-  onMarkAsRead,
-}: {
-  items: InboxItem[];
-  onMarkAsRead: (threadId: string) => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const visibleItems = expanded ? items : items.slice(0, DEFAULT_VISIBLE);
-
-  const handleClick = async (item: InboxItem) => {
-    if (item.url) {
-      await open(item.url);
-    }
-    if (item.unread) {
-      onMarkAsRead(item.id);
-    }
-  };
-
-  return (
-    <div>
-      {visibleItems.map((item) => (
-        <InboxRow key={item.id} item={item} onClick={() => handleClick(item)} />
-      ))}
-      {items.length > DEFAULT_VISIBLE && (
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="w-full px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/30 transition-colors text-center"
-        >
-          {expanded ? 'Show less' : `Show ${items.length - DEFAULT_VISIBLE} more`}
+          {expanded ? '折りたたむ' : `他 ${items.length - DEFAULT_VISIBLE} 件を表示`}
         </button>
       )}
     </div>
@@ -374,25 +390,33 @@ function SearchRow({
           {urgency === 'critical' && (
             <span
               className="block w-1.5 h-1.5 rounded-full bg-destructive"
-              title="7+ days waiting"
+              title="7日以上レビュー待ち"
             />
           )}
           {urgency === 'warning' && (
             <span
               className="block w-1.5 h-1.5 rounded-full bg-[var(--color-gh-review)]"
-              title="3+ days waiting"
+              title="3日以上レビュー待ち"
             />
           )}
         </div>
       )}
 
-      <div className="flex-shrink-0">
-        {isPR ? (
-          <PRIcon className="w-4 h-4 text-[var(--color-gh-pr)]" />
-        ) : (
-          <IssueIcon className="w-4 h-4 text-[var(--color-gh-issue)]" />
-        )}
-      </div>
+      {item.author?.avatarUrl ? (
+        <img
+          src={item.author.avatarUrl}
+          alt={item.author.login}
+          className="w-6 h-6 rounded-full flex-shrink-0"
+        />
+      ) : (
+        <div className="flex-shrink-0">
+          {isPR ? (
+            <PRIcon className="w-4 h-4 text-[var(--color-gh-pr)]" />
+          ) : (
+            <IssueIcon className="w-4 h-4 text-[var(--color-gh-issue)]" />
+          )}
+        </div>
+      )}
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
@@ -401,7 +425,7 @@ function SearchRow({
           </span>
           {item.isDraft && (
             <span className="text-xs text-muted-foreground bg-accent px-1.5 py-0.5 rounded flex-shrink-0">
-              Draft
+              下書き
             </span>
           )}
         </div>
@@ -432,59 +456,6 @@ function SearchRow({
           </span>
         </div>
       )}
-
-      <span className="text-[0.8125rem] text-muted-foreground flex-shrink-0 tabular-nums">
-        {formatRelativeTime(item.updatedAt)}
-      </span>
-    </div>
-  );
-}
-
-function InboxRow({ item, onClick }: { item: InboxItem; onClick: () => void }) {
-  const isPR = item.itemType === 'PullRequest';
-  const isIssue = item.itemType === 'Issue';
-  const reasonLabel = REASON_LABELS[item.reason] || item.reason;
-  const colors = REASON_COLORS[item.reason] || { text: 'text-muted-foreground', bg: 'bg-accent' };
-
-  return (
-    <div
-      className="flex items-center gap-3 px-4 py-2.5 hover:bg-accent/30 cursor-pointer transition-colors border-b border-border/20 last:border-b-0"
-      onClick={onClick}
-    >
-      <div className="w-1.5 flex-shrink-0">
-        {item.unread && <span className="block w-1.5 h-1.5 rounded-full bg-primary" />}
-      </div>
-
-      <div className="flex-shrink-0">
-        {isPR && <PRIcon className="w-4 h-4 text-[var(--color-gh-pr)]" />}
-        {isIssue && <IssueIcon className="w-4 h-4 text-[var(--color-gh-issue)]" />}
-        {!isPR && !isIssue && <BellIcon className="w-4 h-4 text-muted-foreground" />}
-      </div>
-
-      <div className="flex-1 min-w-0">
-        <span
-          className={cn(
-            'text-[0.9375rem] truncate block leading-snug',
-            item.unread ? 'font-medium text-foreground' : 'text-muted-foreground',
-          )}
-        >
-          {item.title}
-        </span>
-        <div className="flex items-center gap-2 mt-0.5">
-          <span className="text-[0.8125rem] text-muted-foreground truncate">
-            {item.repositoryFullName}
-          </span>
-          <span
-            className={cn(
-              'inline-flex px-1.5 py-0.5 rounded text-xs font-medium flex-shrink-0',
-              colors.text,
-              colors.bg,
-            )}
-          >
-            {reasonLabel}
-          </span>
-        </div>
-      </div>
 
       <span className="text-[0.8125rem] text-muted-foreground flex-shrink-0 tabular-nums">
         {formatRelativeTime(item.updatedAt)}
@@ -585,6 +556,40 @@ function IssueIcon({ className }: { className?: string }) {
   );
 }
 
+function FunnelIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" />
+    </svg>
+  );
+}
+
+function ChevronIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
 function EyeIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -599,24 +604,6 @@ function EyeIcon({ className }: { className?: string }) {
     >
       <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" />
       <circle cx="12" cy="12" r="3" />
-    </svg>
-  );
-}
-
-function BellIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
-      <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
     </svg>
   );
 }

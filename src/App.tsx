@@ -4,6 +4,7 @@ import { LoginScreen } from '@/components/auth/login-screen';
 import { Dashboard } from '@/components/dashboard/dashboard';
 import { InboxList } from '@/components/inbox';
 import { Sidebar } from '@/components/layout/sidebar';
+import { OnboardingDialog } from '@/components/onboarding/onboarding-dialog';
 import { SettingsDialog } from '@/components/settings/settings-dialog';
 import { useAuth, useInbox, useSearchView, useSettings, useTheme } from '@/hooks';
 import { isSearchView } from '@/types/settings';
@@ -11,13 +12,16 @@ import { isSearchView } from '@/types/settings';
 export default function App() {
   const auth = useAuth();
   const inbox = useInbox();
-  const { settings } = useSettings();
+  const { settings, isLoading: settingsLoading } = useSettings();
   const searchView = useSearchView();
   const { fetch: fetchSearchView } = searchView;
 
   const { theme, setTheme } = useTheme();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [selectedFilterId, setSelectedFilterId] = useState<string | null>('dashboard');
+  const [onboardingDismissed, setOnboardingDismissed] = useState(false);
+
+  const showOnboarding = !settingsLoading && !settings.onboardingCompleted && !onboardingDismissed;
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -105,11 +109,8 @@ export default function App() {
       <div className="flex-1 min-w-0">
         {isDashboard ? (
           <Dashboard
-            inboxItems={inbox.items}
             filters={settings.customFilters}
-            onMarkInboxRead={inbox.markAsRead}
             onRefresh={inbox.refresh}
-            isInboxLoading={inbox.isLoading}
             userLogin={userLogin}
           />
         ) : isSearchMode ? (
@@ -147,6 +148,8 @@ export default function App() {
         user={auth.user}
         onLogout={auth.logout}
       />
+
+      <OnboardingDialog open={showOnboarding} onComplete={() => setOnboardingDismissed(true)} />
     </div>
   );
 }

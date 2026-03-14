@@ -83,6 +83,7 @@ export interface AppSettings {
   soundEnabled: boolean;
   customFilters: CustomFilter[];
   activeFilterId: string | null;
+  onboardingCompleted?: boolean;
 }
 
 // 初回ユーザー向けのデフォルトビュー定義
@@ -98,7 +99,7 @@ export const DEFAULT_INITIAL_FILTERS: CustomFilter[] = [
   },
   {
     id: 'default-needs-review',
-    name: 'Needs My Review',
+    name: 'レビュー待ち',
     reasons: [],
     enableDesktopNotification: false,
     enableSound: false,
@@ -107,7 +108,7 @@ export const DEFAULT_INITIAL_FILTERS: CustomFilter[] = [
   },
   {
     id: 'default-my-prs',
-    name: 'My PRs',
+    name: '自分のPR',
     reasons: [],
     enableDesktopNotification: false,
     enableSound: false,
@@ -117,6 +118,13 @@ export const DEFAULT_INITIAL_FILTERS: CustomFilter[] = [
 ];
 
 const ALL_DEFAULT_IDS = ['default-important', 'default-needs-review', 'default-my-prs'];
+
+// デフォルトビューの正式名称マップ（旧英語名からのリネームに使う）
+const DEFAULT_NAMES: Record<string, string> = {
+  'default-important': '重要な通知',
+  'default-needs-review': 'レビュー待ち',
+  'default-my-prs': '自分のPR',
+};
 
 /**
  * 設定フィルタを現在のデフォルト体系にマイグレーションする。
@@ -144,9 +152,19 @@ export function migrateDefaultFilters(filters: CustomFilter[]): {
     return false;
   });
 
+  // デフォルトビューの旧英語名を日本語にリネームする必要があるか
+  const needsNameFix = filters.some((f) => f.id in DEFAULT_NAMES && f.name !== DEFAULT_NAMES[f.id]);
+
   // マイグレーション済みなら早期リターン
   const hasOldDefaults = filters.some((f) => OLD_DEFAULT_IDS.includes(f.id));
-  if (hasNewDefault && hasNeedsReview && hasMyPrs && !hasOldDefaults && !needsSearchQueryFix) {
+  if (
+    hasNewDefault &&
+    hasNeedsReview &&
+    hasMyPrs &&
+    !hasOldDefaults &&
+    !needsSearchQueryFix &&
+    !needsNameFix
+  ) {
     const newDefaultReasons = new Set(DEFAULT_INITIAL_FILTERS[0].reasons);
     const hasRedundant = filters.some(
       (f) =>
@@ -193,22 +211,28 @@ export function migrateDefaultFilters(filters: CustomFilter[]): {
     result.splice(reviewIdx + 1, 0, DEFAULT_INITIAL_FILTERS[2]);
   }
 
-  // searchQuery未設定のデフォルト検索ビューを補完
+  // searchQuery未設定のデフォルト検索ビューを補完 + デフォルトビュー名を日本語に統一
   result = result.map((f) => {
+    let updated = f;
     if (
       f.id === 'default-needs-review' &&
       !f.searchQuery &&
       DEFAULT_INITIAL_FILTERS[1].searchQuery
     ) {
-      return { ...f, searchQuery: DEFAULT_INITIAL_FILTERS[1].searchQuery };
+      updated = { ...updated, searchQuery: DEFAULT_INITIAL_FILTERS[1].searchQuery };
     }
     if (f.id === 'default-my-prs' && !f.searchQuery && DEFAULT_INITIAL_FILTERS[2].searchQuery) {
-      return { ...f, searchQuery: DEFAULT_INITIAL_FILTERS[2].searchQuery };
+      updated = { ...updated, searchQuery: DEFAULT_INITIAL_FILTERS[2].searchQuery };
     }
-    return f;
+    // デフォルトビューの名前を正式名称に揃える
+    if (f.id in DEFAULT_NAMES && f.name !== DEFAULT_NAMES[f.id]) {
+      updated = { ...updated, name: DEFAULT_NAMES[f.id] };
+    }
+    return updated;
   });
 
   const changed =
+    needsNameFix ||
     needsSearchQueryFix ||
     result.length !== filters.length ||
     result.some((f, i) => f.id !== filters[i]?.id);

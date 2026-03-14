@@ -82,7 +82,7 @@ describe('Sidebar', () => {
 
     it('Dashboard エントリが表示される', () => {
       render(<Sidebar {...defaultProps} />);
-      expect(screen.getByText('Dashboard')).toBeInTheDocument();
+      expect(screen.getByText('ダッシュボード')).toBeInTheDocument();
     });
 
     it('Dashboard クリックで onSelectFilter("dashboard") が呼ばれる', async () => {
@@ -90,13 +90,13 @@ describe('Sidebar', () => {
       const onSelectFilter = vi.fn();
       render(<Sidebar {...defaultProps} onSelectFilter={onSelectFilter} />);
 
-      await user.click(screen.getByText('Dashboard'));
+      await user.click(screen.getByText('ダッシュボード'));
       expect(onSelectFilter).toHaveBeenCalledWith('dashboard');
     });
 
     it('Inbox フィルターが常に表示される', () => {
       render(<Sidebar {...defaultProps} />);
-      expect(screen.getByText('Inbox')).toBeInTheDocument();
+      expect(screen.getByText('受信トレイ')).toBeInTheDocument();
     });
 
     it('ユーザーアバターとログイン名を表示する', () => {
@@ -114,12 +114,12 @@ describe('Sidebar', () => {
 
     it('New view ボタンが表示される', () => {
       render(<Sidebar {...defaultProps} />);
-      expect(screen.getByText('New view')).toBeInTheDocument();
+      expect(screen.getByText('ビューを追加')).toBeInTheDocument();
     });
 
     it('Views セクションヘッダーが表示される', () => {
       render(<Sidebar {...defaultProps} />);
-      expect(screen.getByText('Views')).toBeInTheDocument();
+      expect(screen.getByText('ビュー')).toBeInTheDocument();
     });
   });
 
@@ -136,7 +136,7 @@ describe('Sidebar', () => {
 
       render(<Sidebar {...defaultProps} items={items} />);
 
-      const allButton = screen.getByText('Inbox').closest('button')!;
+      const allButton = screen.getByText('受信トレイ').closest('button')!;
       expect(within(allButton).getByText('1')).toBeInTheDocument();
     });
 
@@ -197,7 +197,7 @@ describe('Sidebar', () => {
       const onSelectFilter = vi.fn();
       render(<Sidebar {...defaultProps} onSelectFilter={onSelectFilter} selectedFilterId="f1" />);
 
-      const allButton = screen.getByText('Inbox').closest('button')!;
+      const allButton = screen.getByText('受信トレイ').closest('button')!;
       await user.click(allButton);
       expect(onSelectFilter).toHaveBeenCalledWith(null);
     });
@@ -231,7 +231,7 @@ describe('Sidebar', () => {
       const user = userEvent.setup();
       render(<Sidebar {...defaultProps} />);
 
-      await user.click(screen.getByText('New view'));
+      await user.click(screen.getByText('ビューを追加'));
       expect(screen.getByText('ビューを作成')).toBeInTheDocument();
       expect(screen.getByPlaceholderText('ビュー名')).toBeInTheDocument();
     });
@@ -240,7 +240,7 @@ describe('Sidebar', () => {
       const user = userEvent.setup();
       render(<Sidebar {...defaultProps} />);
 
-      await user.click(screen.getByText('New view'));
+      await user.click(screen.getByText('ビューを追加'));
 
       // ビュー名を入力
       const nameInput = screen.getByPlaceholderText('ビュー名');
@@ -270,7 +270,7 @@ describe('Sidebar', () => {
 
       render(<Sidebar {...defaultProps} />);
 
-      const editButton = screen.getByTitle('Edit');
+      const editButton = screen.getByTitle('編集');
       await user.click(editButton);
 
       expect(screen.getByText('ビューを編集')).toBeInTheDocument();
@@ -284,7 +284,7 @@ describe('Sidebar', () => {
 
       render(<Sidebar {...defaultProps} />);
 
-      await user.click(screen.getByTitle('Edit'));
+      await user.click(screen.getByTitle('編集'));
       const nameInput = screen.getByDisplayValue('レビュー依頼');
       await user.clear(nameInput);
       await user.type(nameInput, 'レビュー（改）');
@@ -302,7 +302,7 @@ describe('Sidebar', () => {
 
       render(<Sidebar {...defaultProps} />);
 
-      await user.click(screen.getByTitle('Edit'));
+      await user.click(screen.getByTitle('編集'));
       await user.click(screen.getByText('削除'));
 
       expect(mockUpdateSettings).toHaveBeenCalledWith({
@@ -318,7 +318,7 @@ describe('Sidebar', () => {
 
       render(<Sidebar {...defaultProps} selectedFilterId="f1" onSelectFilter={onSelectFilter} />);
 
-      await user.click(screen.getByTitle('Edit'));
+      await user.click(screen.getByTitle('編集'));
       await user.click(screen.getByText('削除'));
 
       expect(onSelectFilter).toHaveBeenCalledWith(null);
@@ -355,7 +355,7 @@ describe('Sidebar', () => {
       render(<Sidebar {...defaultProps} />);
 
       expect(screen.getByText('Needs My Review')).toBeInTheDocument();
-      expect(screen.queryByTitle('Edit')).not.toBeInTheDocument();
+      expect(screen.queryByTitle('編集')).not.toBeInTheDocument();
     });
   });
 
@@ -372,7 +372,7 @@ describe('Sidebar', () => {
       const user = userEvent.setup();
       render(<Sidebar {...defaultProps} />);
 
-      await user.click(screen.getByText('New view'));
+      await user.click(screen.getByText('ビューを追加'));
       expect(screen.getByText('ビューを作成')).toBeInTheDocument();
 
       await user.click(screen.getByText('キャンセル'));
@@ -385,7 +385,7 @@ describe('Sidebar', () => {
       const user = userEvent.setup();
       render(<Sidebar {...defaultProps} />);
 
-      await user.click(screen.getByText('New view'));
+      await user.click(screen.getByText('ビューを追加'));
 
       // 「レビュー依頼」チェックボックスをONにする
       const reviewLabel = screen.getByText('レビュー依頼');
@@ -403,7 +403,7 @@ describe('Sidebar', () => {
       render(<Sidebar {...defaultProps} />);
 
       // 編集ダイアログを開く
-      await user.click(screen.getByTitle('Edit'));
+      await user.click(screen.getByTitle('編集'));
 
       const reviewLabel = screen.getByText('レビュー依頼');
       const checkbox = reviewLabel.closest('label')!.querySelector('input[type="checkbox"]')!;
@@ -419,7 +419,7 @@ describe('Sidebar', () => {
       const user = userEvent.setup();
       render(<Sidebar {...defaultProps} />);
 
-      await user.click(screen.getByText('New view'));
+      await user.click(screen.getByText('ビューを追加'));
 
       const desktopLabel = screen.getByText('デスクトップ通知');
       const checkbox = desktopLabel.closest('label')!.querySelector('input[type="checkbox"]')!;
@@ -432,7 +432,7 @@ describe('Sidebar', () => {
       const user = userEvent.setup();
       render(<Sidebar {...defaultProps} />);
 
-      await user.click(screen.getByText('New view'));
+      await user.click(screen.getByText('ビューを追加'));
 
       // デスクトップ通知をON
       const desktopLabel = screen.getByText('デスクトップ通知');
@@ -448,7 +448,7 @@ describe('Sidebar', () => {
       const user = userEvent.setup();
       render(<Sidebar {...defaultProps} />);
 
-      await user.click(screen.getByText('New view'));
+      await user.click(screen.getByText('ビューを追加'));
 
       const desktopLabel = screen.getByText('デスクトップ通知');
       await user.click(desktopLabel.closest('label')!.querySelector('input[type="checkbox"]')!);
@@ -466,7 +466,7 @@ describe('Sidebar', () => {
       const user = userEvent.setup();
       render(<Sidebar {...defaultProps} />);
 
-      await user.click(screen.getByText('New view'));
+      await user.click(screen.getByText('ビューを追加'));
 
       const desktopLabel = screen.getByText('デスクトップ通知');
       await user.click(desktopLabel.closest('label')!.querySelector('input[type="checkbox"]')!);
@@ -489,7 +489,7 @@ describe('Sidebar', () => {
       const user = userEvent.setup();
       render(<Sidebar {...defaultProps} />);
 
-      await user.click(screen.getByText('New view'));
+      await user.click(screen.getByText('ビューを追加'));
 
       const repoInput = screen.getByPlaceholderText('owner/repo');
       await user.type(repoInput, 'owner/new-repo');
@@ -505,7 +505,7 @@ describe('Sidebar', () => {
       const user = userEvent.setup();
       render(<Sidebar {...defaultProps} />);
 
-      await user.click(screen.getByText('New view'));
+      await user.click(screen.getByText('ビューを追加'));
 
       const repoInput = screen.getByPlaceholderText('owner/repo');
       await user.type(repoInput, 'owner/enter-repo');
@@ -519,7 +519,7 @@ describe('Sidebar', () => {
       const user = userEvent.setup();
       render(<Sidebar {...defaultProps} />);
 
-      await user.click(screen.getByText('New view'));
+      await user.click(screen.getByText('ビューを追加'));
 
       const repoInput = screen.getByPlaceholderText('owner/repo');
       await user.type(repoInput, 'owner/dup-repo');
@@ -537,7 +537,7 @@ describe('Sidebar', () => {
       const user = userEvent.setup();
       render(<Sidebar {...defaultProps} />);
 
-      await user.click(screen.getByText('New view'));
+      await user.click(screen.getByText('ビューを追加'));
 
       // リポジトリを追加
       const repoInput = screen.getByPlaceholderText('owner/repo');
@@ -561,7 +561,7 @@ describe('Sidebar', () => {
       const items = [createMockItem({ repositoryFullName: 'owner/suggested-repo' })];
       render(<Sidebar {...defaultProps} items={items} />);
 
-      await user.click(screen.getByText('New view'));
+      await user.click(screen.getByText('ビューを追加'));
 
       // サジェストリポジトリが表示される
       expect(screen.getByText('+ suggested-repo')).toBeInTheDocument();
@@ -572,7 +572,7 @@ describe('Sidebar', () => {
       const items = [createMockItem({ repositoryFullName: 'owner/click-repo' })];
       render(<Sidebar {...defaultProps} items={items} />);
 
-      await user.click(screen.getByText('New view'));
+      await user.click(screen.getByText('ビューを追加'));
       await user.click(screen.getByText('+ click-repo'));
 
       // タグが追加される
@@ -584,7 +584,7 @@ describe('Sidebar', () => {
       const items = [createMockItem({ repositoryFullName: 'owner/hidden-repo' })];
       render(<Sidebar {...defaultProps} items={items} />);
 
-      await user.click(screen.getByText('New view'));
+      await user.click(screen.getByText('ビューを追加'));
 
       // まずサジェストが表示されている
       expect(screen.getByText('+ hidden-repo')).toBeInTheDocument();
@@ -601,14 +601,14 @@ describe('Sidebar', () => {
     it('selectedFilterId が "dashboard" のとき Dashboard がアクティブスタイルになる', () => {
       render(<Sidebar {...defaultProps} selectedFilterId="dashboard" />);
 
-      const dashboardBtn = screen.getByText('Dashboard').closest('button')!;
+      const dashboardBtn = screen.getByText('ダッシュボード').closest('button')!;
       expect(dashboardBtn.className).toContain('bg-accent');
     });
 
     it('selectedFilterId が null のとき Inbox がアクティブスタイルになる', () => {
       render(<Sidebar {...defaultProps} selectedFilterId={null} />);
 
-      const inboxBtn = screen.getByText('Inbox').closest('button')!;
+      const inboxBtn = screen.getByText('受信トレイ').closest('button')!;
       expect(inboxBtn.className).toContain('bg-accent');
     });
 

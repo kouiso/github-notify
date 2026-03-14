@@ -26,6 +26,12 @@ const ALL_REASONS: NotificationReason[] = [
   'state_change',
 ];
 
+const VIEW_DESCRIPTIONS: Record<string, string> = {
+  'default-important': 'レビュー依頼・メンション・アサインなど重要な通知',
+  'default-needs-review': 'レビュワーに指定されていて、まだレビューしていないPR',
+  'default-my-prs': '自分が作成したオープン中のPR',
+};
+
 function matchesFilter(item: InboxItem, filter: CustomFilter): boolean {
   if (filter.reasons.length > 0 && !filter.reasons.includes(item.reason)) {
     return false;
@@ -125,13 +131,15 @@ export function Sidebar({
         <div className="px-2 py-1 space-y-0.5">
           <SidebarItem
             icon={<DashboardIcon className="w-[1.125rem] h-[1.125rem]" />}
-            label="Dashboard"
+            label="ダッシュボード"
+            description="レビュー待ちPRと自分のPRの状況をまとめて表示"
             active={selectedFilterId === 'dashboard'}
             onClick={() => onSelectFilter('dashboard')}
           />
           <SidebarItem
             icon={<InboxIcon className="w-[1.125rem] h-[1.125rem]" />}
-            label="Inbox"
+            label="受信トレイ"
+            description="GitHub通知の一覧"
             count={totalFilteredCount}
             active={selectedFilterId === null}
             onClick={() => onSelectFilter(null)}
@@ -140,7 +148,7 @@ export function Sidebar({
 
         <div className="px-2 py-1">
           <p className="px-3 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-            Views
+            ビュー
           </p>
           <div className="space-y-0.5">
             {settings.customFilters.map((filter) => (
@@ -154,6 +162,7 @@ export function Sidebar({
                   )
                 }
                 label={filter.name}
+                description={VIEW_DESCRIPTIONS[filter.id]}
                 count={isSearchView(filter) ? undefined : filterCounts[filter.id] || undefined}
                 active={selectedFilterId === filter.id}
                 onClick={() => onSelectFilter(filter.id)}
@@ -168,7 +177,7 @@ export function Sidebar({
             className="w-full flex items-center gap-2.5 px-3 py-2 text-[0.9375rem] text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-md transition-colors"
           >
             <PlusIcon className="w-4 h-4" />
-            <span>New view</span>
+            <span>ビューを追加</span>
           </button>
         </div>
       </div>
@@ -406,6 +415,7 @@ export function Sidebar({
 interface SidebarItemProps {
   icon: React.ReactNode;
   label: string;
+  description?: string;
   count?: number;
   active?: boolean;
   onClick?: () => void;
@@ -416,6 +426,7 @@ interface SidebarItemProps {
 function SidebarItem({
   icon,
   label,
+  description,
   count,
   active,
   onClick,
@@ -425,6 +436,7 @@ function SidebarItem({
   return (
     <div className="group relative">
       <button
+        title={description}
         className={cn(
           'w-full flex items-center gap-2.5 px-3 py-2 rounded-md transition-colors text-left text-[0.9375rem]',
           active
@@ -453,7 +465,7 @@ function SidebarItem({
             e.stopPropagation();
             onEdit();
           }}
-          title="Edit"
+          title="編集"
         >
           <EditIcon className="w-3 h-3 text-muted-foreground" />
         </button>

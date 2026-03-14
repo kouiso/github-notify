@@ -249,6 +249,25 @@ describe('migrateDefaultFilters', () => {
     });
   });
 
+  describe('デフォルトビュー名の日本語マイグレーション', () => {
+    it('旧英語名のデフォルトビューが日本語名にリネームされる', () => {
+      const oldNameFilters = [
+        DEFAULT_INITIAL_FILTERS[0],
+        { ...DEFAULT_INITIAL_FILTERS[1], name: 'Needs My Review' },
+        { ...DEFAULT_INITIAL_FILTERS[2], name: 'My PRs' },
+      ];
+      const { filters, changed } = migrateDefaultFilters(oldNameFilters);
+      expect(changed).toBe(true);
+      expect(filters.find((f) => f.id === 'default-needs-review')?.name).toBe('レビュー待ち');
+      expect(filters.find((f) => f.id === 'default-my-prs')?.name).toBe('自分のPR');
+    });
+
+    it('既に日本語名なら changed = false', () => {
+      const { changed } = migrateDefaultFilters([...DEFAULT_INITIAL_FILTERS]);
+      expect(changed).toBe(false);
+    });
+  });
+
   describe('戻り値の型チェック', () => {
     it('filters プロパティは配列', () => {
       const result = migrateDefaultFilters([]);
