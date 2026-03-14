@@ -146,6 +146,70 @@ describe('useTheme', () => {
 
       expect(addEventListenerSpy).not.toHaveBeenCalled();
     });
+
+    it('OS がダークモードに変わったとき .dark クラスが付与される', () => {
+      mockTheme = 'system';
+      // change イベントのハンドラを取得するためリスナーを捕捉する
+      let capturedHandler: ((e: MediaQueryListEvent) => void) | null = null;
+
+      vi.spyOn(window, 'matchMedia').mockImplementation((query) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn((event, handler) => {
+          if (event === 'change') {
+            capturedHandler = handler as (e: MediaQueryListEvent) => void;
+          }
+        }),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      }));
+
+      renderHook(() => useTheme());
+
+      expect(capturedHandler).not.toBeNull();
+
+      // OS がダークモードに変わったイベントを発火
+      act(() => {
+        capturedHandler!({ matches: true } as MediaQueryListEvent);
+      });
+
+      expect(document.documentElement.classList.contains('dark')).toBe(true);
+    });
+
+    it('OS がライトモードに変わったとき .dark クラスが除去される', () => {
+      mockTheme = 'system';
+      document.documentElement.classList.add('dark');
+      let capturedHandler: ((e: MediaQueryListEvent) => void) | null = null;
+
+      vi.spyOn(window, 'matchMedia').mockImplementation((query) => ({
+        matches: true,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn((event, handler) => {
+          if (event === 'change') {
+            capturedHandler = handler as (e: MediaQueryListEvent) => void;
+          }
+        }),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      }));
+
+      renderHook(() => useTheme());
+
+      expect(capturedHandler).not.toBeNull();
+
+      // OS がライトモードに変わったイベントを発火
+      act(() => {
+        capturedHandler!({ matches: false } as MediaQueryListEvent);
+      });
+
+      expect(document.documentElement.classList.contains('dark')).toBe(false);
+    });
   });
 
   describe('返り値', () => {
