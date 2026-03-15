@@ -16,7 +16,7 @@ const GITHUB_ACCESS_TOKEN_URL: &str = "https://github.com/login/oauth/access_tok
 
 // GitHub OAuth App Client ID for device flow
 // You need to create your own OAuth App at https://github.com/settings/developers
-const GITHUB_CLIENT_ID: &str = "Ov23libJfBYqGMHw9FWk";
+const GITHUB_CLIENT_ID: &str = "Ov231iDGotr4YQHMStzW";
 
 pub struct GitHubClient {
     client: Client,
