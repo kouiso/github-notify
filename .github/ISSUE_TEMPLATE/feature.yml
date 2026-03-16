@@ -1,0 +1,79 @@
+name: "新規開発・機能改修 (PBI)"
+description: "新規機能開発や既存機能の改修用のIssueテンプレート"
+labels: ["feature"]
+body:
+  - type: textarea
+    id: why
+    attributes:
+      label: "(Why?)なぜ、このタスクをやるのか？"
+      description: "理由がはっきりすれば質が上がる。エンジニアレベルの説明はHow To?に記載し、ここは原則ビジネス粒度で記載しましょう。"
+      value: |
+        > [!TIP]
+        > 理由がはっきりすれば質が上がる。エンジニアレベルの説明はHow To?に記載し、ここは原則ビジネス粒度で記載しましょう。
+
+        ### 背景・目的
+
+        ### スクリーンショット/GIF/動画
+    validations:
+      required: true
+  - type: textarea
+    id: how-to
+    attributes:
+      label: "(How To ?) やり方の指定があるか？"
+      description: "作業時に必要なことを書いて下さい"
+      value: |
+        > [!TIP]
+        > 作業時に必要なことを書いて下さい
+
+        - 該当ファイルパス： 🔗
+
+        <details>
+        <summary>📝 記入例（クリックして展開）</summary>
+
+        **良い例:**
+
+        1. 新しいコンポーネントを `src/components/` に作成
+        2. Tauriコマンドを `src-tauri/src/commands/` に追加
+        3. フロントエンドとバックエンドを接続
+
+        **該当ファイルパス:**
+        - `src/components/NewFeature.tsx` (新規作成)
+        - `src-tauri/src/commands/new_feature.rs` (新規作成)
+
+        </details>
+    validations:
+      required: false
+  - type: textarea
+    id: done-definition
+    attributes:
+      label: "(Complete!) 完成の定義(箇条書き)"
+      description: "ゴールをはっきり決めておけば認識の違いを防げます"
+      value: |
+        > [!TIP]
+        > ゴールをはっきり決めておけば認識の違いを防げます
+
+        - [ ]
+
+        <details>
+        <summary>📝 記入例（クリックして展開）</summary>
+
+        **良い例:**
+
+        - [ ] ユーザーが〇〇の画面で△△の操作ができるようになっている
+        - [ ] macOS・Windowsどちらでも正常に動作する
+        - [ ] 既存の機能に影響が出ていない
+        - [ ] テストが追加されている
+
+        </details>
+    validations:
+      required: true
+  - type: textarea
+    id: else
+    attributes:
+      label: "(Else) その他共有事項"
+      description: "共有しておけばおくほど、コミュニケーションコストを抑えられる"
+      value: |
+        > [!TIP]
+        > 共有しておけばおくほど、コミュニケーションコストを抑えられる
+    validations:
+      required: false
