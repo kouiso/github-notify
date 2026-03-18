@@ -39,6 +39,7 @@ pub fn play_notification_sound(app: &AppHandle, sound: NotificationSound) -> Res
         .path()
         .resource_dir()
         .map_err(|e| AppError::Audio(format!("Failed to get resource dir: {}", e)))?
+        .join("resources")
         .join("sounds")
         .join(sound.filename());
 
