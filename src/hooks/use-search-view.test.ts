@@ -112,7 +112,7 @@ describe('useSearchView', () => {
 
     it('fetch 実行中は isLoading が true になること', async () => {
       // 解決しないPromiseでローディング状態を保持
-      mockFetchNotifications.mockReturnValue(new Promise(() => {}));
+      mockFetchNotifications.mockReturnValue(new Promise(vi.fn()));
       const { result } = renderHook(() => useSearchView());
 
       act(() => {

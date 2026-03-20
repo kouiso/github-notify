@@ -62,7 +62,7 @@ describe('useAuth', () => {
 
   describe('初期状態', () => {
     it('マウント時に isLoading が true になる', () => {
-      mockVerifyGitHubToken.mockReturnValue(new Promise(() => {}));
+      mockVerifyGitHubToken.mockReturnValue(new Promise(vi.fn()));
       const { result } = renderHook(() => useAuth());
       expect(result.current.isLoading).toBe(true);
     });

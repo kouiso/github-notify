@@ -11,10 +11,10 @@ describe('Logger', () => {
   let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    consoleDebugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
-    consoleInfoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
-    consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    consoleDebugSpy = vi.spyOn(console, 'debug').mockImplementation(vi.fn());
+    consoleInfoSpy = vi.spyOn(console, 'info').mockImplementation(vi.fn());
+    consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(vi.fn());
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(vi.fn());
   });
 
   afterEach(() => {
