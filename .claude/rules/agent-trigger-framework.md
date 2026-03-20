@@ -1,1 +1,0 @@
-../../prompt/instructions/agent-trigger-framework.md
