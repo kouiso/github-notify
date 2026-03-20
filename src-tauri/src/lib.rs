@@ -32,6 +32,16 @@ pub fn run() {
                 }
             }
 
+            // Ensure main window is visible and focused
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.center();
+                let _ = window.set_focus();
+                log::info!("Main window shown, centered, and focused");
+            } else {
+                log::error!("Could not find main webview window!");
+            }
+
             // Start background polling if token is available
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
