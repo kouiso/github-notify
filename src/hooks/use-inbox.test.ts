@@ -98,32 +98,31 @@ describe('useInbox', () => {
   });
 
   describe('初期状態', () => {
-    it('初期状態で isLoading が true', () => {
+    beforeEach(() => {
       mockGetAppSettings.mockReturnValue(new Promise(vi.fn()));
+    });
+
+    it('初期状態で isLoading が true', () => {
       const { result } = renderHook(() => useInbox());
       expect(result.current.isLoading).toBe(true);
     });
 
     it('初期状態で items が空配列', () => {
-      mockGetAppSettings.mockReturnValue(new Promise(vi.fn()));
       const { result } = renderHook(() => useInbox());
       expect(result.current.items).toEqual([]);
     });
 
     it('初期状態で error が null', () => {
-      mockGetAppSettings.mockReturnValue(new Promise(vi.fn()));
       const { result } = renderHook(() => useInbox());
       expect(result.current.error).toBeNull();
     });
 
     it('初期状態で unreadCount が 0', () => {
-      mockGetAppSettings.mockReturnValue(new Promise(vi.fn()));
       const { result } = renderHook(() => useInbox());
       expect(result.current.unreadCount).toBe(0);
     });
 
     it('初期状態で selectedIndex が -1', () => {
-      mockGetAppSettings.mockReturnValue(new Promise(vi.fn()));
       const { result } = renderHook(() => useInbox());
       expect(result.current.selectedIndex).toBe(-1);
     });
