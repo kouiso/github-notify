@@ -59,6 +59,12 @@ export interface FilterTemplate {
 
 export type Theme = 'light' | 'dark' | 'system';
 
+export interface IssueStatusRule {
+  repositoryPattern: string;
+  requiredStatuses: string[];
+  enabled: boolean;
+}
+
 export interface CustomFilter {
   id: string;
   name: string;
@@ -69,6 +75,7 @@ export interface CustomFilter {
   repositories?: string[];
   // searchQueryが設定されている場合、通知reason絞り込みではなくGitHub GraphQL検索を使う
   searchQuery?: string;
+  issueStatusRules?: IssueStatusRule[];
 }
 
 export function isSearchView(filter: CustomFilter): boolean {

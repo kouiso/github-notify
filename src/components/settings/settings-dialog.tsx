@@ -5,6 +5,8 @@ import { cn } from '@/lib/utils/cn';
 import {
   type CustomFilter,
   type FilterTemplate,
+  type IssueStatusRule,
+  isSearchView,
   type NotificationReason,
   REASON_LABELS,
   type SoundType,
@@ -42,6 +44,11 @@ const ALL_REASONS: NotificationReason[] = [
   'comment',
   'state_change',
 ];
+
+const SEARCH_VIEW_DESCRIPTIONS: Record<string, string> = {
+  'default-needs-review': 'レビュワーに指定されていて、まだレビューしていないPR',
+  'default-my-prs': '自分が作成したオープン中のPR',
+};
 
 export function SettingsDialog(props: SettingsDialogProps) {
   return <SettingsDialogContent {...props} />;
@@ -128,6 +135,10 @@ function SettingsDialogContent({ open, onOpenChange, user, onLogout }: SettingsD
     await updateSettings({ desktopNotifications: !settings.desktopNotifications });
   };
 
+  // フィルタを通知フィルタと検索ビューに分離
+  const notificationFilters = settings.customFilters.filter((f) => !isSearchView(f));
+  const searchViewFilters = settings.customFilters.filter((f) => isSearchView(f));
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
@@ -178,25 +189,53 @@ function SettingsDialogContent({ open, onOpenChange, user, onLogout }: SettingsD
                 <ToggleSwitch enabled={settings.soundEnabled} onToggle={handleSoundToggle} />
               </div>
 
-              <div className="p-4 border-l-4 border-primary bg-primary/5 rounded">
-                <p className="font-semibold mb-1.5 text-[0.9375rem]">💡 通知の考え方</p>
-                <p className="text-[0.875rem] text-muted-foreground leading-relaxed">
-                  デフォルトでは<span className="font-semibold">全ての通知がOFF</span>です。
-                  下の「通知フィルター」で、受け取りたい通知だけを追加してください。
-                </p>
-              </div>
-
-              <div className="p-4 border rounded-lg space-y-3">
-                <div className="flex items-center justify-between">
+              {/* ── 検索ビュー設定（レビュー待ち・自分のPR） ── */}
+              {searchViewFilters.length > 0 && (
+                <div className="p-4 border rounded-lg space-y-3">
                   <div>
-                    <p className="font-semibold text-[0.9375rem]">通知フィルター</p>
+                    <p className="font-semibold text-[0.9375rem]">ダッシュボードビュー</p>
                     <p className="text-[0.8125rem] text-muted-foreground leading-relaxed">
-                      受け取りたい通知を追加してください
+                      レビュー待ち・自分のPRの表示条件
                     </p>
                   </div>
+
+                  {editingFilter && isSearchView(editingFilter) ? (
+                    <SearchViewEditor
+                      filter={editingFilter}
+                      onUpdate={setEditingFilter}
+                      onSave={handleSaveFilter}
+                      onCancel={() => {
+                        setEditingFilter(null);
+                        setIsCreating(false);
+                      }}
+                    />
+                  ) : (
+                    <div className="space-y-2">
+                      {searchViewFilters.map((filter) => (
+                        <SearchViewCard
+                          key={filter.id}
+                          filter={filter}
+                          onEdit={() => {
+                            setEditingFilter(filter);
+                            setIsCreating(false);
+                          }}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── 通知フィルター ── */}
+              <div className="p-4 border rounded-lg space-y-3">
+                <div>
+                  <p className="font-semibold text-[0.9375rem]">通知フィルター</p>
+                  <p className="text-[0.8125rem] text-muted-foreground leading-relaxed">
+                    受け取りたい通知を追加してください
+                  </p>
                 </div>
 
-                {!editingFilter && settings.customFilters.length === 0 && (
+                {!editingFilter && notificationFilters.length === 0 && (
                   <div className="space-y-2">
                     <p className="text-[0.8125rem] font-bold text-muted-foreground uppercase tracking-wide">
                       おすすめテンプレート:
@@ -284,171 +323,23 @@ function SettingsDialogContent({ open, onOpenChange, user, onLogout }: SettingsD
                   </div>
                 )}
 
-                {editingFilter ? (
-                  <div className="space-y-4 p-4 border rounded-lg">
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-medium">
-                        {isCreating ? 'フィルターを作成' : 'フィルターを編集'}
-                      </h3>
-                      <button
-                        onClick={() => {
-                          setEditingFilter(null);
-                          setIsCreating(false);
-                        }}
-                        className="text-muted-foreground hover:text-foreground"
-                      >
-                        <XIcon className="w-4 h-4" />
-                      </button>
-                    </div>
-
-                    <Input
-                      placeholder="フィルター名"
-                      value={editingFilter.name}
-                      onChange={(e) => setEditingFilter({ ...editingFilter, name: e.target.value })}
-                    />
-
-                    <div className="space-y-2">
-                      <p className="text-[0.9375rem] font-medium text-muted-foreground">
-                        通知の種類を選択:
-                      </p>
-                      <div className="grid grid-cols-2 gap-2">
-                        {ALL_REASONS.map((reason) => (
-                          <label
-                            key={reason}
-                            className="flex items-center gap-2 text-[0.9375rem] cursor-pointer"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={editingFilter.reasons.includes(reason)}
-                              onChange={() => handleToggleReason(reason)}
-                              className="rounded"
-                            />
-                            <span>{REASON_LABELS[reason]}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <p className="text-[0.9375rem] font-medium text-muted-foreground">
-                        リポジトリで絞り込み（オプション）:
-                      </p>
-                      <textarea
-                        placeholder="owner/repo（1行に1つ）"
-                        value={(editingFilter.repositories || []).join('\n')}
-                        onChange={(e) => {
-                          const repos = e.target.value
-                            .split('\n')
-                            .map((r) => r.trim())
-                            .filter((r) => r.length > 0);
-                          setEditingFilter({ ...editingFilter, repositories: repos });
-                        }}
-                        className="w-full min-h-[80px] px-3 py-2 text-[0.9375rem] border rounded-md bg-background resize-none"
-                      />
-                      <p className="text-[0.8125rem] text-muted-foreground">
-                        空の場合はすべてのリポジトリが対象になります
-                      </p>
-                    </div>
-
-                    <label className="flex items-center gap-2 text-[0.9375rem] cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={editingFilter.enableDesktopNotification}
-                        onChange={() =>
-                          setEditingFilter({
-                            ...editingFilter,
-                            enableDesktopNotification: !editingFilter.enableDesktopNotification,
-                          })
-                        }
-                        className="rounded"
-                      />
-                      <span>デスクトップ通知を有効にする</span>
-                      {editingFilter.enableDesktopNotification && (
-                        <span className="text-[0.75rem] bg-primary/20 text-primary px-1.5 py-0.5 rounded font-semibold">
-                          🔔
-                        </span>
-                      )}
-                    </label>
-
-                    <label className="flex items-center gap-2 text-[0.9375rem] cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={editingFilter.enableSound}
-                        onChange={() =>
-                          setEditingFilter({
-                            ...editingFilter,
-                            enableSound: !editingFilter.enableSound,
-                          })
-                        }
-                        className="rounded"
-                        disabled={!editingFilter.enableDesktopNotification}
-                      />
-                      <span
-                        className={
-                          !editingFilter.enableDesktopNotification ? 'text-muted-foreground' : ''
-                        }
-                      >
-                        通知音を鳴らす
-                      </span>
-                      {editingFilter.enableSound && editingFilter.enableDesktopNotification && (
-                        <span className="text-[0.75rem] bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 px-1.5 py-0.5 rounded font-semibold">
-                          🔊
-                        </span>
-                      )}
-                    </label>
-
-                    {editingFilter.enableSound && editingFilter.enableDesktopNotification && (
-                      <div className="ml-6 space-y-1">
-                        <p className="text-[0.8125rem] text-muted-foreground font-medium">
-                          サウンドの種類:
-                        </p>
-                        <div className="flex gap-2">
-                          {(
-                            [
-                              { value: 'default', label: '標準' },
-                              { value: 'soft', label: 'ソフト' },
-                              { value: 'chime', label: 'チャイム' },
-                            ] satisfies { value: SoundType; label: string }[]
-                          ).map((option) => (
-                            <button
-                              key={option.value}
-                              onClick={() =>
-                                setEditingFilter({ ...editingFilter, soundType: option.value })
-                              }
-                              className={cn(
-                                'px-2 py-1 text-[0.8125rem] rounded border',
-                                editingFilter.soundType === option.value
-                                  ? 'border-primary bg-primary/10'
-                                  : 'border-transparent hover:bg-accent',
-                              )}
-                            >
-                              {option.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="flex gap-2">
-                      <Button onClick={handleSaveFilter} className="flex-1">
-                        保存
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        onClick={() => {
-                          setEditingFilter(null);
-                          setIsCreating(false);
-                        }}
-                      >
-                        キャンセル
-                      </Button>
-                    </div>
-                  </div>
+                {editingFilter && !isSearchView(editingFilter) ? (
+                  <NotificationFilterEditor
+                    filter={editingFilter}
+                    isCreating={isCreating}
+                    onUpdate={setEditingFilter}
+                    onSave={handleSaveFilter}
+                    onCancel={() => {
+                      setEditingFilter(null);
+                      setIsCreating(false);
+                    }}
+                    onToggleReason={handleToggleReason}
+                  />
                 ) : (
                   <>
-                    {settings.customFilters.length > 0 && (
+                    {notificationFilters.length > 0 && (
                       <div className="space-y-2">
-                        {settings.customFilters.map((filter) => (
+                        {notificationFilters.map((filter) => (
                           <div key={filter.id} className="p-3 border rounded-lg hover:bg-muted/50">
                             <div className="flex items-start justify-between gap-2">
                               <div className="flex-1 min-w-0">
@@ -467,7 +358,7 @@ function SettingsDialogContent({ open, onOpenChange, user, onLogout }: SettingsD
                                     </span>
                                   )}
                                 </div>
-                                <div className="flex flex-wrap gap-1 mb-1">
+                                <div className="flex flex-wrap gap-1">
                                   {filter.reasons.map((reason) => (
                                     <span
                                       key={reason}
@@ -478,7 +369,7 @@ function SettingsDialogContent({ open, onOpenChange, user, onLogout }: SettingsD
                                   ))}
                                 </div>
                                 {filter.repositories && filter.repositories.length > 0 && (
-                                  <div className="text-[0.8125rem] text-muted-foreground font-medium">
+                                  <div className="text-[0.8125rem] text-muted-foreground font-medium mt-1">
                                     📦 {filter.repositories.join(', ')}
                                   </div>
                                 )}
@@ -581,6 +472,349 @@ function SettingsDialogContent({ open, onOpenChange, user, onLogout }: SettingsD
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/* ── 検索ビュー（レビュー待ち・自分のPR）のカード表示 ── */
+function SearchViewCard({ filter, onEdit }: { filter: CustomFilter; onEdit: () => void }) {
+  const description = SEARCH_VIEW_DESCRIPTIONS[filter.id];
+  const activeRules = filter.issueStatusRules?.filter((r) => r.enabled) || [];
+
+  return (
+    <div className="p-3 border rounded-lg hover:bg-muted/50">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-[0.9375rem]">{filter.name}</p>
+          {description && (
+            <p className="text-[0.8125rem] text-muted-foreground mt-0.5">{description}</p>
+          )}
+          {activeRules.length > 0 && (
+            <div className="mt-2 space-y-1">
+              {activeRules.map((rule) => (
+                <div
+                  key={rule.repositoryPattern}
+                  className="flex items-center gap-1.5 text-[0.8125rem] text-muted-foreground"
+                >
+                  <span className="text-green-500">●</span>
+                  <span className="font-medium">{rule.repositoryPattern}</span>
+                  <span>→</span>
+                  <span>ステータスが「{rule.requiredStatuses.join('」「')}」のみ表示</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {activeRules.length === 0 && filter.id === 'default-needs-review' && (
+            <p className="text-[0.8125rem] text-amber-500 mt-1">
+              組織別のレビュー対象条件を設定できます
+            </p>
+          )}
+        </div>
+        <Button variant="ghost" size="sm" onClick={onEdit} className="flex-shrink-0">
+          設定
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/* ── 検索ビューの編集フォーム ── */
+function SearchViewEditor({
+  filter,
+  onUpdate,
+  onSave,
+  onCancel,
+}: {
+  filter: CustomFilter;
+  onUpdate: (filter: CustomFilter) => void;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  const description = SEARCH_VIEW_DESCRIPTIONS[filter.id];
+
+  return (
+    <div className="space-y-4 p-4 border-2 border-primary/30 rounded-lg bg-primary/5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="font-semibold text-[0.9375rem]">{filter.name} の設定</h3>
+          {description && (
+            <p className="text-[0.8125rem] text-muted-foreground mt-0.5">{description}</p>
+          )}
+        </div>
+        <button onClick={onCancel} className="text-muted-foreground hover:text-foreground">
+          <XIcon className="w-4 h-4" />
+        </button>
+      </div>
+
+      {filter.id === 'default-needs-review' && (
+        <div className="space-y-3">
+          <div className="p-3 bg-muted rounded-lg">
+            <p className="text-[0.875rem] leading-relaxed">
+              特定の組織では、GitHub Projectのステータスでレビュー対象を判定できます。
+              ルールを追加すると、そのリポジトリのPRは紐づくissueのステータスが条件に合う場合のみ表示されます。
+            </p>
+            <p className="text-[0.8125rem] text-muted-foreground mt-1.5">
+              ルール未設定の組織のPRは、通常通りレビュワーに割り当てられたものが全て表示されます。
+            </p>
+          </div>
+
+          <IssueStatusRulesEditor
+            rules={filter.issueStatusRules || []}
+            onChange={(rules) => onUpdate({ ...filter, issueStatusRules: rules })}
+          />
+        </div>
+      )}
+
+      <div className="flex gap-2">
+        <Button onClick={onSave} className="flex-1">
+          保存
+        </Button>
+        <Button variant="ghost" onClick={onCancel}>
+          キャンセル
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/* ── 通知フィルターの編集フォーム ── */
+function NotificationFilterEditor({
+  filter,
+  isCreating,
+  onUpdate,
+  onSave,
+  onCancel,
+  onToggleReason,
+}: {
+  filter: CustomFilter;
+  isCreating: boolean;
+  onUpdate: (filter: CustomFilter) => void;
+  onSave: () => void;
+  onCancel: () => void;
+  onToggleReason: (reason: NotificationReason) => void;
+}) {
+  return (
+    <div className="space-y-4 p-4 border rounded-lg">
+      <div className="flex items-center justify-between">
+        <h3 className="font-medium">{isCreating ? 'フィルターを作成' : 'フィルターを編集'}</h3>
+        <button onClick={onCancel} className="text-muted-foreground hover:text-foreground">
+          <XIcon className="w-4 h-4" />
+        </button>
+      </div>
+
+      <Input
+        placeholder="フィルター名"
+        value={filter.name}
+        onChange={(e) => onUpdate({ ...filter, name: e.target.value })}
+      />
+
+      <div className="space-y-2">
+        <p className="text-[0.9375rem] font-medium text-muted-foreground">通知の種類を選択:</p>
+        <div className="grid grid-cols-2 gap-2">
+          {ALL_REASONS.map((reason) => (
+            <label key={reason} className="flex items-center gap-2 text-[0.9375rem] cursor-pointer">
+              <input
+                type="checkbox"
+                checked={filter.reasons.includes(reason)}
+                onChange={() => onToggleReason(reason)}
+                className="rounded"
+              />
+              <span>{REASON_LABELS[reason]}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <p className="text-[0.9375rem] font-medium text-muted-foreground">
+          リポジトリで絞り込み（オプション）:
+        </p>
+        <textarea
+          placeholder="owner/repo（1行に1つ）"
+          value={(filter.repositories || []).join('\n')}
+          onChange={(e) => {
+            const repos = e.target.value
+              .split('\n')
+              .map((r) => r.trim())
+              .filter((r) => r.length > 0);
+            onUpdate({ ...filter, repositories: repos });
+          }}
+          className="w-full min-h-[80px] px-3 py-2 text-[0.9375rem] border rounded-md bg-background resize-none"
+        />
+        <p className="text-[0.8125rem] text-muted-foreground">
+          空の場合はすべてのリポジトリが対象になります
+        </p>
+      </div>
+
+      <label className="flex items-center gap-2 text-[0.9375rem] cursor-pointer">
+        <input
+          type="checkbox"
+          checked={filter.enableDesktopNotification}
+          onChange={() =>
+            onUpdate({
+              ...filter,
+              enableDesktopNotification: !filter.enableDesktopNotification,
+            })
+          }
+          className="rounded"
+        />
+        <span>デスクトップ通知を有効にする</span>
+        {filter.enableDesktopNotification && (
+          <span className="text-[0.75rem] bg-primary/20 text-primary px-1.5 py-0.5 rounded font-semibold">
+            🔔
+          </span>
+        )}
+      </label>
+
+      <label className="flex items-center gap-2 text-[0.9375rem] cursor-pointer">
+        <input
+          type="checkbox"
+          checked={filter.enableSound}
+          onChange={() =>
+            onUpdate({
+              ...filter,
+              enableSound: !filter.enableSound,
+            })
+          }
+          className="rounded"
+          disabled={!filter.enableDesktopNotification}
+        />
+        <span className={!filter.enableDesktopNotification ? 'text-muted-foreground' : ''}>
+          通知音を鳴らす
+        </span>
+        {filter.enableSound && filter.enableDesktopNotification && (
+          <span className="text-[0.75rem] bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 px-1.5 py-0.5 rounded font-semibold">
+            🔊
+          </span>
+        )}
+      </label>
+
+      {filter.enableSound && filter.enableDesktopNotification && (
+        <div className="ml-6 space-y-1">
+          <p className="text-[0.8125rem] text-muted-foreground font-medium">サウンドの種類:</p>
+          <div className="flex gap-2">
+            {(
+              [
+                { value: 'default', label: '標準' },
+                { value: 'soft', label: 'ソフト' },
+                { value: 'chime', label: 'チャイム' },
+              ] satisfies { value: SoundType; label: string }[]
+            ).map((option) => (
+              <button
+                key={option.value}
+                onClick={() => onUpdate({ ...filter, soundType: option.value })}
+                className={cn(
+                  'px-2 py-1 text-[0.8125rem] rounded border',
+                  filter.soundType === option.value
+                    ? 'border-primary bg-primary/10'
+                    : 'border-transparent hover:bg-accent',
+                )}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="flex gap-2">
+        <Button onClick={onSave} className="flex-1">
+          保存
+        </Button>
+        <Button variant="ghost" onClick={onCancel}>
+          キャンセル
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/* ── 組織別レビュー対象ルールのエディタ ── */
+function IssueStatusRulesEditor({
+  rules,
+  onChange,
+}: {
+  rules: IssueStatusRule[];
+  onChange: (rules: IssueStatusRule[]) => void;
+}) {
+  const handleAddRule = () => {
+    onChange([...rules, { repositoryPattern: '', requiredStatuses: [], enabled: true }]);
+  };
+
+  const handleUpdateRule = (index: number, updated: Partial<IssueStatusRule>) => {
+    const newRules = rules.map((r, i) => (i === index ? { ...r, ...updated } : r));
+    onChange(newRules);
+  };
+
+  const handleDeleteRule = (index: number) => {
+    onChange(rules.filter((_, i) => i !== index));
+  };
+
+  return (
+    <div className="space-y-2">
+      <p className="text-[0.9375rem] font-medium">組織別レビュー対象ルール</p>
+
+      {rules.map((rule, index) => (
+        <div
+          key={rule.repositoryPattern || `new-rule-${index}`}
+          className="p-3 border rounded-md space-y-2 bg-muted/30"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <Input
+              placeholder="getozinc/mypappy-*（ワイルドカード対応）"
+              value={rule.repositoryPattern}
+              onChange={(e) => handleUpdateRule(index, { repositoryPattern: e.target.value })}
+              className="flex-1"
+            />
+            <ToggleSwitch
+              enabled={rule.enabled}
+              onToggle={() => handleUpdateRule(index, { enabled: !rule.enabled })}
+            />
+            <button
+              onClick={() => handleDeleteRule(index)}
+              className="p-1 text-muted-foreground hover:text-destructive transition-colors"
+              title="ルールを削除"
+            >
+              <TrashIcon className="w-4 h-4" />
+            </button>
+          </div>
+          <Input
+            placeholder="レビュー対象のステータス名（例: コードレビュー）"
+            value={rule.requiredStatuses.join(', ')}
+            onChange={(e) =>
+              handleUpdateRule(index, {
+                requiredStatuses: e.target.value
+                  .split(',')
+                  .map((s) => s.trim())
+                  .filter((s) => s.length > 0),
+              })
+            }
+          />
+        </div>
+      ))}
+
+      <Button variant="outline" size="sm" onClick={handleAddRule} className="w-full">
+        + ルールを追加
+      </Button>
+    </div>
+  );
+}
+
+function TrashIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d="M3 6h18" />
+      <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+      <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+    </svg>
   );
 }
 

@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import * as commands from '@/lib/tauri/commands';
 import { logger } from '@/lib/utils/logger';
 import type { NotificationItem } from '@/types';
+import type { IssueStatusRule } from '@/types/settings';
 
 interface SearchViewState {
   items: NotificationItem[];
@@ -18,12 +19,14 @@ export function useSearchView() {
     lastUpdated: null,
   });
   const lastQueryRef = useRef<string | null>(null);
+  const lastRulesRef = useRef<IssueStatusRule[] | undefined>(undefined);
 
-  const fetch = useCallback(async (query: string) => {
+  const fetch = useCallback(async (query: string, issueStatusRules?: IssueStatusRule[]) => {
     lastQueryRef.current = query;
+    lastRulesRef.current = issueStatusRules;
     setState((prev) => ({ ...prev, isLoading: true, error: null }));
     try {
-      const items = await commands.fetchNotifications(query);
+      const items = await commands.fetchNotifications(query, issueStatusRules);
       // 後発のクエリで上書きされた場合は古い結果を反映しない
       if (lastQueryRef.current === query) {
         setState({
@@ -46,7 +49,7 @@ export function useSearchView() {
 
   const refresh = useCallback(() => {
     if (lastQueryRef.current) {
-      fetch(lastQueryRef.current);
+      fetch(lastQueryRef.current, lastRulesRef.current);
     }
   }, [fetch]);
 

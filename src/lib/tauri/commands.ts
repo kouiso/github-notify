@@ -6,6 +6,7 @@ import type {
   NotificationItem,
   TokenVerification,
 } from '@/types';
+import type { IssueStatusRule } from '@/types/settings';
 
 export async function startDeviceFlow(): Promise<DeviceFlowInfo> {
   return invoke<DeviceFlowInfo>('start_device_flow');
@@ -27,8 +28,14 @@ export async function clearGitHubToken(): Promise<void> {
   return invoke<void>('clear_github_token');
 }
 
-export async function fetchNotifications(query: string): Promise<NotificationItem[]> {
-  return invoke<NotificationItem[]>('fetch_notifications', { query });
+export async function fetchNotifications(
+  query: string,
+  issueStatusRules?: IssueStatusRule[],
+): Promise<NotificationItem[]> {
+  return invoke<NotificationItem[]>('fetch_notifications', {
+    query,
+    issueStatusRules: issueStatusRules ?? null,
+  });
 }
 
 export async function markAsRead(itemId: string): Promise<void> {

@@ -76,7 +76,10 @@ export function Dashboard({ filters, onRefresh, userLogin }: DashboardProps) {
 
   useEffect(() => {
     if (needsReviewFilter && isSearchView(needsReviewFilter) && needsReviewFilter.searchQuery) {
-      fetchNeedsReview(buildQuery(needsReviewFilter.searchQuery));
+      fetchNeedsReview(
+        buildQuery(needsReviewFilter.searchQuery),
+        needsReviewFilter.issueStatusRules,
+      );
     }
   }, [needsReviewFilter, buildQuery, fetchNeedsReview]);
 
