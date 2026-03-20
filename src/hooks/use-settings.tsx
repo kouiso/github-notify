@@ -1,15 +1,8 @@
-import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { getAppSettings, saveAppSettings } from '@/lib/tauri/commands';
 import { logger } from '@/lib/utils/logger';
 import { type AppSettings, DEFAULT_SETTINGS, migrateDefaultFilters } from '@/types';
-
-interface SettingsContextValue {
-  settings: AppSettings;
-  isLoading: boolean;
-  updateSettings: (updates: Partial<AppSettings>) => Promise<void>;
-}
-
-const SettingsContext = createContext<SettingsContextValue | null>(null);
+import { SettingsContext } from './settings-context';
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
@@ -65,12 +58,4 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       {children}
     </SettingsContext.Provider>
   );
-}
-
-export function useSettings() {
-  const context = useContext(SettingsContext);
-  if (!context) {
-    throw new Error('useSettings must be used within a SettingsProvider');
-  }
-  return context;
 }

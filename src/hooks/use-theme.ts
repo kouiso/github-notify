@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import type { Theme } from '@/types';
-import { useSettings } from './use-settings';
+import { useSettings } from './use-settings-hook';
 
 function prefersDark(): boolean {
   if (typeof window === 'undefined') return false;

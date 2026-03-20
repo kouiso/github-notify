@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mockUpdateSettings = vi.fn().mockResolvedValue(undefined);
 let mockTheme: 'light' | 'dark' | 'system' = 'light';
 
-vi.mock('@/hooks/use-settings', () => ({
+vi.mock('@/hooks/use-settings-hook', () => ({
   useSettings: () => ({
     settings: { theme: mockTheme },
     updateSettings: mockUpdateSettings,

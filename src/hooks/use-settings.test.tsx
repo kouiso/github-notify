@@ -23,7 +23,8 @@ vi.mock('@/lib/utils/logger', () => ({
 }));
 
 // vi.mock は巻き上げされるため、インポートはモック宣言の後に置く
-import { SettingsProvider, useSettings } from '@/hooks/use-settings';
+import { SettingsProvider } from '@/hooks/use-settings';
+import { useSettings } from '@/hooks/use-settings-hook';
 import { DEFAULT_INITIAL_FILTERS, DEFAULT_SETTINGS } from '@/types';
 
 // SettingsProvider をラッパーとして提供するヘルパー
