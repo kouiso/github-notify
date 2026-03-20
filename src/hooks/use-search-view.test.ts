@@ -1,8 +1,10 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NotificationItem } from '@/types';
+import type { IssueStatusRule } from '@/types/settings';
 
-const mockFetchNotifications = vi.fn<(query: string) => Promise<NotificationItem[]>>();
+const mockFetchNotifications =
+  vi.fn<(query: string, issueStatusRules?: IssueStatusRule[]) => Promise<NotificationItem[]>>();
 const mockMarkAsRead = vi.fn<(itemId: string) => Promise<void>>();
 const mockMarkAllAsRead = vi.fn<(itemIds: string[]) => Promise<void>>();
 
@@ -104,7 +106,7 @@ describe('useSearchView', () => {
         await result.current.fetch('is:open');
       });
 
-      expect(mockFetchNotifications).toHaveBeenCalledWith('is:open');
+      expect(mockFetchNotifications).toHaveBeenCalledWith('is:open', undefined);
       expect(mockFetchNotifications).toHaveBeenCalledTimes(1);
     });
 
@@ -242,7 +244,7 @@ describe('useSearchView', () => {
       });
 
       expect(mockFetchNotifications).toHaveBeenCalledTimes(2);
-      expect(mockFetchNotifications).toHaveBeenLastCalledWith('is:open label:bug');
+      expect(mockFetchNotifications).toHaveBeenLastCalledWith('is:open label:bug', undefined);
     });
 
     it('fetch を一度も呼んでいない場合に refresh が何もしないこと', async () => {
@@ -336,6 +338,55 @@ describe('useSearchView', () => {
         expect(result.current.items).toEqual(secondItems);
         expect(result.current.error).toBeNull();
       });
+    });
+  });
+
+  describe('issueStatusRules', () => {
+    const mockRules: IssueStatusRule[] = [
+      {
+        repositoryPattern: 'getozinc/mypappy-*',
+        requiredStatuses: ['コードレビュー'],
+        enabled: true,
+      },
+    ];
+
+    it('fetch()にissueStatusRulesを渡した場合にfetchNotificationsに伝播されること', async () => {
+      mockFetchNotifications.mockResolvedValue(mockItems);
+      const { result } = renderHook(() => useSearchView());
+
+      await act(async () => {
+        await result.current.fetch('is:open', mockRules);
+      });
+
+      expect(mockFetchNotifications).toHaveBeenCalledWith('is:open', mockRules);
+    });
+
+    it('refresh()で前回のissueStatusRulesが再利用されること', async () => {
+      mockFetchNotifications.mockResolvedValue(mockItems);
+      const { result } = renderHook(() => useSearchView());
+
+      await act(async () => {
+        await result.current.fetch('is:open', mockRules);
+      });
+
+      await act(async () => {
+        await result.current.refresh();
+      });
+
+      expect(mockFetchNotifications).toHaveBeenCalledTimes(2);
+      expect(mockFetchNotifications).toHaveBeenLastCalledWith('is:open', mockRules);
+    });
+
+    it('issueStatusRulesがundefinedの場合でも正常動作すること', async () => {
+      mockFetchNotifications.mockResolvedValue(mockItems);
+      const { result } = renderHook(() => useSearchView());
+
+      await act(async () => {
+        await result.current.fetch('is:open');
+      });
+
+      expect(mockFetchNotifications).toHaveBeenCalledWith('is:open', undefined);
+      expect(result.current.items).toEqual(mockItems);
     });
   });
 

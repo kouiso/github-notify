@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   type CustomFilter,
   DEFAULT_INITIAL_FILTERS,
+  type IssueStatusRule,
   isSearchView,
   migrateDefaultFilters,
 } from './settings';
@@ -278,5 +279,95 @@ describe('migrateDefaultFilters', () => {
       const result = migrateDefaultFilters([]);
       expect(typeof result.changed).toBe('boolean');
     });
+  });
+});
+
+describe('IssueStatusRule', () => {
+  it('CustomFilterにissueStatusRulesフィールドが設定できること', () => {
+    const filter = makeFilter({
+      id: 'test-filter',
+      name: 'テスト',
+      searchQuery: 'is:open is:pr review-requested:@me',
+      issueStatusRules: [
+        {
+          repositoryPattern: 'getozinc/mypappy-*',
+          requiredStatuses: ['コードレビュー'],
+          enabled: true,
+        },
+      ],
+    });
+    expect(filter.issueStatusRules).toHaveLength(1);
+    expect(filter.issueStatusRules![0].repositoryPattern).toBe('getozinc/mypappy-*');
+    expect(filter.issueStatusRules![0].requiredStatuses).toEqual(['コードレビュー']);
+    expect(filter.issueStatusRules![0].enabled).toBe(true);
+  });
+
+  it('issueStatusRulesが未設定の場合undefinedであること', () => {
+    const filter = makeFilter({ id: 'no-rules', name: 'ルールなし' });
+    expect(filter.issueStatusRules).toBeUndefined();
+  });
+
+  it('複数ルールを設定できること', () => {
+    const rules: IssueStatusRule[] = [
+      { repositoryPattern: 'org-a/*', requiredStatuses: ['Review'], enabled: true },
+      { repositoryPattern: 'org-b/*', requiredStatuses: ['QA', 'Testing'], enabled: false },
+    ];
+    const filter = makeFilter({
+      id: 'multi',
+      name: 'マルチルール',
+      searchQuery: 'is:open is:pr',
+      issueStatusRules: rules,
+    });
+    expect(filter.issueStatusRules).toHaveLength(2);
+    expect(filter.issueStatusRules![1].enabled).toBe(false);
+    expect(filter.issueStatusRules![1].requiredStatuses).toEqual(['QA', 'Testing']);
+  });
+});
+
+describe('migrateDefaultFilters — issueStatusRules保持', () => {
+  it('マイグレーション時にissueStatusRulesが保持されること', () => {
+    const filtersWithRules: CustomFilter[] = [
+      {
+        ...DEFAULT_INITIAL_FILTERS[0],
+      },
+      {
+        ...DEFAULT_INITIAL_FILTERS[1],
+        issueStatusRules: [
+          { repositoryPattern: 'getozinc/*', requiredStatuses: ['コードレビュー'], enabled: true },
+        ],
+      },
+      {
+        ...DEFAULT_INITIAL_FILTERS[2],
+      },
+    ];
+    const { filters } = migrateDefaultFilters(filtersWithRules);
+    const needsReview = filters.find((f) => f.id === 'default-needs-review');
+    expect(needsReview?.issueStatusRules).toHaveLength(1);
+    expect(needsReview?.issueStatusRules?.[0].repositoryPattern).toBe('getozinc/*');
+  });
+});
+
+describe('isSearchView — issueStatusRules付きフィルタ', () => {
+  it('searchQuery付きかつissueStatusRules付きのフィルタをsearch viewとして判定すること', () => {
+    const filter = makeFilter({
+      id: 'with-rules',
+      name: 'ルール付き',
+      searchQuery: 'is:open is:pr review-requested:@me',
+      issueStatusRules: [
+        { repositoryPattern: 'org/*', requiredStatuses: ['Review'], enabled: true },
+      ],
+    });
+    expect(isSearchView(filter)).toBe(true);
+  });
+
+  it('searchQueryなしでissueStatusRulesのみのフィルタはsearch viewではないこと', () => {
+    const filter = makeFilter({
+      id: 'only-rules',
+      name: 'ルールのみ',
+      issueStatusRules: [
+        { repositoryPattern: 'org/*', requiredStatuses: ['Review'], enabled: true },
+      ],
+    });
+    expect(isSearchView(filter)).toBe(false);
   });
 });

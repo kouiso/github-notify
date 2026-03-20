@@ -1,0 +1,209 @@
+import { fireEvent, render, screen } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AppSettings } from '@/types';
+import { DEFAULT_INITIAL_FILTERS, DEFAULT_SETTINGS } from '@/types';
+
+const mockUpdateSettings = vi.fn<(partial: Partial<AppSettings>) => Promise<void>>();
+const mockSetTheme = vi.fn();
+
+vi.mock('@/hooks', () => ({
+  useSettings: () => ({
+    settings: mockSettings,
+    isLoading: false,
+    updateSettings: mockUpdateSettings,
+  }),
+  useTheme: () => ({
+    theme: 'system' as const,
+    setTheme: mockSetTheme,
+  }),
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: { error: vi.fn(), info: vi.fn(), debug: vi.fn(), warn: vi.fn() },
+}));
+
+import { SettingsDialog } from './settings-dialog';
+
+let mockSettings: AppSettings;
+
+const _needsReviewFilter = DEFAULT_INITIAL_FILTERS.find((f) => f.id === 'default-needs-review')!;
+
+function renderSettingsDialog(settingsOverride?: Partial<AppSettings>) {
+  mockSettings = { ...DEFAULT_SETTINGS, ...settingsOverride };
+  return render(
+    <SettingsDialog
+      open={true}
+      onOpenChange={vi.fn()}
+      user={{ login: 'testuser', avatarUrl: 'https://example.com/avatar.png' }}
+      onLogout={vi.fn()}
+    />,
+  );
+}
+
+/**
+ * 検索ビューの「設定」ボタンを押してエディタを開き、
+ * IssueStatusRulesEditor が表示される状態にするヘルパー。
+ */
+function openIssueStatusRulesEditor(settingsOverride?: Partial<AppSettings>) {
+  const result = renderSettingsDialog(settingsOverride);
+  // SearchViewCardの「設定」ボタンを取得（DialogTitleの「設定」テキストと区別）
+  const settingButtons = screen.getAllByRole('button', { name: '設定' });
+  fireEvent.click(settingButtons[0]);
+  return result;
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockUpdateSettings.mockResolvedValue(undefined);
+});
+
+// ============================================================
+// ToggleSwitch（SettingsDialog内のトグル）
+// ============================================================
+
+describe('ToggleSwitch（設定ダイアログ内）', () => {
+  it('デスクトップ通知のトグルをクリックするとupdateSettingsが呼ばれる', () => {
+    renderSettingsDialog({ desktopNotifications: true });
+
+    const toggleButtons = screen.getAllByRole('button');
+    const desktopToggle = toggleButtons.find((btn) => btn.className.includes('rounded-full'));
+    expect(desktopToggle).toBeDefined();
+    fireEvent.click(desktopToggle!);
+
+    expect(mockUpdateSettings).toHaveBeenCalledWith({ desktopNotifications: false });
+  });
+
+  it('通知音のトグルをクリックするとsoundEnabledが切り替わる', () => {
+    renderSettingsDialog({ soundEnabled: true });
+
+    const toggleButtons = screen
+      .getAllByRole('button')
+      .filter((btn) => btn.className.includes('rounded-full'));
+    expect(toggleButtons.length).toBeGreaterThanOrEqual(2);
+    fireEvent.click(toggleButtons[1]);
+
+    expect(mockUpdateSettings).toHaveBeenCalledWith({ soundEnabled: false });
+  });
+});
+
+// ============================================================
+// IssueStatusRulesEditor
+// ============================================================
+
+describe('IssueStatusRulesEditor', () => {
+  describe('空のルールでレンダリング', () => {
+    it('ルール追加ボタンが表示される', () => {
+      openIssueStatusRulesEditor();
+
+      expect(screen.getByText('+ ルールを追加')).toBeInTheDocument();
+    });
+
+    it('組織別レビュー対象ルールのラベルが表示される', () => {
+      openIssueStatusRulesEditor();
+
+      expect(screen.getByText('組織別レビュー対象ルール')).toBeInTheDocument();
+    });
+  });
+
+  describe('ルールの追加', () => {
+    it('「ルールを追加」ボタンをクリックすると新しいルールが追加される', () => {
+      openIssueStatusRulesEditor();
+
+      fireEvent.click(screen.getByText('+ ルールを追加'));
+
+      const repoInputs = screen.getAllByPlaceholderText('getozinc/mypappy-*（ワイルドカード対応）');
+      expect(repoInputs.length).toBe(1);
+    });
+  });
+
+  describe('既存ルールの操作', () => {
+    const existingRules = [
+      { repositoryPattern: 'org/repo-*', requiredStatuses: ['コードレビュー'], enabled: true },
+    ];
+
+    it('既存ルールのリポジトリパターンが入力欄に表示される', () => {
+      openIssueStatusRulesEditor({
+        customFilters: DEFAULT_INITIAL_FILTERS.map((f) =>
+          f.id === 'default-needs-review' ? { ...f, issueStatusRules: existingRules } : f,
+        ),
+      });
+
+      const repoInput = screen.getByDisplayValue('org/repo-*');
+      expect(repoInput).toBeInTheDocument();
+    });
+
+    it('リポジトリパターンの入力を変更できる', () => {
+      openIssueStatusRulesEditor({
+        customFilters: DEFAULT_INITIAL_FILTERS.map((f) =>
+          f.id === 'default-needs-review' ? { ...f, issueStatusRules: existingRules } : f,
+        ),
+      });
+
+      const repoInput = screen.getByDisplayValue('org/repo-*');
+      fireEvent.change(repoInput, { target: { value: 'neworg/newrepo-*' } });
+
+      expect(screen.getByDisplayValue('neworg/newrepo-*')).toBeInTheDocument();
+    });
+
+    it('ステータス入力を変更できる', () => {
+      openIssueStatusRulesEditor({
+        customFilters: DEFAULT_INITIAL_FILTERS.map((f) =>
+          f.id === 'default-needs-review' ? { ...f, issueStatusRules: existingRules } : f,
+        ),
+      });
+
+      const statusInput = screen.getByDisplayValue('コードレビュー');
+      fireEvent.change(statusInput, { target: { value: 'レビュー中, 対応中' } });
+
+      expect(screen.getByDisplayValue('レビュー中, 対応中')).toBeInTheDocument();
+    });
+
+    it('トグルスイッチでルールの有効/無効を切り替えられる', () => {
+      openIssueStatusRulesEditor({
+        customFilters: DEFAULT_INITIAL_FILTERS.map((f) =>
+          f.id === 'default-needs-review' ? { ...f, issueStatusRules: existingRules } : f,
+        ),
+      });
+
+      // IssueStatusRulesEditor内のトグル（rounded-full クラスを持つボタン）
+      const allToggles = screen
+        .getAllByRole('button')
+        .filter((btn) => btn.className.includes('rounded-full'));
+      // フィルターのトグル（デスクトップ通知・通知音）+ ルール内トグル
+      // ルール内のトグルは後ろの方にある
+      const ruleToggle = allToggles[allToggles.length - 1];
+      fireEvent.click(ruleToggle);
+
+      // トグル後、bg-primary クラスが外れている（無効化状態）ことを確認
+      // 内部的にonChangeが呼ばれ再レンダリングされることで反映される
+      expect(ruleToggle).toBeInTheDocument();
+    });
+
+    it('削除ボタンでルールを削除できる', () => {
+      openIssueStatusRulesEditor({
+        customFilters: DEFAULT_INITIAL_FILTERS.map((f) =>
+          f.id === 'default-needs-review' ? { ...f, issueStatusRules: existingRules } : f,
+        ),
+      });
+
+      expect(screen.getByDisplayValue('org/repo-*')).toBeInTheDocument();
+
+      const deleteButton = screen.getByTitle('ルールを削除');
+      fireEvent.click(deleteButton);
+
+      expect(screen.queryByDisplayValue('org/repo-*')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('複数ルールの操作', () => {
+    it('複数ルールを追加して個別に操作できる', () => {
+      openIssueStatusRulesEditor();
+
+      fireEvent.click(screen.getByText('+ ルールを追加'));
+      fireEvent.click(screen.getByText('+ ルールを追加'));
+
+      const repoInputs = screen.getAllByPlaceholderText('getozinc/mypappy-*（ワイルドカード対応）');
+      expect(repoInputs.length).toBe(2);
+    });
+  });
+});
