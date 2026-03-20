@@ -1,12 +1,14 @@
+use std::collections::HashMap;
+
 use reqwest::Client;
 use serde_json::json;
 
 use crate::error::AppError;
 
-use super::queries::{SEARCH_QUERY, VIEWER_QUERY};
+use super::queries::{PR_LINKED_ISSUES_STATUS_QUERY, SEARCH_QUERY, VIEWER_QUERY};
 use super::types::{
     AccessTokenResponse, DeviceCodeResponse, GitHubNotification, InboxItem, InboxResponse,
-    NotificationItem, SearchResponse, TokenVerification,
+    LinkedIssueNode, LinkedIssuesResponse, NotificationItem, SearchResponse, TokenVerification,
 };
 
 const GITHUB_API_BASE: &str = "https://api.github.com";
@@ -14,9 +16,7 @@ const GITHUB_GRAPHQL_API: &str = "https://api.github.com/graphql";
 const GITHUB_DEVICE_CODE_URL: &str = "https://github.com/login/device/code";
 const GITHUB_ACCESS_TOKEN_URL: &str = "https://github.com/login/oauth/access_token";
 
-// GitHub OAuth App Client ID for device flow
-// You need to create your own OAuth App at https://github.com/settings/developers
-const GITHUB_CLIENT_ID: &str = "Ov23liDGotr4YQHM5tzW";
+use super::secrets::GITHUB_CLIENT_ID;
 
 pub struct GitHubClient {
     client: Client,
@@ -184,6 +184,51 @@ impl GitHubClient {
             .collect();
 
         Ok(items)
+    }
+
+    /// 複数PRの紐づきissueとそのProjects V2 Statusを一括取得する。
+    /// 戻り値: PR node ID → Vec<LinkedIssueNode> のマップ。
+    pub async fn fetch_pr_linked_issue_statuses(
+        &self,
+        pr_node_ids: &[String],
+    ) -> Result<HashMap<String, Vec<LinkedIssueNode>>, AppError> {
+        let token = self
+            .token
+            .as_ref()
+            .ok_or_else(|| AppError::Auth("No token set".to_string()))?;
+
+        let response = self
+            .client
+            .post(GITHUB_GRAPHQL_API)
+            .header("Authorization", format!("Bearer {}", token))
+            .header("User-Agent", "github-notify")
+            .json(&json!({
+                "query": PR_LINKED_ISSUES_STATUS_QUERY,
+                "variables": {
+                    "ids": pr_node_ids
+                }
+            }))
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(AppError::GitHubApi(format!(
+                "GraphQL request for linked issues failed: {}",
+                error_text
+            )));
+        }
+
+        let linked_response: LinkedIssuesResponse = response.json().await.map_err(|e| {
+            AppError::Serialization(format!("Failed to parse linked issues response: {}", e))
+        })?;
+
+        let mut result = HashMap::new();
+        for node in linked_response.data.nodes.into_iter().flatten() {
+            result.insert(node.id, node.closing_issues_references.nodes);
+        }
+
+        Ok(result)
     }
 
     // ============================================

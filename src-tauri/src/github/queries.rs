@@ -65,6 +65,33 @@ query SearchIssuesAndPRs($query: String!, $first: Int!) {
 }
 "#;
 
+/// GraphQL query for fetching linked issues and their Projects V2 statuses for multiple PRs
+pub const PR_LINKED_ISSUES_STATUS_QUERY: &str = r#"
+query PRLinkedIssueStatuses($ids: [ID!]!) {
+  nodes(ids: $ids) {
+    ... on PullRequest {
+      id
+      closingIssuesReferences(first: 10) {
+        nodes {
+          id
+          number
+          title
+          projectItems(first: 5) {
+            nodes {
+              fieldValueByName(name: "Status") {
+                ... on ProjectV2ItemFieldSingleSelectValue {
+                  name
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+"#;
+
 /// GraphQL query for verifying token and getting user info
 pub const VIEWER_QUERY: &str = r#"
 query GetViewer {

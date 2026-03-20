@@ -12,6 +12,18 @@ const SETTINGS_KEY: &str = "app_settings";
 /// GitHub API keeps notifications for 30 days, so we keep 60 days worth for safety
 const MAX_READ_ITEMS: usize = 10_000;
 
+/// リポジトリ別Issue Status条件ルール
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IssueStatusRule {
+    /// リポジトリパターン (e.g. "getozinc/mypappy-*")。ワイルドカード `*` サポート
+    pub repository_pattern: String,
+    /// 紐づく全issueに要求するGitHub Projects V2 Statusフィールド値
+    pub required_statuses: Vec<String>,
+    /// ルール有効/無効
+    pub enabled: bool,
+}
+
 /// Custom filter group (user-created)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -28,6 +40,8 @@ pub struct CustomFilter {
     pub repositories: Vec<String>,
     #[serde(default)]
     pub search_query: Option<String>,
+    #[serde(default)]
+    pub issue_status_rules: Vec<IssueStatusRule>,
 }
 
 fn default_sound_type() -> String {
@@ -86,6 +100,7 @@ fn default_initial_filters() -> Vec<CustomFilter> {
             sound_type: "default".to_string(),
             repositories: vec![],
             search_query: None,
+            issue_status_rules: vec![],
         },
         CustomFilter {
             id: "default-needs-review".to_string(),
@@ -96,6 +111,7 @@ fn default_initial_filters() -> Vec<CustomFilter> {
             sound_type: "default".to_string(),
             repositories: vec![],
             search_query: Some("is:open is:pr review-requested:@me -reviewed-by:@me".to_string()),
+            issue_status_rules: vec![],
         },
         CustomFilter {
             id: "default-my-prs".to_string(),
@@ -106,6 +122,7 @@ fn default_initial_filters() -> Vec<CustomFilter> {
             sound_type: "default".to_string(),
             repositories: vec![],
             search_query: Some("is:open is:pr author:@me".to_string()),
+            issue_status_rules: vec![],
         },
     ]
 }

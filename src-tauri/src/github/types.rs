@@ -158,6 +158,58 @@ pub struct LabelNode {
     pub color: String,
 }
 
+// ============================================
+// Linked Issues Status Types (Projects V2)
+// ============================================
+
+/// Response for PR linked issues status query
+#[derive(Debug, Deserialize)]
+pub struct LinkedIssuesResponse {
+    pub data: LinkedIssuesData,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LinkedIssuesData {
+    pub nodes: Vec<Option<PRWithClosingIssues>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PRWithClosingIssues {
+    pub id: String,
+    pub closing_issues_references: ClosingIssuesConnection,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ClosingIssuesConnection {
+    pub nodes: Vec<LinkedIssueNode>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LinkedIssueNode {
+    pub id: String,
+    pub number: i32,
+    pub title: String,
+    pub project_items: ProjectItemsConnection,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ProjectItemsConnection {
+    pub nodes: Vec<ProjectItemNode>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectItemNode {
+    pub field_value_by_name: Option<ProjectFieldValue>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ProjectFieldValue {
+    pub name: Option<String>,
+}
+
 /// OAuth Device Flow response
 #[derive(Debug, Deserialize)]
 pub struct DeviceCodeResponse {

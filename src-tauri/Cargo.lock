@@ -1543,6 +1543,7 @@ dependencies = [
  "tauri-plugin-store",
  "thiserror 2.0.17",
  "tokio",
+ "wildmatch",
 ]
 
 [[package]]
@@ -5598,6 +5599,12 @@ dependencies = [
  "windows 0.61.3",
  "windows-core 0.61.2",
 ]
+
+[[package]]
+name = "wildmatch"
+version = "2.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "29333c3ea1ba8b17211763463ff24ee84e41c78224c16b001cd907e663a38c68"
 
 [[package]]
 name = "winapi"

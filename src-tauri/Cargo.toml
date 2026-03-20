@@ -42,5 +42,8 @@ log = "0.4"
 # Date/time
 chrono = { version = "0.4", features = ["serde"] }
 
+# Glob pattern matching
+wildmatch = "2"
+
 # Audio playback
 rodio = "0.19"
