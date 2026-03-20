@@ -188,9 +188,6 @@ pub struct ClosingIssuesConnection {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LinkedIssueNode {
-    pub id: String,
-    pub number: i32,
-    pub title: String,
     pub project_items: ProjectItemsConnection,
 }
 

@@ -73,9 +73,6 @@ query PRLinkedIssueStatuses($ids: [ID!]!) {
       id
       closingIssuesReferences(first: 10) {
         nodes {
-          id
-          number
-          title
           projectItems(first: 5) {
             nodes {
               fieldValueByName(name: "Status") {
