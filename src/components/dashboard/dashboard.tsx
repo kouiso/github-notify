@@ -105,7 +105,11 @@ export function Dashboard({ filters, onRefresh, userLogin, onOpenReviewSettings 
   useEffect(() => {
     if (!repoDropdownOpen) return;
     const handleClick = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+      if (
+        dropdownRef.current &&
+        e.target instanceof Node &&
+        !dropdownRef.current.contains(e.target)
+      ) {
         setRepoDropdownOpen(false);
       }
     };
