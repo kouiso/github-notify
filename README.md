@@ -65,10 +65,16 @@ This app uses GitHub's OAuth Device Flow for authentication. To run your own ins
 1. Go to [GitHub Developer Settings](https://github.com/settings/developers)
 2. Create a new OAuth App
 3. Enable **Device Flow** in the app settings
-4. Replace the Client ID in `src-tauri/src/github/client.rs`:
-   ```rust
-   const GITHUB_CLIENT_ID: &str = "your-client-id-here";
+4. Copy the example secrets file and set your Client ID:
+   ```bash
+   cp src-tauri/src/github/secrets.rs.example src-tauri/src/github/secrets.rs
    ```
+5. Edit `src-tauri/src/github/secrets.rs` and replace with your Client ID:
+   ```rust
+   pub const GITHUB_CLIENT_ID: &str = "your-client-id-here";
+   ```
+
+> **Note:** `secrets.rs` is encrypted with [git-crypt](https://github.com/AGWA/git-crypt) and not readable without the decryption key. Contributors must create their own OAuth App and `secrets.rs` file.
 
 ## Development
 
