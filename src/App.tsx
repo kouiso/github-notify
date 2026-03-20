@@ -18,6 +18,7 @@ export default function App() {
 
   const { theme, setTheme } = useTheme();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsInitialFilterId, setSettingsInitialFilterId] = useState<string | null>(null);
   const [selectedFilterId, setSelectedFilterId] = useState<string | null>('dashboard');
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
 
@@ -112,6 +113,10 @@ export default function App() {
             filters={settings.customFilters}
             onRefresh={inbox.refresh}
             userLogin={userLogin}
+            onOpenReviewSettings={() => {
+              setSettingsInitialFilterId('default-needs-review');
+              setSettingsOpen(true);
+            }}
           />
         ) : isSearchMode ? (
           <InboxList
@@ -144,9 +149,13 @@ export default function App() {
 
       <SettingsDialog
         open={settingsOpen}
-        onOpenChange={setSettingsOpen}
+        onOpenChange={(open) => {
+          setSettingsOpen(open);
+          if (!open) setSettingsInitialFilterId(null);
+        }}
         user={auth.user}
         onLogout={auth.logout}
+        initialEditFilterId={settingsInitialFilterId}
       />
 
       <OnboardingDialog open={showOnboarding} onComplete={() => setOnboardingDismissed(true)} />

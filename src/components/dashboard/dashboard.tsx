@@ -41,6 +41,7 @@ interface DashboardProps {
   filters: CustomFilter[];
   onRefresh: () => void;
   userLogin?: string;
+  onOpenReviewSettings?: () => void;
 }
 
 function resolveQuery(query: string, userLogin?: string): string {
@@ -48,7 +49,7 @@ function resolveQuery(query: string, userLogin?: string): string {
   return query.replace(/@me\b/g, userLogin);
 }
 
-export function Dashboard({ filters, onRefresh, userLogin }: DashboardProps) {
+export function Dashboard({ filters, onRefresh, userLogin, onOpenReviewSettings }: DashboardProps) {
   const needsReviewView = useSearchView();
   const myPrsView = useSearchView();
   const { fetch: fetchNeedsReview, refresh: refreshNeedsReview } = needsReviewView;
@@ -192,6 +193,7 @@ export function Dashboard({ filters, onRefresh, userLogin }: DashboardProps) {
             isLoading={needsReviewView.isLoading}
             error={needsReviewView.error}
             icon={<EyeIcon className="w-4 h-4" />}
+            onSettings={onOpenReviewSettings}
           >
             {needsReviewView.items.length > 0 && (
               <SearchItemList items={needsReviewView.items} showReviewDecision showUrgency />
@@ -226,6 +228,7 @@ interface HeroSectionProps {
   error?: string | null;
   icon: React.ReactNode;
   children: React.ReactNode;
+  onSettings?: () => void;
 }
 
 function HeroSection({
@@ -236,6 +239,7 @@ function HeroSection({
   error,
   icon,
   children,
+  onSettings,
 }: HeroSectionProps) {
   return (
     <div className="rounded-lg border-2 border-primary/30 bg-primary/[0.03] overflow-hidden">
@@ -249,6 +253,15 @@ function HeroSection({
             </span>
           )}
           {isLoading && <Spinner size="sm" />}
+          {onSettings && (
+            <button
+              onClick={onSettings}
+              className="ml-auto p-1 rounded-md hover:bg-accent/50 transition-colors"
+              title="レビュー対象ルールを設定"
+            >
+              <GearIcon className="w-3.5 h-3.5 text-muted-foreground" />
+            </button>
+          )}
         </div>
         <p className="text-xs text-muted-foreground mt-0.5 ml-6">{subtitle}</p>
         {!isLoading && count > 0 && (
@@ -589,6 +602,24 @@ function ChevronIcon({ className }: { className?: string }) {
       className={className}
     >
       <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
+function GearIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+      <circle cx="12" cy="12" r="3" />
     </svg>
   );
 }

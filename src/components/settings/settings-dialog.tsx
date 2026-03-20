@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button, Dialog, DialogContent, DialogHeader, DialogTitle, Input } from '@/components/ui';
 import { useSettings, useTheme } from '@/hooks';
 import { cn } from '@/lib/utils/cn';
@@ -18,6 +18,7 @@ interface SettingsDialogProps {
   onOpenChange: (open: boolean) => void;
   user: { login: string; avatarUrl?: string } | null;
   onLogout: () => void;
+  initialEditFilterId?: string | null;
 }
 
 type TabId = 'appearance' | 'filters' | 'account';
@@ -59,26 +60,45 @@ function ToggleSwitch({ enabled, onToggle }: { enabled: boolean; onToggle: () =>
     <button
       onClick={onToggle}
       className={cn(
-        'w-11 h-6 rounded-full transition-colors relative',
+        'w-10 h-[1.375rem] rounded-full transition-colors relative flex-shrink-0',
         enabled ? 'bg-primary' : 'bg-muted-foreground/30',
       )}
     >
       <span
         className={cn(
-          'absolute top-1 w-4 h-4 rounded-full bg-white transition-transform',
-          enabled ? 'translate-x-6' : 'translate-x-1',
+          'absolute top-[0.1875rem] w-4 h-4 rounded-full bg-white shadow-sm transition-transform',
+          enabled ? 'translate-x-[1.25rem]' : 'translate-x-[0.1875rem]',
         )}
       />
     </button>
   );
 }
 
-function SettingsDialogContent({ open, onOpenChange, user, onLogout }: SettingsDialogProps) {
+function SettingsDialogContent({
+  open,
+  onOpenChange,
+  user,
+  onLogout,
+  initialEditFilterId,
+}: SettingsDialogProps) {
   const { settings, updateSettings } = useSettings();
   const { theme, setTheme } = useTheme();
   const [activeTab, setActiveTab] = useState<TabId>('filters');
   const [editingFilter, setEditingFilter] = useState<CustomFilter | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+
+  const prevOpenRef = useRef(false);
+  useEffect(() => {
+    if (open && !prevOpenRef.current && initialEditFilterId) {
+      const target = settings.customFilters.find((f) => f.id === initialEditFilterId);
+      if (target) {
+        setEditingFilter(target);
+        setIsCreating(false);
+        setActiveTab('filters');
+      }
+    }
+    prevOpenRef.current = open;
+  }, [open, initialEditFilterId, settings.customFilters]);
 
   const handleLogout = () => {
     onLogout();
@@ -141,7 +161,7 @@ function SettingsDialogContent({ open, onOpenChange, user, onLogout }: SettingsD
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>設定</DialogTitle>
         </DialogHeader>
@@ -163,7 +183,7 @@ function SettingsDialogContent({ open, onOpenChange, user, onLogout }: SettingsD
           ))}
         </div>
 
-        <div className="py-4 max-h-[60vh] overflow-y-auto scrollbar-thin">
+        <div className="py-4 max-h-[70vh] overflow-y-auto scrollbar-thin">
           {activeTab === 'filters' && (
             <div className="space-y-4">
               <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
