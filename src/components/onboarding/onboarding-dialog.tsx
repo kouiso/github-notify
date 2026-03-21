@@ -54,6 +54,7 @@ export function OnboardingDialog({ open, onComplete }: OnboardingDialogProps) {
           </div>
 
           <button
+            type="button"
             onClick={handleComplete}
             className="w-full py-2.5 rounded-md bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors"
           >

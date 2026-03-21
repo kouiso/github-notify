@@ -29,23 +29,6 @@ export const REASON_LABELS: Record<NotificationReason, string> = {
   your_activity: '自分の操作',
 };
 
-export interface NotificationPreset {
-  id: string;
-  name: string;
-  description: string;
-  reasons: NotificationReason[];
-}
-
-// プリセットを「なし」のみに簡素化し、カスタムフィルタで柔軟に対応する設計
-export const PRESETS: NotificationPreset[] = [
-  {
-    id: 'none',
-    name: '通知なし',
-    description: '下の「通知フィルター」で必要な通知だけを追加してください',
-    reasons: [],
-  },
-];
-
 export type SoundType = 'default' | 'soft' | 'chime';
 
 export interface FilterTemplate {

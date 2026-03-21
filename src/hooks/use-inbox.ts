@@ -8,6 +8,7 @@ import {
   DEFAULT_INITIAL_FILTERS,
   migrateDefaultFilters,
 } from '@/types/settings';
+import { shouldShowItem, useSendDesktopNotification } from './use-inbox-notification';
 
 export function useInbox() {
   const [items, setItems] = useState<InboxItem[]>([]);
@@ -16,7 +17,6 @@ export function useInbox() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
 
-  // 初回ロード判定と新着検出のため、前回のID集合を保持する
   const previousIdsRef = useRef<Set<string>>(new Set());
   const isFirstLoadRef = useRef(true);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -30,7 +30,6 @@ export function useInbox() {
     customFilters: DEFAULT_INITIAL_FILTERS,
   });
 
-  // SettingsProviderコンテキスト外で動作するため、独自にマウント時に設定を読み込む
   useEffect(() => {
     if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
       commands
@@ -50,139 +49,20 @@ export function useInbox() {
     }
   }, []);
 
-  const checkFilterMatch = useCallback((item: InboxItem, filter: CustomFilter): boolean => {
-    const reasonMatches = filter.reasons.length === 0 || filter.reasons.includes(item.reason);
-    if (!reasonMatches) {
-      return false;
-    }
-
-    const hasRepoFilter = filter.repositories && filter.repositories.length > 0;
-    if (hasRepoFilter && !filter.repositories?.includes(item.repositoryFullName)) {
-      return false;
-    }
-
-    return true;
+  const filterItem = useCallback((item: InboxItem): boolean => {
+    return shouldShowItem(item, settingsRef.current.customFilters);
   }, []);
 
-  const shouldShowItem = useCallback(
-    (item: InboxItem): boolean => {
-      const { customFilters } = settingsRef.current;
+  const sendDesktopNotification = useSendDesktopNotification(settingsRef, isFirstLoadRef);
 
-      if (customFilters.length === 0) {
-        return false;
-      }
+  const isMountedRef = useRef(true);
 
-      return customFilters.some((filter) => checkFilterMatch(item, filter));
-    },
-    [checkFilterMatch],
-  );
-
-  const matchesFilter = useCallback(
-    (item: InboxItem, filter: CustomFilter): boolean => {
-      return checkFilterMatch(item, filter);
-    },
-    [checkFilterMatch],
-  );
-
-  const getMatchingFilter = useCallback(
-    (item: InboxItem): CustomFilter | null => {
-      const { customFilters } = settingsRef.current;
-
-      return (
-        customFilters.find(
-          (filter) => filter.enableDesktopNotification && matchesFilter(item, filter),
-        ) || null
-      );
-    },
-    [matchesFilter],
-  );
-
-  const getNotifiableItems = useCallback(
-    (newItems: InboxItem[]): Array<{ item: InboxItem; filter: CustomFilter }> => {
-      const items: Array<{ item: InboxItem; filter: CustomFilter }> = [];
-      for (const item of newItems) {
-        const filter = getMatchingFilter(item);
-        if (filter) {
-          items.push({ item, filter });
-        }
-      }
-      return items;
-    },
-    [getMatchingFilter],
-  );
-
-  const getSoundSettings = useCallback(
-    (notifiableItems: Array<{ item: InboxItem; filter: CustomFilter }>) => {
-      const shouldPlaySound =
-        settingsRef.current.soundEnabled &&
-        notifiableItems.some(({ filter }) => filter.enableSound);
-      const soundFilter = notifiableItems.find(({ filter }) => filter.enableSound);
-      const soundType = soundFilter?.filter.soundType || 'default';
-      return { shouldPlaySound, soundType };
-    },
-    [],
-  );
-
-  const sendSingleNotification = useCallback(
-    async (item: InboxItem, shouldPlaySound: boolean, soundType: string) => {
-      await commands.sendNotificationWithSound(
-        item.title,
-        item.repositoryFullName,
-        shouldPlaySound,
-        soundType,
-      );
-    },
-    [],
-  );
-
-  const sendBatchNotification = useCallback(
-    async (
-      notifiableItems: Array<{ item: InboxItem; filter: CustomFilter }>,
-      shouldPlaySound: boolean,
-      soundType: string,
-    ) => {
-      await commands.sendNotificationWithSound(
-        `${notifiableItems.length}件の新しい通知`,
-        notifiableItems
-          .slice(0, 3)
-          .map(({ item }) => item.title)
-          .join('\n'),
-        shouldPlaySound,
-        soundType,
-      );
-    },
-    [],
-  );
-
-  const sendDesktopNotification = useCallback(
-    async (newItems: InboxItem[]) => {
-      if (!settingsRef.current.desktopNotifications || isFirstLoadRef.current) {
-        return;
-      }
-
-      const notifiableItems = getNotifiableItems(newItems);
-      if (notifiableItems.length === 0) {
-        return;
-      }
-
-      if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) {
-        return;
-      }
-
-      try {
-        const { shouldPlaySound, soundType } = getSoundSettings(notifiableItems);
-
-        if (notifiableItems.length === 1) {
-          await sendSingleNotification(notifiableItems[0].item, shouldPlaySound, soundType);
-        } else {
-          await sendBatchNotification(notifiableItems, shouldPlaySound, soundType);
-        }
-      } catch (err) {
-        logger.error('Failed to send notification', err);
-      }
-    },
-    [getNotifiableItems, getSoundSettings, sendSingleNotification, sendBatchNotification],
-  );
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const fetchItems = useCallback(async () => {
     try {
@@ -190,7 +70,9 @@ export function useInbox() {
       setError(null);
       const data = await commands.fetchInbox(false);
 
-      const filteredData = data.filter(shouldShowItem);
+      if (!isMountedRef.current) return;
+
+      const filteredData = data.filter(filterItem);
 
       const previousIds = previousIdsRef.current;
       const newUnreadItems = filteredData.filter(
@@ -201,17 +83,22 @@ export function useInbox() {
         await sendDesktopNotification(newUnreadItems);
       }
 
+      if (!isMountedRef.current) return;
+
       previousIdsRef.current = new Set(filteredData.map((item) => item.id));
       isFirstLoadRef.current = false;
 
       setItems(filteredData);
       setLastUpdated(new Date());
     } catch (err) {
+      if (!isMountedRef.current) return;
       setError(err instanceof Error ? err.message : 'Failed to fetch inbox');
     } finally {
-      setIsLoading(false);
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
     }
-  }, [sendDesktopNotification, shouldShowItem]);
+  }, [sendDesktopNotification, filterItem]);
 
   useEffect(() => {
     if (settingsLoaded) {
@@ -219,9 +106,7 @@ export function useInbox() {
     }
   }, [settingsLoaded, fetchItems]);
 
-  // バックグラウンドポーリングサービスからのプッシュイベントを受信する
   useEffect(() => {
-    // Tauri環境外ではスキップ（ブラウザプレビュー対応）
     if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) {
       return;
     }
@@ -230,7 +115,7 @@ export function useInbox() {
       const unlisten = await listen<InboxItem[]>('inbox-updated', (event) => {
         const newItems = event.payload;
 
-        const filteredItems = newItems.filter(shouldShowItem);
+        const filteredItems = newItems.filter(filterItem);
 
         const previousIds = previousIdsRef.current;
         const newUnreadItems = filteredItems.filter(
@@ -257,9 +142,8 @@ export function useInbox() {
     return () => {
       unlistenPromise.then((unlisten) => unlisten());
     };
-  }, [sendDesktopNotification, shouldShowItem]);
+  }, [sendDesktopNotification, filterItem]);
 
-  // 設定変更をポーリングで拾うため定期リロードする（SettingsProviderに依存しない設計のため）
   useEffect(() => {
     const loadSettings = async () => {
       if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
@@ -271,7 +155,7 @@ export function useInbox() {
             customFilters: settings.customFilters,
           };
 
-          setItems((prev) => prev.filter(shouldShowItem));
+          setItems((prev) => prev.filter(filterItem));
         } catch (err) {
           logger.error('Failed to load settings', err);
         }
@@ -280,7 +164,7 @@ export function useInbox() {
 
     const interval = setInterval(loadSettings, 30 * 1000);
     return () => clearInterval(interval);
-  }, [shouldShowItem]);
+  }, [filterItem]);
 
   const markAsRead = useCallback(async (threadId: string) => {
     try {
@@ -308,7 +192,6 @@ export function useInbox() {
 
   const unreadCount = items.filter((item) => item.unread).length;
 
-  // 未読数に応じてシステムトレイのバッジを更新する
   useEffect(() => {
     if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
       commands.updateTrayBadge(unreadCount).catch((err) => {

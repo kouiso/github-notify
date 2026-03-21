@@ -1,4 +1,8 @@
-export function RefreshIcon({ className }: { className?: string }) {
+interface IconProps {
+  className?: string;
+}
+
+export function RefreshIcon({ className }: IconProps) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -18,7 +22,7 @@ export function RefreshIcon({ className }: { className?: string }) {
   );
 }
 
-export function CheckIcon({ className }: { className?: string }) {
+export function CheckIcon({ className }: IconProps) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -35,7 +39,7 @@ export function CheckIcon({ className }: { className?: string }) {
   );
 }
 
-export function PRIcon({ className }: { className?: string }) {
+export function PRIcon({ className }: IconProps) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -55,7 +59,7 @@ export function PRIcon({ className }: { className?: string }) {
   );
 }
 
-export function IssueIcon({ className }: { className?: string }) {
+export function IssueIcon({ className }: IconProps) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -74,7 +78,7 @@ export function IssueIcon({ className }: { className?: string }) {
   );
 }
 
-export function EyeIcon({ className }: { className?: string }) {
+export function NotificationIcon({ className }: IconProps) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -86,8 +90,8 @@ export function EyeIcon({ className }: { className?: string }) {
       strokeLinejoin="round"
       className={className}
     >
-      <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" />
-      <circle cx="12" cy="12" r="3" />
+      <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+      <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
     </svg>
   );
 }

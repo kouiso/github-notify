@@ -68,6 +68,7 @@ function DialogOverlay({ className, ...props }: React.HTMLAttributes<HTMLDivElem
 
   return (
     <div
+      role="presentation"
       className={cn(
         'fixed inset-0 z-50 bg-black/80',
         'data-[state=open]:animate-in data-[state=closed]:animate-out',
@@ -75,6 +76,9 @@ function DialogOverlay({ className, ...props }: React.HTMLAttributes<HTMLDivElem
         className,
       )}
       onClick={() => onOpenChange(false)}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') onOpenChange(false);
+      }}
       {...props}
     />
   );
@@ -85,6 +89,8 @@ function DialogContent({ className, children, ...props }: React.HTMLAttributes<H
     <DialogPortal>
       <DialogOverlay />
       <div
+        role="dialog"
+        aria-modal="true"
         className={cn(
           'fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%]',
           'gap-4 border bg-background p-6 shadow-lg duration-200',
@@ -97,6 +103,7 @@ function DialogContent({ className, children, ...props }: React.HTMLAttributes<H
           className,
         )}
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
         {...props}
       >
         {children}

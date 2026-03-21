@@ -7,6 +7,7 @@ export function SidebarFooter({ user, onOpenSettings }: SidebarFooterProps) {
   return (
     <div className="p-2 border-t border-border/50">
       <button
+        type="button"
         className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md hover:bg-accent transition-colors"
         onClick={onOpenSettings}
       >

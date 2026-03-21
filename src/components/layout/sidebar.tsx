@@ -6,6 +6,15 @@ import type { InboxItem } from '@/types';
 import type { CustomFilter, NotificationReason, SoundType } from '@/types/settings';
 import { isSearchView, REASON_LABELS } from '@/types/settings';
 import { SidebarFooter } from './sidebar-footer';
+import {
+  CloseIcon,
+  DashboardIcon,
+  InboxIcon,
+  PlusIcon,
+  SearchIcon,
+  ViewIcon,
+} from './sidebar-icons';
+import { SidebarItem } from './sidebar-item';
 
 interface SidebarProps {
   items: InboxItem[];
@@ -173,6 +182,7 @@ export function Sidebar({
           </div>
 
           <button
+            type="button"
             onClick={handleNewView}
             className="w-full flex items-center gap-2.5 px-3 py-2 text-[0.9375rem] text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-md transition-colors"
           >
@@ -370,6 +380,7 @@ export function Sidebar({
                   {(['default', 'soft', 'chime'] satisfies SoundType[]).map((type) => (
                     <button
                       key={type}
+                      type="button"
                       onClick={() => setEditingFilter({ ...editingFilter, soundType: type })}
                       className={cn(
                         'px-2 py-1 text-[0.8125rem] rounded border',
@@ -409,194 +420,5 @@ export function Sidebar({
         </DialogContent>
       </Dialog>
     </div>
-  );
-}
-
-interface SidebarItemProps {
-  icon: React.ReactNode;
-  label: string;
-  description?: string;
-  count?: number;
-  active?: boolean;
-  onClick?: () => void;
-  onEdit?: () => void;
-  hasNotification?: boolean;
-}
-
-function SidebarItem({
-  icon,
-  label,
-  description,
-  count,
-  active,
-  onClick,
-  onEdit,
-  hasNotification,
-}: SidebarItemProps) {
-  return (
-    <div className="group relative">
-      <button
-        title={description}
-        className={cn(
-          'w-full flex items-center gap-2.5 px-3 py-2 rounded-md transition-colors text-left text-[0.9375rem]',
-          active
-            ? 'bg-accent text-foreground font-medium'
-            : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
-        )}
-        onClick={onClick}
-      >
-        <span className="flex-shrink-0 w-4 h-4 flex items-center justify-center">{icon}</span>
-        <span className="flex-1 truncate">{label}</span>
-        <div className="flex items-center gap-1.5">
-          {hasNotification && (
-            <span className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
-          )}
-          {count !== undefined && count > 0 && (
-            <span className="text-[0.8125rem] font-medium text-muted-foreground tabular-nums">
-              {count > 99 ? '99+' : count}
-            </span>
-          )}
-        </div>
-      </button>
-      {onEdit && (
-        <button
-          className="absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-accent transition-opacity"
-          onClick={(e) => {
-            e.stopPropagation();
-            onEdit();
-          }}
-          title="編集"
-        >
-          <EditIcon className="w-3 h-3 text-muted-foreground" />
-        </button>
-      )}
-    </div>
-  );
-}
-
-function InboxIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
-      <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
-    </svg>
-  );
-}
-
-function ViewIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-      <path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z" />
-    </svg>
-  );
-}
-
-function PlusIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <path d="M12 5v14" />
-      <path d="M5 12h14" />
-    </svg>
-  );
-}
-
-function EditIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-    </svg>
-  );
-}
-
-function CloseIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <path d="M18 6 6 18" />
-      <path d="m6 6 12 12" />
-    </svg>
-  );
-}
-
-function DashboardIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <rect width="7" height="9" x="3" y="3" rx="1" />
-      <rect width="7" height="5" x="14" y="3" rx="1" />
-      <rect width="7" height="9" x="14" y="12" rx="1" />
-      <rect width="7" height="5" x="3" y="16" rx="1" />
-    </svg>
-  );
-}
-
-function SearchIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <circle cx="11" cy="11" r="8" />
-      <path d="m21 21-4.3-4.3" />
-    </svg>
   );
 }

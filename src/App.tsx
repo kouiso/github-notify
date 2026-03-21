@@ -1,13 +1,29 @@
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { LoginScreen } from '@/components/auth/login-screen';
-import { Dashboard } from '@/components/dashboard/dashboard';
 import { InboxList } from '@/components/inbox';
 import { Sidebar } from '@/components/layout/sidebar';
-import { OnboardingDialog } from '@/components/onboarding/onboarding-dialog';
-import { SettingsDialog } from '@/components/settings/settings-dialog';
+import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { useAuth, useInbox, useSearchView, useSettings, useTheme } from '@/hooks';
 import { isSearchView } from '@/types/settings';
+
+const Dashboard = lazy(() =>
+  import('@/components/dashboard/dashboard').then((m) => ({ default: m.Dashboard })),
+);
+const SettingsDialog = lazy(() =>
+  import('@/components/settings/settings-dialog').then((m) => ({ default: m.SettingsDialog })),
+);
+const OnboardingDialog = lazy(() =>
+  import('@/components/onboarding/onboarding-dialog').then((m) => ({
+    default: m.OnboardingDialog,
+  })),
+);
+
+const LazyFallback = () => (
+  <div className="flex items-center justify-center h-full">
+    <div className="animate-spin rounded-full h-6 w-6 border-2 border-primary border-t-transparent" />
+  </div>
+);
 
 export default function App() {
   const auth = useAuth();
@@ -36,7 +52,6 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [theme, setTheme]);
 
-  // ウィンドウ閉じ操作をアプリ終了ではなく非表示にする（トレイ常駐のため）
   useEffect(() => {
     if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) {
       return;
@@ -58,7 +73,6 @@ export default function App() {
     ? settings.customFilters.find((f) => f.id === selectedFilterId)
     : null;
 
-  // GitHub Search APIの@meプレースホルダを実ログイン名に置換する
   const userLogin = auth.user?.login;
 
   useEffect(() => {
@@ -96,69 +110,75 @@ export default function App() {
   const isSearchMode = selectedFilter && isSearchView(selectedFilter);
 
   return (
-    <div className="flex h-screen bg-background">
-      <div className="w-56 flex-shrink-0">
-        <Sidebar
-          items={inbox.items}
-          onOpenSettings={() => setSettingsOpen(true)}
-          user={auth.user}
-          selectedFilterId={selectedFilterId}
-          onSelectFilter={setSelectedFilterId}
-        />
-      </div>
+    <ErrorBoundary>
+      <div className="flex h-screen bg-background">
+        <aside className="w-56 flex-shrink-0">
+          <Sidebar
+            items={inbox.items}
+            onOpenSettings={() => setSettingsOpen(true)}
+            user={auth.user}
+            selectedFilterId={selectedFilterId}
+            onSelectFilter={setSelectedFilterId}
+          />
+        </aside>
 
-      <div className="flex-1 min-w-0">
-        {isDashboard ? (
-          <Dashboard
-            filters={settings.customFilters}
-            onRefresh={inbox.refresh}
-            userLogin={userLogin}
-            onOpenReviewSettings={() => {
-              setSettingsInitialFilterId('default-needs-review');
-              setSettingsOpen(true);
+        <main className="flex-1 min-w-0">
+          <Suspense fallback={<LazyFallback />}>
+            {isDashboard ? (
+              <Dashboard
+                filters={settings.customFilters}
+                onRefresh={inbox.refresh}
+                userLogin={userLogin}
+                onOpenReviewSettings={() => {
+                  setSettingsInitialFilterId('default-needs-review');
+                  setSettingsOpen(true);
+                }}
+              />
+            ) : isSearchMode ? (
+              <InboxList
+                items={inbox.items}
+                isLoading={searchView.isLoading}
+                error={searchView.error}
+                lastUpdated={searchView.lastUpdated}
+                onMarkAsRead={inbox.markAsRead}
+                onRefresh={searchView.refresh}
+                selectedIndex={inbox.selectedIndex}
+                setSelectedIndex={inbox.setSelectedIndex}
+                selectedFilterId={selectedFilterId}
+                isSearchMode
+                searchItems={searchView.items}
+              />
+            ) : (
+              <InboxList
+                items={inbox.items}
+                isLoading={inbox.isLoading}
+                error={inbox.error}
+                lastUpdated={inbox.lastUpdated}
+                onMarkAsRead={inbox.markAsRead}
+                onRefresh={inbox.refresh}
+                selectedIndex={inbox.selectedIndex}
+                setSelectedIndex={inbox.setSelectedIndex}
+                selectedFilterId={selectedFilterId}
+              />
+            )}
+          </Suspense>
+        </main>
+
+        <Suspense fallback={null}>
+          <SettingsDialog
+            open={settingsOpen}
+            onOpenChange={(open) => {
+              setSettingsOpen(open);
+              if (!open) setSettingsInitialFilterId(null);
             }}
+            user={auth.user}
+            onLogout={auth.logout}
+            initialEditFilterId={settingsInitialFilterId}
           />
-        ) : isSearchMode ? (
-          <InboxList
-            items={inbox.items}
-            isLoading={searchView.isLoading}
-            error={searchView.error}
-            lastUpdated={searchView.lastUpdated}
-            onMarkAsRead={inbox.markAsRead}
-            onRefresh={searchView.refresh}
-            selectedIndex={inbox.selectedIndex}
-            setSelectedIndex={inbox.setSelectedIndex}
-            selectedFilterId={selectedFilterId}
-            isSearchMode
-            searchItems={searchView.items}
-          />
-        ) : (
-          <InboxList
-            items={inbox.items}
-            isLoading={inbox.isLoading}
-            error={inbox.error}
-            lastUpdated={inbox.lastUpdated}
-            onMarkAsRead={inbox.markAsRead}
-            onRefresh={inbox.refresh}
-            selectedIndex={inbox.selectedIndex}
-            setSelectedIndex={inbox.setSelectedIndex}
-            selectedFilterId={selectedFilterId}
-          />
-        )}
+
+          <OnboardingDialog open={showOnboarding} onComplete={() => setOnboardingDismissed(true)} />
+        </Suspense>
       </div>
-
-      <SettingsDialog
-        open={settingsOpen}
-        onOpenChange={(open) => {
-          setSettingsOpen(open);
-          if (!open) setSettingsInitialFilterId(null);
-        }}
-        user={auth.user}
-        onLogout={auth.logout}
-        initialEditFilterId={settingsInitialFilterId}
-      />
-
-      <OnboardingDialog open={showOnboarding} onComplete={() => setOnboardingDismissed(true)} />
-    </div>
+    </ErrorBoundary>
   );
 }
