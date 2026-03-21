@@ -45,5 +45,8 @@ chrono = { version = "0.4", features = ["serde"] }
 # Glob pattern matching
 wildmatch = "2"
 
+# OS keychain (credential store)
+keyring = { version = "3", features = ["apple-native", "windows-native", "linux-native"] }
+
 # Audio playback
 rodio = "0.19"

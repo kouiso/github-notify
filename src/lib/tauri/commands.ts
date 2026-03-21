@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import * as v from 'valibot';
 import type {
   AppSettings,
   DeviceFlowInfo,
@@ -7,21 +8,36 @@ import type {
   TokenVerification,
 } from '@/types';
 import type { IssueStatusRule } from '@/types/settings';
+import {
+  AppSettingsSchema,
+  DeviceFlowInfoSchema,
+  InboxItemSchema,
+  NotificationItemSchema,
+  TokenVerificationSchema,
+} from './schemas';
+
+function parse<T>(schema: v.GenericSchema<T>, data: unknown): T {
+  return v.parse(schema, data);
+}
 
 export async function startDeviceFlow(): Promise<DeviceFlowInfo> {
-  return invoke<DeviceFlowInfo>('start_device_flow');
+  const raw = await invoke('start_device_flow');
+  return parse(DeviceFlowInfoSchema, raw);
 }
 
 export async function pollDeviceFlow(deviceCode: string): Promise<TokenVerification> {
-  return invoke<TokenVerification>('poll_device_flow', { deviceCode });
+  const raw = await invoke('poll_device_flow', { deviceCode });
+  return parse(TokenVerificationSchema, raw);
 }
 
 export async function saveGitHubToken(token: string): Promise<TokenVerification> {
-  return invoke<TokenVerification>('save_github_token', { token });
+  const raw = await invoke('save_github_token', { token });
+  return parse(TokenVerificationSchema, raw);
 }
 
 export async function verifyGitHubToken(): Promise<TokenVerification> {
-  return invoke<TokenVerification>('verify_github_token');
+  const raw = await invoke('verify_github_token');
+  return parse(TokenVerificationSchema, raw);
 }
 
 export async function clearGitHubToken(): Promise<void> {
@@ -32,10 +48,11 @@ export async function fetchNotifications(
   query: string,
   issueStatusRules?: IssueStatusRule[],
 ): Promise<NotificationItem[]> {
-  return invoke<NotificationItem[]>('fetch_notifications', {
+  const raw = await invoke('fetch_notifications', {
     query,
     issueStatusRules: issueStatusRules ?? null,
   });
+  return parse(v.array(NotificationItemSchema), raw);
 }
 
 export async function markAsRead(itemId: string): Promise<void> {
@@ -56,7 +73,8 @@ export async function sendNotificationWithSound(
 }
 
 export async function fetchInbox(all?: boolean): Promise<InboxItem[]> {
-  return invoke<InboxItem[]>('fetch_inbox', { all });
+  const raw = await invoke('fetch_inbox', { all });
+  return parse(v.array(InboxItemSchema), raw);
 }
 
 export async function markInboxRead(threadId: string): Promise<void> {
@@ -68,7 +86,8 @@ export async function markAllInboxRead(): Promise<void> {
 }
 
 export async function getAppSettings(): Promise<AppSettings> {
-  return invoke<AppSettings>('get_app_settings');
+  const raw = await invoke('get_app_settings');
+  return parse(AppSettingsSchema, raw);
 }
 
 export async function saveAppSettings(settings: AppSettings): Promise<void> {

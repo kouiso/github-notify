@@ -127,41 +127,59 @@ fn default_initial_filters() -> Vec<CustomFilter> {
     ]
 }
 
-/// Save the GitHub token to the store
-pub fn save_token(app: &tauri::AppHandle, token: &str) -> Result<(), AppError> {
+const KEYRING_SERVICE: &str = "github-notify";
+const KEYRING_USER: &str = "github_token";
+
+/// tauri-plugin-storeに保存された旧トークンをOS Keychainへ移行する
+pub fn migrate_token_to_keychain(app: &tauri::AppHandle) -> Result<(), AppError> {
+    if get_token(app)?.is_some() {
+        return Ok(());
+    }
+
     let store = app
         .store(STORE_FILE)
         .map_err(|e| AppError::Storage(e.to_string()))?;
 
-    store.set(TOKEN_KEY, serde_json::json!(token));
-    store.save().map_err(|e| AppError::Storage(e.to_string()))?;
+    if let Some(token) = store.get(TOKEN_KEY).and_then(|v| v.as_str().map(|s| s.to_string())) {
+        save_token(app, &token)?;
+        store.delete(TOKEN_KEY);
+        let _ = store.save();
+        log::info!("トークンをOS Keychainへ移行しました");
+    }
 
     Ok(())
 }
 
-/// Get the GitHub token from the store
-pub fn get_token(app: &tauri::AppHandle) -> Result<Option<String>, AppError> {
-    let store = app
-        .store(STORE_FILE)
-        .map_err(|e| AppError::Storage(e.to_string()))?;
-
-    let token = store
-        .get(TOKEN_KEY)
-        .and_then(|v| v.as_str().map(|s| s.to_string()));
-
-    Ok(token)
+/// Save the GitHub token to the OS keychain
+pub fn save_token(_app: &tauri::AppHandle, token: &str) -> Result<(), AppError> {
+    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER)
+        .map_err(|e| AppError::Storage(format!("Keychain entry creation failed: {e}")))?;
+    entry
+        .set_password(token)
+        .map_err(|e| AppError::Storage(format!("Keychain save failed: {e}")))?;
+    Ok(())
 }
 
-/// Clear the GitHub token from the store
-pub fn clear_token(app: &tauri::AppHandle) -> Result<(), AppError> {
-    let store = app
-        .store(STORE_FILE)
-        .map_err(|e| AppError::Storage(e.to_string()))?;
+/// Get the GitHub token from the OS keychain
+pub fn get_token(_app: &tauri::AppHandle) -> Result<Option<String>, AppError> {
+    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER)
+        .map_err(|e| AppError::Storage(format!("Keychain entry creation failed: {e}")))?;
+    match entry.get_password() {
+        Ok(token) => Ok(Some(token)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(e) => Err(AppError::Storage(format!("Keychain read failed: {e}"))),
+    }
+}
 
-    store.delete(TOKEN_KEY);
-    store.save().map_err(|e| AppError::Storage(e.to_string()))?;
-
-    Ok(())
+/// Clear the GitHub token from the OS keychain
+pub fn clear_token(_app: &tauri::AppHandle) -> Result<(), AppError> {
+    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER)
+        .map_err(|e| AppError::Storage(format!("Keychain entry creation failed: {e}")))?;
+    match entry.delete_credential() {
+        Ok(()) => Ok(()),
+        Err(keyring::Error::NoEntry) => Ok(()),
+        Err(e) => Err(AppError::Storage(format!("Keychain delete failed: {e}"))),
+    }
 }
 
 /// Get the set of read item IDs

@@ -24,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        check-type: [lint, test, build]
+        check-type: [lint, typecheck, test, build]
 
     steps:
       - name: Checkout repository
@@ -43,9 +43,13 @@ jobs:
         if: matrix.check-type == 'lint'
         run: npm run lint
 
+      - name: Typecheck
+        if: matrix.check-type == 'typecheck'
+        run: npm run typecheck
+
       - name: Test
         if: matrix.check-type == 'test'
-        run: npx vitest run
+        run: npx vitest run --coverage
 
       - name: Build
         if: matrix.check-type == 'build'

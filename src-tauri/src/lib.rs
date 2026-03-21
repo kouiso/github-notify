@@ -42,6 +42,11 @@ pub fn run() {
                 log::error!("Could not find main webview window!");
             }
 
+            // tauri-plugin-storeの旧トークンをOS Keychainへ移行
+            if let Err(e) = storage::migrate_token_to_keychain(app.handle()) {
+                log::warn!("トークンのKeychain移行に失敗: {}", e);
+            }
+
             // Start background polling if token is available
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
