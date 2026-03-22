@@ -4,20 +4,24 @@ on:
   pull_request:
     branches: [main]
     paths-ignore:
-      - '**/*.md'
-      - 'doc/**'
-      - 'prompt/**'
-      - 'openspec/**'
-      - '.github/instructions/**'
+      - "**/*.md"
+      - "doc/**"
+      - "prompt/**"
+      - "openspec/**"
+      - ".github/instructions/**"
 
 permissions:
   contents: read
   security-events: write
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   trufflehog:
-    name: TruffleHog シークレットスキャン
-    runs-on: ubuntu-latest
+    name: Secret Scan
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -25,7 +29,7 @@ jobs:
           fetch-depth: 0
 
       - name: TruffleHog OSS
-        uses: trufflesecurity/trufflehog@6c05c4a00b91aa542267d8e32a8254774799d68d # v3.93.8
+        uses: trufflesecurity/trufflehog@v3.93.8
         with:
           base: ${{ github.event.pull_request.base.sha }}
           head: ${{ github.event.pull_request.head.sha }}

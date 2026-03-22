@@ -4,20 +4,24 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - '**/*.ts'
-      - '**/*.tsx'
-      - '**/*.js'
-      - '**/*.jsx'
-      - '**/*.rs'
+      - "**/*.ts"
+      - "**/*.tsx"
+      - "**/*.js"
+      - "**/*.jsx"
+      - "**/*.rs"
 
 permissions:
   contents: read
   actions: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   semgrep:
-    name: Semgrep コード品質スキャン
-    runs-on: ubuntu-latest
+    name: Code Scan
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     container:
       image: semgrep/semgrep
     if: github.actor != 'dependabot[bot]'
