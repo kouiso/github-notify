@@ -132,8 +132,11 @@ const KEYRING_USER: &str = "github_token";
 
 /// tauri-plugin-storeに保存された旧トークンをOS Keychainへ移行する
 pub fn migrate_token_to_keychain(app: &tauri::AppHandle) -> Result<(), AppError> {
-    if get_token(app)?.is_some() {
-        return Ok(());
+    // Keychainにアクセスできない場合（dev/sandboxモード等）は移行をスキップ
+    match get_token(app) {
+        Ok(Some(_)) => return Ok(()),
+        Ok(None) => {}
+        Err(_) => return Ok(()),
     }
 
     let store = app
