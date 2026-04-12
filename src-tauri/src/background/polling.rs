@@ -142,6 +142,73 @@ impl Default for PollingService {
     }
 }
 
+/// assign reason の未読通知について、実際のアサイン状況を API で確認し、
+/// 自分がアサインされていなければ該当通知を既読化してリストから除外する。
+/// 戻り値は除外した件数。
+async fn verify_assignments(
+    client: &GitHubClient,
+    items: &mut Vec<InboxItem>,
+    viewer_login: &str,
+) -> usize {
+    let mut to_remove: Vec<String> = Vec::new();
+
+    for item in items.iter() {
+        if item.reason != "assign" || !item.unread {
+            continue;
+        }
+
+        let parts: Vec<&str> = item.repository_full_name.splitn(2, '/').collect();
+        if parts.len() != 2 {
+            continue;
+        }
+        let (owner, repo) = (parts[0], parts[1]);
+
+        // URL から Issue 番号を抽出 (e.g. ".../issues/42" or ".../pull/42")
+        let issue_number = item
+            .url
+            .as_deref()
+            .and_then(|u| u.rsplit('/').next())
+            .and_then(|n| n.parse::<u64>().ok());
+
+        let Some(number) = issue_number else {
+            continue;
+        };
+
+        match client.fetch_issue_assignees(owner, repo, number).await {
+            Ok(assignees) => {
+                let still_assigned = assignees
+                    .iter()
+                    .any(|a| a.eq_ignore_ascii_case(viewer_login));
+                if !still_assigned {
+                    log::info!(
+                        "アサイン解除を検知: {}/{}#{} (viewer={})",
+                        owner,
+                        repo,
+                        number,
+                        viewer_login
+                    );
+                    // 既読化を試みる（失敗しても除外は続行）
+                    let _ = client.mark_notification_read(&item.id).await;
+                    to_remove.push(item.id.clone());
+                }
+            }
+            Err(e) => {
+                log::warn!(
+                    "アサイン確認に失敗 ({}/{}#{}): {}",
+                    owner,
+                    repo,
+                    number,
+                    e
+                );
+            }
+        }
+    }
+
+    let removed_count = to_remove.len();
+    items.retain(|item| !to_remove.contains(&item.id));
+    removed_count
+}
+
 /// アプリケーション状態。共有reqwest::Clientを保持し接続プールを再利用する。
 pub struct AppState {
     pub polling: Arc<Mutex<PollingService>>,
