@@ -142,16 +142,16 @@ describe('useInbox', () => {
 
     it('設定済みフィルタ条件で通知一覧が絞り込まれる', async () => {
       const matchingItem = createMockItem({ reason: 'review_requested' });
-      const nonMatchingItem = createMockItem({ reason: 'subscribed' });
-      mockFetchInbox.mockResolvedValue([matchingItem, nonMatchingItem]);
+      const subscribedItem = createMockItem({ reason: 'subscribed' });
+      const commentItem = createMockItem({ reason: 'comment' });
+      mockFetchInbox.mockResolvedValue([matchingItem, subscribedItem, commentItem]);
 
       const { result } = renderHook(() => useInbox());
 
       await waitFor(() => expect(result.current.isLoading).toBe(false));
-      expect(result.current.items).toHaveLength(2);
-      expect(result.current.items.map((item) => item.id)).toEqual(
-        expect.arrayContaining([matchingItem.id, nonMatchingItem.id]),
-      );
+      // review_requested はフィルタにマッチ。subscribed はグローバル除外。comment はフィルタ不一致。
+      expect(result.current.items).toHaveLength(1);
+      expect(result.current.items[0].id).toBe(matchingItem.id);
     });
 
     it('fetch 後に lastUpdated が設定される', async () => {

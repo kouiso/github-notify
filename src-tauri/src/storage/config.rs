@@ -24,6 +24,24 @@ pub struct IssueStatusRule {
     pub enabled: bool,
 }
 
+/// リポジトリグループ（案件単位でリポジトリをまとめる）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryGroup {
+    pub id: String,
+    pub name: String,
+    pub repositories: Vec<String>,
+    pub color: Option<String>,
+    #[serde(default)]
+    pub enable_desktop_notification: bool,
+    #[serde(default)]
+    pub notify_reasons: Vec<String>,
+    #[serde(default)]
+    pub enable_sound: bool,
+    #[serde(default = "default_sound_type")]
+    pub sound_type: String,
+}
+
 /// Custom filter group (user-created)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -62,10 +80,18 @@ pub struct AppSettings {
     pub custom_filters: Vec<CustomFilter>,
     #[serde(default)]
     pub active_filter_id: Option<String>,
+    #[serde(default)]
+    pub repository_groups: Vec<RepositoryGroup>,
+    #[serde(default = "default_global_exclude_reasons")]
+    pub global_exclude_reasons: Vec<String>,
 }
 
 fn default_true() -> bool {
     true
+}
+
+fn default_global_exclude_reasons() -> Vec<String> {
+    vec!["subscribed".to_string()]
 }
 
 impl Default for AppSettings {
@@ -78,6 +104,8 @@ impl Default for AppSettings {
             sound_enabled: true,
             custom_filters: default_initial_filters(),
             active_filter_id: Some("dashboard".to_string()),
+            repository_groups: vec![],
+            global_exclude_reasons: default_global_exclude_reasons(),
         }
     }
 }
@@ -153,36 +181,70 @@ pub fn migrate_token_to_keychain(app: &tauri::AppHandle) -> Result<(), AppError>
     Ok(())
 }
 
-/// Save the GitHub token to the OS keychain
-pub fn save_token(_app: &tauri::AppHandle, token: &str) -> Result<(), AppError> {
-    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER)
-        .map_err(|e| AppError::Storage(format!("Keychain entry creation failed: {e}")))?;
-    entry
-        .set_password(token)
-        .map_err(|e| AppError::Storage(format!("Keychain save failed: {e}")))?;
+/// Keychainが利用可能かどうかを判定する
+fn is_keychain_available() -> bool {
+    match keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER) {
+        Ok(entry) => {
+            // 読み取りテストで利用可能性を確認
+            match entry.get_password() {
+                Ok(_) | Err(keyring::Error::NoEntry) => true,
+                Err(_) => false,
+            }
+        }
+        Err(_) => false,
+    }
+}
+
+/// Save the GitHub token (Keychain優先、失敗時はtauri-plugin-storeにフォールバック)
+pub fn save_token(app: &tauri::AppHandle, token: &str) -> Result<(), AppError> {
+    if let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER) {
+        if entry.set_password(token).is_ok() {
+            return Ok(());
+        }
+        log::warn!("Keychain保存に失敗しました。tauri-plugin-storeにフォールバックします");
+    }
+
+    let store = app
+        .store(STORE_FILE)
+        .map_err(|e| AppError::Storage(e.to_string()))?;
+    store.set(TOKEN_KEY, serde_json::json!(token));
+    store.save().map_err(|e| AppError::Storage(e.to_string()))?;
     Ok(())
 }
 
-/// Get the GitHub token from the OS keychain
-pub fn get_token(_app: &tauri::AppHandle) -> Result<Option<String>, AppError> {
-    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER)
-        .map_err(|e| AppError::Storage(format!("Keychain entry creation failed: {e}")))?;
-    match entry.get_password() {
-        Ok(token) => Ok(Some(token)),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(e) => Err(AppError::Storage(format!("Keychain read failed: {e}"))),
+/// Get the GitHub token (Keychain優先、なければtauri-plugin-storeから読み取り)
+pub fn get_token(app: &tauri::AppHandle) -> Result<Option<String>, AppError> {
+    if is_keychain_available() {
+        if let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER) {
+            match entry.get_password() {
+                Ok(token) => return Ok(Some(token)),
+                Err(keyring::Error::NoEntry) => {}
+                Err(_) => {}
+            }
+        }
     }
+
+    let store = app
+        .store(STORE_FILE)
+        .map_err(|e| AppError::Storage(e.to_string()))?;
+    Ok(store.get(TOKEN_KEY).and_then(|v| v.as_str().map(|s| s.to_string())))
 }
 
-/// Clear the GitHub token from the OS keychain
-pub fn clear_token(_app: &tauri::AppHandle) -> Result<(), AppError> {
-    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER)
-        .map_err(|e| AppError::Storage(format!("Keychain entry creation failed: {e}")))?;
-    match entry.delete_credential() {
-        Ok(()) => Ok(()),
-        Err(keyring::Error::NoEntry) => Ok(()),
-        Err(e) => Err(AppError::Storage(format!("Keychain delete failed: {e}"))),
+/// Clear the GitHub token (両方のストレージから削除)
+pub fn clear_token(app: &tauri::AppHandle) -> Result<(), AppError> {
+    if let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER) {
+        match entry.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => {}
+            Err(_) => {}
+        }
     }
+
+    let store = app
+        .store(STORE_FILE)
+        .map_err(|e| AppError::Storage(e.to_string()))?;
+    store.delete(TOKEN_KEY);
+    let _ = store.save();
+    Ok(())
 }
 
 /// Get the set of read item IDs

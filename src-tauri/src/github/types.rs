@@ -31,7 +31,7 @@ pub struct Label {
 
 /// Issue or PR state
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[serde(rename_all = "lowercase")]
 pub enum ItemState {
     Open,
     Closed,

@@ -361,6 +361,56 @@ impl GitHubClient {
         Ok(InboxResponse::new(all_items, new_etag, poll_interval))
     }
 
+    /// 指定 Issue の現在のアサイン状況を取得する。
+    /// アサイン解除検知（GitHubはunassignを通知しない）のために使う。
+    pub async fn fetch_issue_assignees(
+        &self,
+        owner: &str,
+        repo: &str,
+        issue_number: u64,
+    ) -> Result<Vec<String>, AppError> {
+        let token = self
+            .token
+            .as_ref()
+            .ok_or_else(|| AppError::Auth("No token set".to_string()))?;
+
+        let url = format!(
+            "{}/repos/{}/{}/issues/{}",
+            GITHUB_API_BASE, owner, repo, issue_number
+        );
+
+        let response = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", token))
+            .header("User-Agent", "github-notify")
+            .header("Accept", "application/vnd.github+json")
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(AppError::GitHubApi(format!(
+                "Failed to fetch issue {}/{}#{}: {} - {}",
+                owner, repo, issue_number, status, error_text
+            )));
+        }
+
+        let body: serde_json::Value = response.json().await?;
+        let assignees = body
+            .get("assignees")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|a| a.get("login").and_then(|l| l.as_str()).map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        Ok(assignees)
+    }
+
     /// Mark a notification as read
     pub async fn mark_notification_read(&self, thread_id: &str) -> Result<(), AppError> {
         let token = self

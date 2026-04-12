@@ -7,7 +7,12 @@ use tokio::time::sleep;
 
 use crate::error::AppError;
 use crate::github::client::GitHubClient;
+use crate::github::types::InboxItem;
 use crate::storage;
+
+/// 初回ポーリング間隔（秒）。GitHub の X-Poll-Interval が返ってきたらそれに更新される。
+/// アサイン通知への反応速度のため、デフォルトの 60 秒より短く設定している。
+const INITIAL_POLL_INTERVAL_SECS: u64 = 20;
 
 /// バックグラウンドポーリングサービス
 pub struct PollingService {
@@ -40,13 +45,23 @@ impl PollingService {
 
         // ETagとポーリング間隔の共有状態
         let last_etag: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
-        let poll_interval_secs: Arc<Mutex<u64>> = Arc::new(Mutex::new(60));
+        let poll_interval_secs: Arc<Mutex<u64>> = Arc::new(Mutex::new(INITIAL_POLL_INTERVAL_SECS));
 
         let app_handle = app.clone();
 
         tauri::async_runtime::spawn(async move {
             // 共有Clientを使ってGitHubClientを生成（接続プール再利用）
             let client = GitHubClient::with_shared_client(http_client, token);
+
+            // viewer login をキャッシュ。アサイン解除検知の比較に使う。
+            // 取得失敗時もポーリング自体は継続するため、Optionで保持する。
+            let viewer_login: Option<String> = match client.verify_token().await {
+                Ok(v) => v.login,
+                Err(e) => {
+                    log::warn!("viewer login の取得に失敗（アサイン解除検知は無効化）: {}", e);
+                    None
+                }
+            };
 
             loop {
                 let current_interval = *poll_interval_secs.lock().await;
@@ -67,10 +82,22 @@ impl PollingService {
                                         *last_etag.lock().await = Some(new_etag);
                                     }
 
-                                    if let Err(e) = app_handle.emit("inbox-updated", &response.items) {
+                                    let mut items = response.items;
+
+                                    // アサイン解除検知: GitHubはunassignを通知に出さないため、
+                                    // assign reasonの未読Issueについて現在のアサイン状況を確認し、
+                                    // 自分が外れていたら該当通知を既読化してリストからも除く。
+                                    if let Some(login) = viewer_login.as_deref() {
+                                        let removed = verify_assignments(&client, &mut items, login).await;
+                                        if removed > 0 {
+                                            log::info!("アサイン解除を{}件検出して既読化", removed);
+                                        }
+                                    }
+
+                                    if let Err(e) = app_handle.emit("inbox-updated", &items) {
                                         log::error!("inbox-updatedイベントの送信に失敗: {}", e);
                                     } else {
-                                        log::info!("inbox-updatedを{}件で送信", response.items.len());
+                                        log::info!("inbox-updatedを{}件で送信", items.len());
                                     }
                                 }
                             }

@@ -1,34 +1,21 @@
 import { useCallback } from 'react';
+import { matchesFilter } from '@/lib/filters/match-filter';
 import * as commands from '@/lib/tauri/commands';
 import { logger } from '@/lib/utils/logger';
 import type { InboxItem } from '@/types';
-import type { CustomFilter } from '@/types/settings';
+import type { CustomFilter, NotificationReason } from '@/types/settings';
 
-function checkFilterMatch(item: InboxItem, filter: CustomFilter): boolean {
-  const reasonMatches = filter.reasons.length === 0 || filter.reasons.includes(item.reason);
-  if (!reasonMatches) {
-    return false;
-  }
+export { shouldShowItem } from '@/lib/filters/match-filter';
 
-  const hasRepoFilter = filter.repositories && filter.repositories.length > 0;
-  if (hasRepoFilter && !filter.repositories?.includes(item.repositoryFullName)) {
-    return false;
-  }
-
-  return true;
-}
-
-export function shouldShowItem(item: InboxItem, customFilters: CustomFilter[]): boolean {
-  if (customFilters.length === 0) {
-    return false;
-  }
-  return customFilters.some((filter) => checkFilterMatch(item, filter));
-}
-
-function getMatchingFilter(item: InboxItem, customFilters: CustomFilter[]): CustomFilter | null {
+function getMatchingFilter(
+  item: InboxItem,
+  customFilters: CustomFilter[],
+  globalExcludeReasons: NotificationReason[] = [],
+): CustomFilter | null {
   return (
     customFilters.find(
-      (filter) => filter.enableDesktopNotification && checkFilterMatch(item, filter),
+      (filter) =>
+        filter.enableDesktopNotification && matchesFilter(item, filter, globalExcludeReasons),
     ) || null
   );
 }
@@ -36,10 +23,11 @@ function getMatchingFilter(item: InboxItem, customFilters: CustomFilter[]): Cust
 function getNotifiableItems(
   newItems: InboxItem[],
   customFilters: CustomFilter[],
+  globalExcludeReasons: NotificationReason[] = [],
 ): Array<{ item: InboxItem; filter: CustomFilter }> {
   const result: Array<{ item: InboxItem; filter: CustomFilter }> = [];
   for (const item of newItems) {
-    const filter = getMatchingFilter(item, customFilters);
+    const filter = getMatchingFilter(item, customFilters, globalExcludeReasons);
     if (filter) {
       result.push({ item, filter });
     }
@@ -61,6 +49,7 @@ interface NotificationSettings {
   desktopNotifications: boolean;
   soundEnabled: boolean;
   customFilters: CustomFilter[];
+  globalExcludeReasons: NotificationReason[];
 }
 
 export function useSendDesktopNotification(
@@ -73,7 +62,11 @@ export function useSendDesktopNotification(
         return;
       }
 
-      const notifiableItems = getNotifiableItems(newItems, settingsRef.current.customFilters);
+      const notifiableItems = getNotifiableItems(
+        newItems,
+        settingsRef.current.customFilters,
+        settingsRef.current.globalExcludeReasons,
+      );
       if (notifiableItems.length === 0) {
         return;
       }

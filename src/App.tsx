@@ -1,5 +1,5 @@
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { LoginScreen } from '@/components/auth/login-screen';
 import { InboxList } from '@/components/inbox';
 import { Sidebar } from '@/components/layout/sidebar';
@@ -36,6 +36,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsInitialFilterId, setSettingsInitialFilterId] = useState<string | null>(null);
   const [selectedFilterId, setSelectedFilterId] = useState<string | null>('dashboard');
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
 
   const showOnboarding = !settingsLoading && !settings.onboardingCompleted && !onboardingDismissed;
@@ -72,6 +73,22 @@ export default function App() {
   const selectedFilter = selectedFilterId
     ? settings.customFilters.find((f) => f.id === selectedFilterId)
     : null;
+
+  const activeGroup = activeGroupId
+    ? (settings.repositoryGroups ?? []).find((g) => g.id === activeGroupId)
+    : null;
+
+  const scopedItems = activeGroup
+    ? inbox.items.filter((item) => activeGroup.repositories.includes(item.repositoryFullName))
+    : inbox.items;
+
+  const knownRepos = useMemo(() => {
+    const repos = new Set<string>();
+    for (const item of inbox.items) {
+      if (item.repositoryFullName) repos.add(item.repositoryFullName);
+    }
+    return [...repos].sort();
+  }, [inbox.items]);
 
   const userLogin = auth.user?.login;
 
@@ -114,11 +131,14 @@ export default function App() {
       <div className="flex h-screen bg-background">
         <aside className="w-56 flex-shrink-0">
           <Sidebar
-            items={inbox.items}
+            items={scopedItems}
             onOpenSettings={() => setSettingsOpen(true)}
             user={auth.user}
             selectedFilterId={selectedFilterId}
             onSelectFilter={setSelectedFilterId}
+            repositoryGroups={settings.repositoryGroups ?? []}
+            activeGroupId={activeGroupId}
+            onSelectGroup={setActiveGroupId}
           />
         </aside>
 
@@ -129,6 +149,7 @@ export default function App() {
                 filters={settings.customFilters}
                 onRefresh={inbox.refresh}
                 userLogin={userLogin}
+                activeGroup={activeGroup ?? undefined}
                 onOpenReviewSettings={() => {
                   setSettingsInitialFilterId('default-needs-review');
                   setSettingsOpen(true);
@@ -136,7 +157,7 @@ export default function App() {
               />
             ) : isSearchMode ? (
               <InboxList
-                items={inbox.items}
+                items={scopedItems}
                 isLoading={searchView.isLoading}
                 error={searchView.error}
                 lastUpdated={searchView.lastUpdated}
@@ -150,7 +171,7 @@ export default function App() {
               />
             ) : (
               <InboxList
-                items={inbox.items}
+                items={scopedItems}
                 isLoading={inbox.isLoading}
                 error={inbox.error}
                 lastUpdated={inbox.lastUpdated}
@@ -174,6 +195,7 @@ export default function App() {
             user={auth.user}
             onLogout={auth.logout}
             initialEditFilterId={settingsInitialFilterId}
+            knownRepos={knownRepos}
           />
 
           <OnboardingDialog open={showOnboarding} onComplete={() => setOnboardingDismissed(true)} />

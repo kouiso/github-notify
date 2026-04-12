@@ -1,5 +1,5 @@
 interface SidebarFooterProps {
-  user: { login: string; avatarUrl?: string } | null;
+  user: { login: string; avatarUrl?: string | null } | null;
   onOpenSettings: () => void;
 }
 

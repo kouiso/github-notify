@@ -5,8 +5,10 @@ import { logger } from '@/lib/utils/logger';
 import type { InboxItem } from '@/types';
 import {
   type CustomFilter,
+  DEFAULT_GLOBAL_EXCLUDE_REASONS,
   DEFAULT_INITIAL_FILTERS,
   migrateDefaultFilters,
+  type NotificationReason,
 } from '@/types/settings';
 import { shouldShowItem, useSendDesktopNotification } from './use-inbox-notification';
 
@@ -24,10 +26,12 @@ export function useInbox() {
     desktopNotifications: boolean;
     soundEnabled: boolean;
     customFilters: CustomFilter[];
+    globalExcludeReasons: NotificationReason[];
   }>({
     desktopNotifications: true,
     soundEnabled: true,
     customFilters: DEFAULT_INITIAL_FILTERS,
+    globalExcludeReasons: DEFAULT_GLOBAL_EXCLUDE_REASONS,
   });
 
   useEffect(() => {
@@ -40,6 +44,7 @@ export function useInbox() {
             desktopNotifications: settings.desktopNotifications,
             soundEnabled: settings.soundEnabled ?? true,
             customFilters: filters,
+            globalExcludeReasons: settings.globalExcludeReasons ?? DEFAULT_GLOBAL_EXCLUDE_REASONS,
           };
         })
         .catch((err) => logger.error('Failed to load settings', err))
@@ -50,7 +55,11 @@ export function useInbox() {
   }, []);
 
   const filterItem = useCallback((item: InboxItem): boolean => {
-    return shouldShowItem(item, settingsRef.current.customFilters);
+    return shouldShowItem(
+      item,
+      settingsRef.current.customFilters,
+      settingsRef.current.globalExcludeReasons,
+    );
   }, []);
 
   const sendDesktopNotification = useSendDesktopNotification(settingsRef, isFirstLoadRef);
@@ -153,6 +162,7 @@ export function useInbox() {
             desktopNotifications: settings.desktopNotifications,
             soundEnabled: settings.soundEnabled ?? true,
             customFilters: settings.customFilters,
+            globalExcludeReasons: settings.globalExcludeReasons ?? DEFAULT_GLOBAL_EXCLUDE_REASONS,
           };
 
           setItems((prev) => prev.filter(filterItem));

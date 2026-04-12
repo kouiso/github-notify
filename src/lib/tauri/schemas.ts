@@ -10,8 +10,8 @@ const DeviceFlowInfoSchema = v.object({
 
 const TokenVerificationSchema = v.object({
   valid: v.boolean(),
-  login: v.optional(v.string()),
-  avatarUrl: v.optional(v.string()),
+  login: v.optional(v.nullable(v.string())),
+  avatarUrl: v.optional(v.nullable(v.string())),
 });
 
 const ItemStateSchema = v.picklist(['open', 'closed', 'merged']);
@@ -101,6 +101,17 @@ const CustomFilterSchema = v.object({
   issueStatusRules: v.optional(v.array(IssueStatusRuleSchema)),
 });
 
+const RepositoryGroupSchema = v.object({
+  id: v.string(),
+  name: v.string(),
+  repositories: v.array(v.string()),
+  color: v.optional(v.nullable(v.string())),
+  enableDesktopNotification: v.optional(v.boolean()),
+  notifyReasons: v.optional(v.array(NotificationReasonSchema)),
+  enableSound: v.optional(v.boolean()),
+  soundType: v.optional(SoundTypeSchema),
+});
+
 const AppSettingsSchema = v.object({
   theme: ThemeSchema,
   notificationPreset: v.string(),
@@ -110,6 +121,8 @@ const AppSettingsSchema = v.object({
   customFilters: v.array(CustomFilterSchema),
   activeFilterId: v.nullable(v.string()),
   onboardingCompleted: v.optional(v.boolean()),
+  repositoryGroups: v.optional(v.array(RepositoryGroupSchema), []),
+  globalExcludeReasons: v.optional(v.array(NotificationReasonSchema), ['subscribed']),
 });
 
 export {

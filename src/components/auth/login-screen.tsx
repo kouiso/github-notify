@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   Button,
   Card,
@@ -32,6 +32,13 @@ export function LoginScreen({
 }: LoginScreenProps) {
   const [showTokenInput, setShowTokenInput] = useState(false);
   const [token, setToken] = useState('');
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyCode = useCallback(async (code: string) => {
+    await navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, []);
 
   const handleTokenSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,9 +57,17 @@ export function LoginScreen({
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="text-center">
-              <div className="text-4xl font-mono font-bold tracking-widest bg-muted p-4 rounded-lg">
+              <button
+                type="button"
+                className="text-4xl font-mono font-bold tracking-widest bg-muted p-4 rounded-lg w-full cursor-pointer hover:bg-muted/80 transition-colors select-all"
+                onClick={() => handleCopyCode(deviceFlow.userCode)}
+                title="クリックでコピー"
+              >
                 {deviceFlow.userCode}
-              </div>
+              </button>
+              <p className="text-xs text-muted-foreground mt-2">
+                {copied ? 'コピーしました!' : 'クリックでコピー'}
+              </p>
             </div>
 
             <div className="text-center text-[0.9375rem] text-muted-foreground space-y-1">

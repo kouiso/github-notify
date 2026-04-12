@@ -9,7 +9,7 @@ export interface AuthState {
   isLoading: boolean;
   user: {
     login: string;
-    avatarUrl?: string;
+    avatarUrl?: string | null;
   } | null;
   deviceFlow: DeviceFlowInfo | null;
   isPolling: boolean;

@@ -65,6 +65,17 @@ export function isSearchView(filter: CustomFilter): boolean {
   return typeof filter.searchQuery === 'string' && filter.searchQuery.trim().length > 0;
 }
 
+export interface RepositoryGroup {
+  id: string;
+  name: string;
+  repositories: string[];
+  color?: string | null;
+  enableDesktopNotification?: boolean;
+  notifyReasons?: NotificationReason[];
+  enableSound?: boolean;
+  soundType?: SoundType;
+}
+
 export interface AppSettings {
   theme: Theme;
   notificationPreset: string;
@@ -74,6 +85,9 @@ export interface AppSettings {
   customFilters: CustomFilter[];
   activeFilterId: string | null;
   onboardingCompleted?: boolean;
+  repositoryGroups?: RepositoryGroup[];
+  /** 全ビューから一括除外するreasons（Slack連携の subscribed 等） */
+  globalExcludeReasons?: NotificationReason[];
 }
 
 // 初回ユーザー向けのデフォルトビュー定義
@@ -229,6 +243,8 @@ export function migrateDefaultFilters(filters: CustomFilter[]): {
   return { filters: result, changed };
 }
 
+export const DEFAULT_GLOBAL_EXCLUDE_REASONS: NotificationReason[] = ['subscribed'];
+
 export const DEFAULT_SETTINGS: AppSettings = {
   theme: 'system',
   notificationPreset: 'none',
@@ -237,4 +253,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   soundEnabled: true,
   customFilters: DEFAULT_INITIAL_FILTERS,
   activeFilterId: 'dashboard',
+  repositoryGroups: [],
+  globalExcludeReasons: DEFAULT_GLOBAL_EXCLUDE_REASONS,
 };

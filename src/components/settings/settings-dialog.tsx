@@ -10,6 +10,7 @@ import {
   type Theme,
 } from '@/types';
 import { FilterTemplates } from './filter-templates';
+import { GroupManager } from './group-manager';
 import { NotificationFilterEditor } from './notification-filter-editor';
 import { NotificationFilterList } from './notification-filter-list';
 import { SearchViewCard } from './search-view-card';
@@ -19,14 +20,16 @@ import { ToggleSwitch } from './toggle-switch';
 interface SettingsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  user: { login: string; avatarUrl?: string } | null;
+  user: { login: string; avatarUrl?: string | null } | null;
   onLogout: () => void;
   initialEditFilterId?: string | null;
+  knownRepos?: string[];
 }
 
-type TabId = 'appearance' | 'filters' | 'account';
+type TabId = 'projects' | 'filters' | 'appearance' | 'account';
 
 const TABS: { id: TabId; label: string }[] = [
+  { id: 'projects', label: 'プロジェクト' },
   { id: 'filters', label: 'フィルター' },
   { id: 'appearance', label: '外観' },
   { id: 'account', label: 'アカウント' },
@@ -48,6 +51,7 @@ function SettingsDialogContent({
   user,
   onLogout,
   initialEditFilterId,
+  knownRepos = [],
 }: SettingsDialogProps) {
   const { settings, updateSettings } = useSettings();
   const { theme, setTheme } = useTheme();
@@ -157,6 +161,14 @@ function SettingsDialogContent({
         </div>
 
         <div className="py-4 max-h-[70vh] overflow-y-auto scrollbar-thin">
+          {activeTab === 'projects' && (
+            <GroupManager
+              groups={settings.repositoryGroups ?? []}
+              knownRepos={knownRepos}
+              onSave={(groups) => updateSettings({ repositoryGroups: groups })}
+            />
+          )}
+
           {activeTab === 'filters' && (
             <div className="space-y-4">
               <div className="flex items-center justify-between p-3 bg-muted rounded-lg">

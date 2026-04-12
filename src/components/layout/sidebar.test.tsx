@@ -66,6 +66,9 @@ const defaultProps = {
   user: { login: 'testuser', avatarUrl: 'https://avatar.example.com/testuser.png' },
   selectedFilterId: null as string | null,
   onSelectFilter: vi.fn(),
+  repositoryGroups: [],
+  activeGroupId: null as string | null,
+  onSelectGroup: vi.fn(),
 };
 
 describe('Sidebar', () => {

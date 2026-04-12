@@ -8,6 +8,6 @@ export interface DeviceFlowInfo {
 
 export interface TokenVerification {
   valid: boolean;
-  login?: string;
-  avatarUrl?: string;
+  login?: string | null;
+  avatarUrl?: string | null;
 }

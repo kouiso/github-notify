@@ -1,14 +1,22 @@
 import { useMemo, useState } from 'react';
 import { Button, Dialog, DialogContent, DialogHeader, DialogTitle, Input } from '@/components/ui';
 import { useSettings } from '@/hooks';
+import { matchesFilter } from '@/lib/filters/match-filter';
 import { cn } from '@/lib/utils/cn';
 import type { InboxItem } from '@/types';
-import type { CustomFilter, NotificationReason, SoundType } from '@/types/settings';
+import type {
+  CustomFilter,
+  NotificationReason,
+  RepositoryGroup,
+  SoundType,
+} from '@/types/settings';
 import { isSearchView, REASON_LABELS } from '@/types/settings';
 import { SidebarFooter } from './sidebar-footer';
 import {
   CloseIcon,
   DashboardIcon,
+  FolderIcon,
+  GlobeIcon,
   InboxIcon,
   PlusIcon,
   SearchIcon,
@@ -19,9 +27,12 @@ import { SidebarItem } from './sidebar-item';
 interface SidebarProps {
   items: InboxItem[];
   onOpenSettings: () => void;
-  user: { login: string; avatarUrl?: string } | null;
+  user: { login: string; avatarUrl?: string | null } | null;
   selectedFilterId: string | null;
   onSelectFilter: (filterId: string | null) => void;
+  repositoryGroups: RepositoryGroup[];
+  activeGroupId: string | null;
+  onSelectGroup: (groupId: string | null) => void;
 }
 
 const ALL_REASONS: NotificationReason[] = [
@@ -41,24 +52,15 @@ const VIEW_DESCRIPTIONS: Record<string, string> = {
   'default-my-prs': '自分が作成したオープン中のPR',
 };
 
-function matchesFilter(item: InboxItem, filter: CustomFilter): boolean {
-  if (filter.reasons.length > 0 && !filter.reasons.includes(item.reason)) {
-    return false;
-  }
-  if (filter.repositories && filter.repositories.length > 0) {
-    if (!filter.repositories.includes(item.repositoryFullName)) {
-      return false;
-    }
-  }
-  return true;
-}
-
 export function Sidebar({
   items,
   onOpenSettings,
   user,
   selectedFilterId,
   onSelectFilter,
+  repositoryGroups,
+  activeGroupId,
+  onSelectGroup,
 }: SidebarProps) {
   const { settings, updateSettings } = useSettings();
   const [editingFilter, setEditingFilter] = useState<CustomFilter | null>(null);
@@ -72,20 +74,24 @@ export function Sidebar({
     return [...repos].sort();
   }, [items]);
 
+  const globalExclude = settings.globalExcludeReasons ?? [];
+
   const filterCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const filter of settings.customFilters) {
-      counts[filter.id] = items.filter((item) => item.unread && matchesFilter(item, filter)).length;
+      counts[filter.id] = items.filter(
+        (item) => item.unread && matchesFilter(item, filter, globalExclude),
+      ).length;
     }
     return counts;
-  }, [items, settings.customFilters]);
+  }, [items, settings.customFilters, globalExclude]);
 
   const totalFilteredCount = useMemo(() => {
     return items.filter((item) => {
       if (!item.unread) return false;
-      return settings.customFilters.some((filter) => matchesFilter(item, filter));
+      return settings.customFilters.some((filter) => matchesFilter(item, filter, globalExclude));
     }).length;
-  }, [items, settings.customFilters]);
+  }, [items, settings.customFilters, globalExclude]);
 
   const handleNewView = () => {
     setEditingFilter({
@@ -154,6 +160,42 @@ export function Sidebar({
             onClick={() => onSelectFilter(null)}
           />
         </div>
+
+        {repositoryGroups.length > 0 && (
+          <div className="px-2 py-1">
+            <p className="px-3 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              プロジェクト
+            </p>
+            <div className="space-y-0.5">
+              <SidebarItem
+                icon={<GlobeIcon className="w-[1.125rem] h-[1.125rem]" />}
+                label="すべて"
+                active={activeGroupId === null}
+                onClick={() => onSelectGroup(null)}
+              />
+              {repositoryGroups.map((group) => (
+                <SidebarItem
+                  key={group.id}
+                  icon={
+                    group.color ? (
+                      <span className="w-[1.125rem] h-[1.125rem] flex items-center justify-center">
+                        <span
+                          className="w-2.5 h-2.5 rounded-full"
+                          style={{ backgroundColor: group.color }}
+                        />
+                      </span>
+                    ) : (
+                      <FolderIcon className="w-[1.125rem] h-[1.125rem]" />
+                    )
+                  }
+                  label={group.name}
+                  active={activeGroupId === group.id}
+                  onClick={() => onSelectGroup(group.id)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="px-2 py-1">
           <p className="px-3 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">

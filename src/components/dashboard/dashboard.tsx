@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchView } from '@/hooks/use-search-view';
 import { cn } from '@/lib/utils/cn';
-import type { CustomFilter } from '@/types/settings';
+import type { CustomFilter, RepositoryGroup } from '@/types/settings';
 import { isSearchView } from '@/types/settings';
 import { ChevronIcon, EyeIcon, FunnelIcon, PRIcon, RefreshIcon } from './dashboard-icons';
 import { DashboardSection, HeroSection, SearchItemList } from './dashboard-section';
@@ -10,6 +10,7 @@ interface DashboardProps {
   filters: CustomFilter[];
   onRefresh: () => void;
   userLogin?: string;
+  activeGroup?: RepositoryGroup;
   onOpenReviewSettings?: () => void;
 }
 
@@ -22,6 +23,7 @@ export const Dashboard = ({
   filters,
   onRefresh,
   userLogin,
+  activeGroup,
   onOpenReviewSettings,
 }: DashboardProps) => {
   const needsReviewView = useSearchView();
@@ -42,9 +44,12 @@ export const Dashboard = ({
       if (selectedRepo !== 'all') {
         q += ` org:${selectedRepo}`;
       }
+      if (activeGroup && activeGroup.repositories.length > 0) {
+        q += ' ' + activeGroup.repositories.map((r) => `repo:${r}`).join(' ');
+      }
       return q;
     },
-    [userLogin, selectedRepo],
+    [userLogin, selectedRepo, activeGroup],
   );
 
   useEffect(() => {
