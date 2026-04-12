@@ -49,7 +49,7 @@ wildmatch = "2"
 keyring = { version = "3", features = ["apple-native", "windows-native", "linux-native"] }
 
 # Audio playback
-rodio = "0.19"
+rodio = "0.22"
 
 [dev-dependencies]
 wiremock = "0.6"
