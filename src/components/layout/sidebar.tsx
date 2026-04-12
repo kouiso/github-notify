@@ -74,7 +74,10 @@ export function Sidebar({
     return [...repos].sort();
   }, [items]);
 
-  const globalExclude = settings.globalExcludeReasons ?? [];
+  const globalExclude = useMemo(
+    () => settings.globalExcludeReasons ?? [],
+    [settings.globalExcludeReasons],
+  );
 
   const filterCounts = useMemo(() => {
     const counts: Record<string, number> = {};
