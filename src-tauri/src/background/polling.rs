@@ -258,3 +258,186 @@ pub async fn is_polling_running(state: tauri::State<'_, AppState>) -> Result<boo
     let polling = state.polling.lock().await;
     Ok(polling.is_running())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn make_inbox_item(id: &str, reason: &str, repo: &str, url: Option<&str>) -> InboxItem {
+        InboxItem {
+            id: id.to_string(),
+            title: format!("Test item {}", id),
+            url: url.map(String::from),
+            reason: reason.to_string(),
+            unread: true,
+            updated_at: Utc::now(),
+            item_type: "Issue".to_string(),
+            repository_name: repo.rsplit('/').next().unwrap_or(repo).to_string(),
+            repository_full_name: repo.to_string(),
+            owner_login: repo.split('/').next().unwrap_or("owner").to_string(),
+            owner_avatar: String::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn removes_unassigned_notifications() {
+        let server = MockServer::start().await;
+
+        // Issue #42: viewer は assignees に含まれない → 除外される
+        Mock::given(method("GET"))
+            .and(path("/repos/owner/repo/issues/42"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "assignees": [{"login": "other-user"}]
+            })))
+            .mount(&server)
+            .await;
+
+        // mark_notification_read のモック (PATCH)
+        Mock::given(method("PATCH"))
+            .and(path("/notifications/threads/1001"))
+            .respond_with(ResponseTemplate::new(205))
+            .mount(&server)
+            .await;
+
+        let client = GitHubClient::with_base_url(
+            reqwest::Client::new(),
+            "test-token".to_string(),
+            server.uri(),
+        );
+
+        let mut items = vec![
+            make_inbox_item(
+                "1001",
+                "assign",
+                "owner/repo",
+                Some(&format!("{}/repos/owner/repo/issues/42", server.uri())),
+            ),
+            make_inbox_item("1002", "mention", "owner/repo", None),
+        ];
+
+        let removed = verify_assignments(&client, &mut items, "viewer").await;
+
+        assert_eq!(removed, 1, "1件のアサイン解除を検知するべき");
+        assert_eq!(items.len(), 1, "除外後は1件のみ残る");
+        assert_eq!(items[0].id, "1002", "mentionの通知が残る");
+    }
+
+    #[tokio::test]
+    async fn keeps_still_assigned_notifications() {
+        let server = MockServer::start().await;
+
+        // Issue #10: viewer がまだ assignees に含まれる → 残る
+        Mock::given(method("GET"))
+            .and(path("/repos/owner/repo/issues/10"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "assignees": [{"login": "viewer"}, {"login": "coworker"}]
+            })))
+            .mount(&server)
+            .await;
+
+        let client = GitHubClient::with_base_url(
+            reqwest::Client::new(),
+            "test-token".to_string(),
+            server.uri(),
+        );
+
+        let mut items = vec![make_inbox_item(
+            "2001",
+            "assign",
+            "owner/repo",
+            Some(&format!("{}/repos/owner/repo/issues/10", server.uri())),
+        )];
+
+        let removed = verify_assignments(&client, &mut items, "viewer").await;
+
+        assert_eq!(removed, 0, "まだアサインされてるので除外しない");
+        assert_eq!(items.len(), 1, "通知は残る");
+    }
+
+    #[tokio::test]
+    async fn skips_non_assign_reasons() {
+        let server = MockServer::start().await;
+
+        let client = GitHubClient::with_base_url(
+            reqwest::Client::new(),
+            "test-token".to_string(),
+            server.uri(),
+        );
+
+        let mut items = vec![
+            make_inbox_item("3001", "mention", "owner/repo", None),
+            make_inbox_item("3002", "review_requested", "owner/repo", None),
+        ];
+
+        let removed = verify_assignments(&client, &mut items, "viewer").await;
+
+        assert_eq!(removed, 0, "assign以外のreasonはスキップ");
+        assert_eq!(items.len(), 2, "全件残る");
+    }
+
+    #[tokio::test]
+    async fn case_insensitive_login_match() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/repos/owner/repo/issues/5"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "assignees": [{"login": "Viewer"}]
+            })))
+            .mount(&server)
+            .await;
+
+        let client = GitHubClient::with_base_url(
+            reqwest::Client::new(),
+            "test-token".to_string(),
+            server.uri(),
+        );
+
+        let mut items = vec![make_inbox_item(
+            "4001",
+            "assign",
+            "owner/repo",
+            Some(&format!("{}/repos/owner/repo/issues/5", server.uri())),
+        )];
+
+        let removed = verify_assignments(&client, &mut items, "viewer").await;
+
+        assert_eq!(removed, 0, "大文字小文字を無視してマッチするので残る");
+        assert_eq!(items.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn handles_api_error_gracefully() {
+        let server = MockServer::start().await;
+
+        // API が 404 を返す → エラーハンドリングでスキップ、クラッシュしない
+        Mock::given(method("GET"))
+            .and(path("/repos/owner/repo/issues/99"))
+            .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
+                "message": "Not Found"
+            })))
+            .mount(&server)
+            .await;
+
+        let client = GitHubClient::with_base_url(
+            reqwest::Client::new(),
+            "test-token".to_string(),
+            server.uri(),
+        );
+
+        let mut items = vec![make_inbox_item(
+            "5001",
+            "assign",
+            "owner/repo",
+            Some(&format!("{}/repos/owner/repo/issues/99", server.uri())),
+        )];
+
+        let removed = verify_assignments(&client, &mut items, "viewer").await;
+
+        assert_eq!(removed, 0, "APIエラー時は除外しない");
+        assert_eq!(items.len(), 1, "通知は残る");
+    }
+}

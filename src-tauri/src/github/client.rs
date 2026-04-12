@@ -21,6 +21,8 @@ use super::secrets::GITHUB_CLIENT_ID;
 pub struct GitHubClient {
     client: Client,
     token: Option<String>,
+    /// API base URL. Defaults to GITHUB_API_BASE. Overridable for testing.
+    base_url: String,
 }
 
 impl GitHubClient {
@@ -31,6 +33,16 @@ impl GitHubClient {
             client,
             // 空文字列はトークン未設定を示す（デバイスフロー完了前など）
             token: if token.is_empty() { None } else { Some(token) },
+            base_url: GITHUB_API_BASE.to_string(),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn with_base_url(client: Client, token: String, base_url: String) -> Self {
+        Self {
+            client,
+            token: if token.is_empty() { None } else { Some(token) },
+            base_url,
         }
     }
 
@@ -256,9 +268,9 @@ impl GitHubClient {
             .ok_or_else(|| AppError::Auth("No token set".to_string()))?;
 
         let base_url = if all {
-            format!("{}/notifications?all=true&per_page=50", GITHUB_API_BASE)
+            format!("{}/notifications?all=true&per_page=50", self.base_url)
         } else {
-            format!("{}/notifications?per_page=50", GITHUB_API_BASE)
+            format!("{}/notifications?per_page=50", self.base_url)
         };
 
         // First page request (with ETag for conditional caching)
@@ -376,7 +388,7 @@ impl GitHubClient {
 
         let url = format!(
             "{}/repos/{}/{}/issues/{}",
-            GITHUB_API_BASE, owner, repo, issue_number
+            self.base_url, owner, repo, issue_number
         );
 
         let response = self
@@ -418,7 +430,7 @@ impl GitHubClient {
             .as_ref()
             .ok_or_else(|| AppError::Auth("No token set".to_string()))?;
 
-        let url = format!("{}/notifications/threads/{}", GITHUB_API_BASE, thread_id);
+        let url = format!("{}/notifications/threads/{}", self.base_url, thread_id);
 
         let response = self
             .client
@@ -448,7 +460,7 @@ impl GitHubClient {
             .as_ref()
             .ok_or_else(|| AppError::Auth("No token set".to_string()))?;
 
-        let url = format!("{}/notifications", GITHUB_API_BASE);
+        let url = format!("{}/notifications", self.base_url);
 
         let response = self
             .client
