@@ -45,7 +45,7 @@ export function shouldNotifyByGroup(
   };
 }
 
-function getNotifiableItems(
+export function getNotifiableItems(
   newItems: InboxItem[],
   customFilters: CustomFilter[],
   globalExcludeReasons: NotificationReason[],
@@ -54,6 +54,11 @@ function getNotifiableItems(
   const result: NotifiableResult[] = [];
 
   for (const item of newItems) {
+    // 0. グローバル除外は全経路で最優先適用
+    if (globalExcludeReasons.includes(item.reason as NotificationReason)) {
+      continue;
+    }
+
     // 1. プロジェクトグループに属する場合はグループの通知設定を優先
     const groupResult = shouldNotifyByGroup(item, repositoryGroups);
     if (groupResult) {

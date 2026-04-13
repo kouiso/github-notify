@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { InboxItem } from '@/types';
-import type { RepositoryGroup } from '@/types/settings';
-import { shouldNotifyByGroup } from './use-inbox-notification';
+import type { CustomFilter, RepositoryGroup } from '@/types/settings';
+import { getNotifiableItems, shouldNotifyByGroup } from './use-inbox-notification';
 
 function makeItem(overrides: Partial<InboxItem> = {}): InboxItem {
   return {
@@ -213,5 +213,51 @@ describe('shouldNotifyByGroup — integration scenarios', () => {
       soundEnabled: false,
       soundType: 'default',
     });
+  });
+});
+
+describe('getNotifiableItems — globalExcludeReasons', () => {
+  const baseFilter: CustomFilter = {
+    id: 'f1',
+    name: 'Test',
+    reasons: ['review_requested', 'mention', 'subscribed'],
+    enableDesktopNotification: true,
+    enableSound: false,
+    soundType: 'default',
+  };
+
+  it('globalExcludeReasons blocks items even when group notification is enabled', () => {
+    const item = makeItem({ repositoryFullName: 'org/repo-1', reason: 'subscribed' });
+    const group = makeGroup({
+      repositories: ['org/repo-1'],
+      enableDesktopNotification: true,
+      notifyReasons: [],
+    });
+    const result = getNotifiableItems([item], [baseFilter], ['subscribed'], [group]);
+    expect(result).toHaveLength(0);
+  });
+
+  it('globalExcludeReasons blocks items in filter-based path too', () => {
+    const item = makeItem({ repositoryFullName: 'org/unknown', reason: 'subscribed' });
+    const result = getNotifiableItems([item], [baseFilter], ['subscribed'], []);
+    expect(result).toHaveLength(0);
+  });
+
+  it('non-excluded reason passes through group notification', () => {
+    const item = makeItem({ repositoryFullName: 'org/repo-1', reason: 'mention' });
+    const group = makeGroup({
+      repositories: ['org/repo-1'],
+      enableDesktopNotification: true,
+      notifyReasons: [],
+    });
+    const result = getNotifiableItems([item], [baseFilter], ['subscribed'], [group]);
+    expect(result).toHaveLength(1);
+    expect(result[0].item.id).toBe(item.id);
+  });
+
+  it('non-excluded reason passes through filter-based path', () => {
+    const item = makeItem({ repositoryFullName: 'org/unknown', reason: 'review_requested' });
+    const result = getNotifiableItems([item], [baseFilter], ['subscribed'], []);
+    expect(result).toHaveLength(1);
   });
 });
