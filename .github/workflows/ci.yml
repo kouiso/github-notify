@@ -20,7 +20,7 @@ env:
 jobs:
   frontend:
     name: Frontend ${{ matrix.check-type }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ${{ vars.RUNNER_LINUX }}
     if: github.event.pull_request.draft == false
     strategy:
       fail-fast: false
@@ -61,7 +61,7 @@ jobs:
 
   rust:
     name: Rust ${{ matrix.check-type }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ${{ vars.RUNNER_LINUX }}
     if: github.event.pull_request.draft == false
     strategy:
       fail-fast: false
