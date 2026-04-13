@@ -132,6 +132,7 @@ export default function App() {
         <aside className="w-56 flex-shrink-0">
           <Sidebar
             items={scopedItems}
+            allItems={inbox.items}
             onOpenSettings={() => setSettingsOpen(true)}
             user={auth.user}
             selectedFilterId={selectedFilterId}

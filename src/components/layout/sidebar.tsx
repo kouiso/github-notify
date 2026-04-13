@@ -15,8 +15,6 @@ import { SidebarFooter } from './sidebar-footer';
 import {
   CloseIcon,
   DashboardIcon,
-  FolderIcon,
-  GlobeIcon,
   InboxIcon,
   PlusIcon,
   SearchIcon,
@@ -26,6 +24,7 @@ import { SidebarItem } from './sidebar-item';
 
 interface SidebarProps {
   items: InboxItem[];
+  allItems: InboxItem[];
   onOpenSettings: () => void;
   user: { login: string; avatarUrl?: string | null } | null;
   selectedFilterId: string | null;
@@ -54,6 +53,7 @@ const VIEW_DESCRIPTIONS: Record<string, string> = {
 
 export function Sidebar({
   items,
+  allItems,
   onOpenSettings,
   user,
   selectedFilterId,
@@ -78,6 +78,17 @@ export function Sidebar({
     () => settings.globalExcludeReasons ?? [],
     [settings.globalExcludeReasons],
   );
+
+  const groupUnreadCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const group of repositoryGroups) {
+      const repoSet = new Set(group.repositories);
+      counts[group.id] = allItems.filter(
+        (item) => item.unread && repoSet.has(item.repositoryFullName),
+      ).length;
+    }
+    return counts;
+  }, [allItems, repositoryGroups]);
 
   const filterCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -165,38 +176,61 @@ export function Sidebar({
         </div>
 
         {repositoryGroups.length > 0 && (
-          <div className="px-2 py-1">
-            <p className="px-3 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              プロジェクト
-            </p>
-            <div className="space-y-0.5">
-              <SidebarItem
-                icon={<GlobeIcon className="w-[1.125rem] h-[1.125rem]" />}
-                label="すべて"
-                active={activeGroupId === null}
+          <div className="px-2 pt-1 pb-0">
+            <div className="flex items-center gap-1 overflow-x-auto scrollbar-none pb-1">
+              <button
+                type="button"
                 onClick={() => onSelectGroup(null)}
-              />
-              {repositoryGroups.map((group) => (
-                <SidebarItem
-                  key={group.id}
-                  icon={
-                    group.color ? (
-                      <span className="w-[1.125rem] h-[1.125rem] flex items-center justify-center">
-                        <span
-                          className="w-2.5 h-2.5 rounded-full"
-                          style={{ backgroundColor: group.color }}
-                        />
+                className={cn(
+                  'flex-shrink-0 px-2.5 py-1 text-xs font-medium rounded-md transition-colors',
+                  activeGroupId === null
+                    ? 'bg-accent text-foreground'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
+                )}
+              >
+                ALL
+              </button>
+              {repositoryGroups.map((group) => {
+                const count = groupUnreadCounts[group.id] ?? 0;
+                const isActive = activeGroupId === group.id;
+                return (
+                  <button
+                    key={group.id}
+                    type="button"
+                    onClick={() => onSelectGroup(group.id)}
+                    className={cn(
+                      'flex-shrink-0 flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md transition-colors',
+                      isActive
+                        ? 'bg-accent text-foreground'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
+                    )}
+                  >
+                    {group.color && (
+                      <span
+                        className="w-2 h-2 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: group.color }}
+                      />
+                    )}
+                    <span className="truncate max-w-[5rem]">{group.name}</span>
+                    {!isActive && count > 0 && (
+                      <span className="ml-0.5 min-w-[1.125rem] h-[1.125rem] flex items-center justify-center rounded-full bg-muted-foreground/20 text-[0.625rem] font-semibold tabular-nums">
+                        {count > 99 ? '99+' : count}
                       </span>
-                    ) : (
-                      <FolderIcon className="w-[1.125rem] h-[1.125rem]" />
-                    )
-                  }
-                  label={group.name}
-                  active={activeGroupId === group.id}
-                  onClick={() => onSelectGroup(group.id)}
-                />
-              ))}
+                    )}
+                  </button>
+                );
+              })}
             </div>
+            {activeGroupId &&
+              (() => {
+                const activeGrp = repositoryGroups.find((g) => g.id === activeGroupId);
+                return activeGrp?.color ? (
+                  <div
+                    className="h-0.5 rounded-full mx-1"
+                    style={{ backgroundColor: activeGrp.color }}
+                  />
+                ) : null;
+              })()}
           </div>
         )}
 

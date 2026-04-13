@@ -62,6 +62,7 @@ function createMockFilter(overrides: Partial<CustomFilter> = {}): CustomFilter {
 
 const defaultProps = {
   items: [] as InboxItem[],
+  allItems: [] as InboxItem[],
   onOpenSettings: vi.fn(),
   user: { login: 'testuser', avatarUrl: 'https://avatar.example.com/testuser.png' },
   selectedFilterId: null as string | null,
@@ -656,6 +657,220 @@ describe('Sidebar', () => {
       const filterBtn = screen.getByText('通知なし').closest('button')!;
       const dot = filterBtn.querySelector('.bg-primary.rounded-full');
       expect(dot).not.toBeInTheDocument();
+    });
+  });
+
+  describe('プロジェクトタブバー', () => {
+    const groups = [
+      {
+        id: 'g1',
+        name: '案件A',
+        repositories: ['org/repo-1'],
+        color: '#3b82f6',
+      },
+      {
+        id: 'g2',
+        name: '案件B',
+        repositories: ['org/repo-2'],
+        color: '#22c55e',
+      },
+    ];
+
+    it('グループがあるときタブバーが表示される', () => {
+      render(<Sidebar {...defaultProps} repositoryGroups={groups} />);
+      expect(screen.getByText('ALL')).toBeInTheDocument();
+      expect(screen.getByText('案件A')).toBeInTheDocument();
+      expect(screen.getByText('案件B')).toBeInTheDocument();
+    });
+
+    it('グループがないときタブバーが表示されない', () => {
+      render(<Sidebar {...defaultProps} repositoryGroups={[]} />);
+      expect(screen.queryByText('ALL')).not.toBeInTheDocument();
+    });
+
+    it('ALLタブクリックで onSelectGroup(null) が呼ばれる', async () => {
+      const user = userEvent.setup();
+      const onSelectGroup = vi.fn();
+      render(
+        <Sidebar
+          {...defaultProps}
+          repositoryGroups={groups}
+          activeGroupId="g1"
+          onSelectGroup={onSelectGroup}
+        />,
+      );
+
+      await user.click(screen.getByText('ALL'));
+      expect(onSelectGroup).toHaveBeenCalledWith(null);
+    });
+
+    it('プロジェクトタブクリックで onSelectGroup(id) が呼ばれる', async () => {
+      const user = userEvent.setup();
+      const onSelectGroup = vi.fn();
+      render(<Sidebar {...defaultProps} repositoryGroups={groups} onSelectGroup={onSelectGroup} />);
+
+      await user.click(screen.getByText('案件A'));
+      expect(onSelectGroup).toHaveBeenCalledWith('g1');
+    });
+
+    it('非アクティブタブに未読バッジが表示される', () => {
+      const allItems = [
+        createMockItem({ id: '1', repositoryFullName: 'org/repo-2', unread: true }),
+        createMockItem({ id: '2', repositoryFullName: 'org/repo-2', unread: true }),
+        createMockItem({ id: '3', repositoryFullName: 'org/repo-2', unread: false }),
+      ];
+      render(
+        <Sidebar
+          {...defaultProps}
+          repositoryGroups={groups}
+          activeGroupId="g1"
+          allItems={allItems}
+        />,
+      );
+
+      const tabB = screen.getByText('案件B').closest('button')!;
+      expect(within(tabB).getByText('2')).toBeInTheDocument();
+    });
+
+    it('アクティブタブにはバッジが表示されない', () => {
+      const allItems = [
+        createMockItem({ id: '1', repositoryFullName: 'org/repo-1', unread: true }),
+      ];
+      render(
+        <Sidebar
+          {...defaultProps}
+          repositoryGroups={groups}
+          activeGroupId="g1"
+          allItems={allItems}
+        />,
+      );
+
+      const tabA = screen.getByText('案件A').closest('button')!;
+      expect(within(tabA).queryByText('1')).not.toBeInTheDocument();
+    });
+
+    it('アクティブグループのカラーラインが表示される', () => {
+      const { container } = render(
+        <Sidebar {...defaultProps} repositoryGroups={groups} activeGroupId="g1" />,
+      );
+
+      const colorLine = container.querySelector('.h-0\\.5.rounded-full');
+      expect(colorLine).toBeInTheDocument();
+    });
+
+    it('タブバーが横スクロール可能なコンテナを持つ（overflow-x-auto）', () => {
+      const { container } = render(<Sidebar {...defaultProps} repositoryGroups={groups} />);
+
+      const scrollContainer = container.querySelector('.overflow-x-auto');
+      expect(scrollContainer).toBeInTheDocument();
+    });
+
+    it('未読数が99を超えるとき "99+" バッジを表示する', () => {
+      const allItems = Array.from({ length: 100 }, (_, i) =>
+        createMockItem({ id: String(i), repositoryFullName: 'org/repo-2', unread: true }),
+      );
+      render(
+        <Sidebar
+          {...defaultProps}
+          repositoryGroups={groups}
+          activeGroupId="g1"
+          allItems={allItems}
+        />,
+      );
+
+      const tabB = screen.getByText('案件B').closest('button')!;
+      expect(within(tabB).getByText('99+')).toBeInTheDocument();
+    });
+
+    it('非アクティブタブの未読数が0のときバッジが表示されない', () => {
+      const allItems = [
+        createMockItem({ id: '1', repositoryFullName: 'org/repo-1', unread: true }),
+      ];
+      render(
+        <Sidebar
+          {...defaultProps}
+          repositoryGroups={groups}
+          activeGroupId="g1"
+          allItems={allItems}
+        />,
+      );
+
+      const tabB = screen.getByText('案件B').closest('button')!;
+      expect(within(tabB).queryByText('0')).not.toBeInTheDocument();
+    });
+
+    it('activeGroupId が null（ALL選択）のときカラーラインが表示されない', () => {
+      const { container } = render(
+        <Sidebar {...defaultProps} repositoryGroups={groups} activeGroupId={null} />,
+      );
+
+      const colorLine = container.querySelector('.h-0\\.5.rounded-full');
+      expect(colorLine).not.toBeInTheDocument();
+    });
+
+    it('アクティブグループにカラーが未設定のときカラーラインが表示されない', () => {
+      const noColorGroups = [{ id: 'g1', name: '案件A', repositories: ['org/repo-1'], color: '' }];
+      const { container } = render(
+        <Sidebar {...defaultProps} repositoryGroups={noColorGroups} activeGroupId="g1" />,
+      );
+
+      const colorLine = container.querySelector('.h-0\\.5.rounded-full');
+      expect(colorLine).not.toBeInTheDocument();
+    });
+
+    it('複数グループがそれぞれ固有のカラードットを表示する', () => {
+      const threeGroups = [
+        { id: 'g1', name: 'Alpha', repositories: ['org/a'], color: '#ff0000' },
+        { id: 'g2', name: 'Beta', repositories: ['org/b'], color: '#00ff00' },
+        { id: 'g3', name: 'Gamma', repositories: ['org/c'], color: '#0000ff' },
+      ];
+      render(<Sidebar {...defaultProps} repositoryGroups={threeGroups} />);
+
+      expect(screen.getByText('Alpha')).toBeInTheDocument();
+      expect(screen.getByText('Beta')).toBeInTheDocument();
+      expect(screen.getByText('Gamma')).toBeInTheDocument();
+
+      const alphaBtn = screen.getByText('Alpha').closest('button')!;
+      const betaBtn = screen.getByText('Beta').closest('button')!;
+      const gammaBtn = screen.getByText('Gamma').closest('button')!;
+
+      const alphaDot = alphaBtn.querySelector('.rounded-full.w-2.h-2') as HTMLElement;
+      const betaDot = betaBtn.querySelector('.rounded-full.w-2.h-2') as HTMLElement;
+      const gammaDot = gammaBtn.querySelector('.rounded-full.w-2.h-2') as HTMLElement;
+
+      expect(alphaDot).toBeInTheDocument();
+      expect(betaDot).toBeInTheDocument();
+      expect(gammaDot).toBeInTheDocument();
+      expect(alphaDot.style.backgroundColor).toBe('#ff0000');
+      expect(betaDot.style.backgroundColor).toBe('#00ff00');
+      expect(gammaDot.style.backgroundColor).toBe('#0000ff');
+    });
+
+    it('グループタブ選択後にALLタブクリックで選択がリセットされる', async () => {
+      const user = userEvent.setup();
+      const onSelectGroup = vi.fn();
+      render(
+        <Sidebar
+          {...defaultProps}
+          repositoryGroups={groups}
+          activeGroupId="g1"
+          onSelectGroup={onSelectGroup}
+        />,
+      );
+
+      await user.click(screen.getByText('案件B'));
+      expect(onSelectGroup).toHaveBeenCalledWith('g2');
+
+      await user.click(screen.getByText('ALL'));
+      expect(onSelectGroup).toHaveBeenCalledWith(null);
+    });
+
+    it('旧リストスタイル要素（プロジェクトヘッダー・GlobeIcon・FolderIcon）が存在しない', () => {
+      render(<Sidebar {...defaultProps} repositoryGroups={groups} />);
+
+      expect(screen.queryByText('プロジェクト')).not.toBeInTheDocument();
+      expect(document.querySelector('[data-testid="globe-icon"]')).not.toBeInTheDocument();
+      expect(document.querySelector('[data-testid="folder-icon"]')).not.toBeInTheDocument();
     });
   });
 

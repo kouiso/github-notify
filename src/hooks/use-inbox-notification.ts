@@ -3,53 +3,99 @@ import { matchesFilter } from '@/lib/filters/match-filter';
 import * as commands from '@/lib/tauri/commands';
 import { logger } from '@/lib/utils/logger';
 import type { InboxItem } from '@/types';
-import type { CustomFilter, NotificationReason } from '@/types/settings';
+import type {
+  CustomFilter,
+  NotificationReason,
+  RepositoryGroup,
+  SoundType,
+} from '@/types/settings';
 
 export { shouldShowItem } from '@/lib/filters/match-filter';
 
-function getMatchingFilter(
+interface NotifiableResult {
+  item: InboxItem;
+  soundEnabled: boolean;
+  soundType: SoundType;
+}
+
+/**
+ * プロジェクト単位の通知判定。
+ * アイテムが属するグループの通知設定を確認し、通知すべきかを返す。
+ */
+export function shouldNotifyByGroup(
   item: InboxItem,
-  customFilters: CustomFilter[],
-  globalExcludeReasons: NotificationReason[] = [],
-): CustomFilter | null {
-  return (
-    customFilters.find(
-      (filter) =>
-        filter.enableDesktopNotification && matchesFilter(item, filter, globalExcludeReasons),
-    ) || null
-  );
+  groups: RepositoryGroup[],
+): { notify: boolean; soundEnabled: boolean; soundType: SoundType } | null {
+  const group = groups.find((g) => g.repositories.includes(item.repositoryFullName));
+  if (!group) return null;
+
+  if (!group.enableDesktopNotification) {
+    return { notify: false, soundEnabled: false, soundType: 'default' };
+  }
+
+  const reasons = group.notifyReasons ?? [];
+  if (reasons.length > 0 && !reasons.includes(item.reason as NotificationReason)) {
+    return { notify: false, soundEnabled: false, soundType: 'default' };
+  }
+
+  return {
+    notify: true,
+    soundEnabled: group.enableSound ?? false,
+    soundType: (group.soundType as SoundType) ?? 'default',
+  };
 }
 
 function getNotifiableItems(
   newItems: InboxItem[],
   customFilters: CustomFilter[],
-  globalExcludeReasons: NotificationReason[] = [],
-): Array<{ item: InboxItem; filter: CustomFilter }> {
-  const result: Array<{ item: InboxItem; filter: CustomFilter }> = [];
+  globalExcludeReasons: NotificationReason[],
+  repositoryGroups: RepositoryGroup[],
+): NotifiableResult[] {
+  const result: NotifiableResult[] = [];
+
   for (const item of newItems) {
-    const filter = getMatchingFilter(item, customFilters, globalExcludeReasons);
+    // 1. プロジェクトグループに属する場合はグループの通知設定を優先
+    const groupResult = shouldNotifyByGroup(item, repositoryGroups);
+    if (groupResult) {
+      if (groupResult.notify) {
+        result.push({
+          item,
+          soundEnabled: groupResult.soundEnabled,
+          soundType: groupResult.soundType,
+        });
+      }
+      continue;
+    }
+
+    // 2. グループに属さない場合はビュー（CustomFilter）の通知設定で判定
+    const filter = customFilters.find(
+      (f) => f.enableDesktopNotification && matchesFilter(item, f, globalExcludeReasons),
+    );
     if (filter) {
-      result.push({ item, filter });
+      result.push({
+        item,
+        soundEnabled: filter.enableSound,
+        soundType: filter.soundType,
+      });
     }
   }
+
   return result;
 }
 
-function getSoundSettings(
-  notifiableItems: Array<{ item: InboxItem; filter: CustomFilter }>,
-  soundEnabled: boolean,
-) {
-  const shouldPlaySound = soundEnabled && notifiableItems.some(({ filter }) => filter.enableSound);
-  const soundFilter = notifiableItems.find(({ filter }) => filter.enableSound);
-  const soundType = soundFilter?.filter.soundType || 'default';
+function getSoundSettings(notifiableItems: NotifiableResult[], globalSoundEnabled: boolean) {
+  const shouldPlaySound = globalSoundEnabled && notifiableItems.some((r) => r.soundEnabled);
+  const soundItem = notifiableItems.find((r) => r.soundEnabled);
+  const soundType = soundItem?.soundType || 'default';
   return { shouldPlaySound, soundType };
 }
 
-interface NotificationSettings {
+export interface NotificationSettings {
   desktopNotifications: boolean;
   soundEnabled: boolean;
   customFilters: CustomFilter[];
   globalExcludeReasons: NotificationReason[];
+  repositoryGroups: RepositoryGroup[];
 }
 
 export function useSendDesktopNotification(
@@ -66,6 +112,7 @@ export function useSendDesktopNotification(
         newItems,
         settingsRef.current.customFilters,
         settingsRef.current.globalExcludeReasons,
+        settingsRef.current.repositoryGroups,
       );
       if (notifiableItems.length === 0) {
         return;

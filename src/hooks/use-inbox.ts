@@ -4,13 +4,15 @@ import * as commands from '@/lib/tauri/commands';
 import { logger } from '@/lib/utils/logger';
 import type { InboxItem } from '@/types';
 import {
-  type CustomFilter,
   DEFAULT_GLOBAL_EXCLUDE_REASONS,
   DEFAULT_INITIAL_FILTERS,
   migrateDefaultFilters,
-  type NotificationReason,
 } from '@/types/settings';
-import { shouldShowItem, useSendDesktopNotification } from './use-inbox-notification';
+import {
+  type NotificationSettings,
+  shouldShowItem,
+  useSendDesktopNotification,
+} from './use-inbox-notification';
 
 export function useInbox() {
   const [items, setItems] = useState<InboxItem[]>([]);
@@ -22,16 +24,12 @@ export function useInbox() {
   const previousIdsRef = useRef<Set<string>>(new Set());
   const isFirstLoadRef = useRef(true);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
-  const settingsRef = useRef<{
-    desktopNotifications: boolean;
-    soundEnabled: boolean;
-    customFilters: CustomFilter[];
-    globalExcludeReasons: NotificationReason[];
-  }>({
+  const settingsRef = useRef<NotificationSettings>({
     desktopNotifications: true,
     soundEnabled: true,
     customFilters: DEFAULT_INITIAL_FILTERS,
     globalExcludeReasons: DEFAULT_GLOBAL_EXCLUDE_REASONS,
+    repositoryGroups: [],
   });
 
   useEffect(() => {
@@ -45,6 +43,7 @@ export function useInbox() {
             soundEnabled: settings.soundEnabled ?? true,
             customFilters: filters,
             globalExcludeReasons: settings.globalExcludeReasons ?? DEFAULT_GLOBAL_EXCLUDE_REASONS,
+            repositoryGroups: settings.repositoryGroups ?? [],
           };
         })
         .catch((err) => logger.error('Failed to load settings', err))
@@ -163,6 +162,7 @@ export function useInbox() {
             soundEnabled: settings.soundEnabled ?? true,
             customFilters: settings.customFilters,
             globalExcludeReasons: settings.globalExcludeReasons ?? DEFAULT_GLOBAL_EXCLUDE_REASONS,
+            repositoryGroups: settings.repositoryGroups ?? [],
           };
 
           setItems((prev) => prev.filter(filterItem));
