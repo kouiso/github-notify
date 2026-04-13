@@ -35,3 +35,11 @@ coverage
 .claude/settings.local.json
 .claude/mcp.json
 .claude/memory/
+
+# Local verification artifacts
+screenshots/
+login-screen.png
+.playwright-mcp/
+
+# Serena toolkit cache
+.serena/
