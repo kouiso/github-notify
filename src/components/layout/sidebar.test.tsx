@@ -64,6 +64,7 @@ const defaultProps = {
   items: [] as InboxItem[],
   allItems: [] as InboxItem[],
   onOpenSettings: vi.fn(),
+  onOpenProjectSettings: vi.fn(),
   user: { login: 'testuser', avatarUrl: 'https://avatar.example.com/testuser.png' },
   selectedFilterId: null as string | null,
   onSelectFilter: vi.fn(),

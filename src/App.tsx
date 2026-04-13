@@ -35,6 +35,7 @@ export default function App() {
   const { theme, setTheme } = useTheme();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsInitialFilterId, setSettingsInitialFilterId] = useState<string | null>(null);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<string | null>(null);
   const [selectedFilterId, setSelectedFilterId] = useState<string | null>('dashboard');
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
@@ -134,6 +135,10 @@ export default function App() {
             items={scopedItems}
             allItems={inbox.items}
             onOpenSettings={() => setSettingsOpen(true)}
+            onOpenProjectSettings={() => {
+              setSettingsInitialTab('projects');
+              setSettingsOpen(true);
+            }}
             user={auth.user}
             selectedFilterId={selectedFilterId}
             onSelectFilter={setSelectedFilterId}
@@ -191,11 +196,15 @@ export default function App() {
             open={settingsOpen}
             onOpenChange={(open) => {
               setSettingsOpen(open);
-              if (!open) setSettingsInitialFilterId(null);
+              if (!open) {
+                setSettingsInitialFilterId(null);
+                setSettingsInitialTab(null);
+              }
             }}
             user={auth.user}
             onLogout={auth.logout}
             initialEditFilterId={settingsInitialFilterId}
+            initialTab={settingsInitialTab}
             knownRepos={knownRepos}
           />
 

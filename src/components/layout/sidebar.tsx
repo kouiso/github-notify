@@ -26,6 +26,7 @@ interface SidebarProps {
   items: InboxItem[];
   allItems: InboxItem[];
   onOpenSettings: () => void;
+  onOpenProjectSettings: () => void;
   user: { login: string; avatarUrl?: string | null } | null;
   selectedFilterId: string | null;
   onSelectFilter: (filterId: string | null) => void;
@@ -55,6 +56,7 @@ export function Sidebar({
   items,
   allItems,
   onOpenSettings,
+  onOpenProjectSettings,
   user,
   selectedFilterId,
   onSelectFilter,
@@ -220,6 +222,14 @@ export function Sidebar({
                   </button>
                 );
               })}
+              <button
+                type="button"
+                onClick={onOpenProjectSettings}
+                className="flex-shrink-0 px-1.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-md transition-colors"
+                title="プロジェクトを追加"
+              >
+                <PlusIcon className="w-3.5 h-3.5" />
+              </button>
             </div>
             {activeGroupId &&
               (() => {

@@ -23,6 +23,7 @@ interface SettingsDialogProps {
   user: { login: string; avatarUrl?: string | null } | null;
   onLogout: () => void;
   initialEditFilterId?: string | null;
+  initialTab?: string | null;
   knownRepos?: string[];
 }
 
@@ -51,6 +52,7 @@ function SettingsDialogContent({
   user,
   onLogout,
   initialEditFilterId,
+  initialTab,
   knownRepos = [],
 }: SettingsDialogProps) {
   const { settings, updateSettings } = useSettings();
@@ -61,16 +63,20 @@ function SettingsDialogContent({
 
   const prevOpenRef = useRef(false);
   useEffect(() => {
-    if (open && !prevOpenRef.current && initialEditFilterId) {
-      const target = settings.customFilters.find((f) => f.id === initialEditFilterId);
-      if (target) {
-        setEditingFilter(target);
-        setIsCreating(false);
-        setActiveTab('filters');
+    if (open && !prevOpenRef.current) {
+      if (initialTab && TABS.some((t) => t.id === initialTab)) {
+        setActiveTab(initialTab as TabId);
+      } else if (initialEditFilterId) {
+        const target = settings.customFilters.find((f) => f.id === initialEditFilterId);
+        if (target) {
+          setEditingFilter(target);
+          setIsCreating(false);
+          setActiveTab('filters');
+        }
       }
     }
     prevOpenRef.current = open;
-  }, [open, initialEditFilterId, settings.customFilters]);
+  }, [open, initialEditFilterId, initialTab, settings.customFilters]);
 
   const handleLogout = () => {
     onLogout();
