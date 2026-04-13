@@ -66,9 +66,7 @@ pub fn run() {
             let menu = Menu::with_items(app, &[&show, &quit])?;
 
             // アイコンが取得できない場合は graceful degradation（トレイアイコンなしで続行）
-            let mut tray_builder = TrayIconBuilder::new()
-                .tooltip("GitHub Notify")
-                .menu(&menu);
+            let mut tray_builder = TrayIconBuilder::new().tooltip("GitHub Notify").menu(&menu);
             if let Some(icon) = app.default_window_icon() {
                 tray_builder = tray_builder.icon(icon.clone());
             }

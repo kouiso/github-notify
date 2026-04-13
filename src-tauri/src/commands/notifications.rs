@@ -103,9 +103,7 @@ async fn filter_by_issue_status(
                     // クエリ結果に含まれなかった → フォールバックで表示
                     true
                 }
-                Some(issues) => {
-                    pr_passes_issue_status_check(issues, &rule.required_statuses)
-                }
+                Some(issues) => pr_passes_issue_status_check(issues, &rule.required_statuses),
             }
         })
         .map(|(_, item)| item)
