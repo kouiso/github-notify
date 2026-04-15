@@ -390,6 +390,86 @@ describe('useSearchView', () => {
     });
   });
 
+  describe('markAsRead', () => {
+    it('markAsRead でアイテムが既読になること', async () => {
+      mockFetchNotifications.mockResolvedValue(mockItems);
+      const { result } = renderHook(() => useSearchView());
+
+      await act(async () => {
+        await result.current.fetch('is:open');
+      });
+      expect(result.current.items[0].isRead).toBe(false);
+
+      await act(async () => {
+        await result.current.markAsRead('item-1');
+      });
+
+      expect(mockMarkAsRead).toHaveBeenCalledWith('item-1');
+      expect(result.current.items[0].isRead).toBe(true);
+      expect(result.current.items[1].isRead).toBe(false);
+    });
+
+    it('markAsRead がエラーでもクラッシュしないこと', async () => {
+      mockMarkAsRead.mockRejectedValue(new Error('API error'));
+      mockFetchNotifications.mockResolvedValue(mockItems);
+      const { result } = renderHook(() => useSearchView());
+
+      await act(async () => {
+        await result.current.fetch('is:open');
+      });
+
+      await act(async () => {
+        await result.current.markAsRead('item-1');
+      });
+
+      expect(result.current.items[0].isRead).toBe(false);
+    });
+  });
+
+  describe('markAllAsRead', () => {
+    it('markAllAsRead で全アイテムが既読になること', async () => {
+      mockFetchNotifications.mockResolvedValue(mockItems);
+      const { result } = renderHook(() => useSearchView());
+
+      await act(async () => {
+        await result.current.fetch('is:open');
+      });
+
+      await act(async () => {
+        await result.current.markAllAsRead();
+      });
+
+      expect(mockMarkAllAsRead).toHaveBeenCalledWith(['item-1', 'item-2']);
+      expect(result.current.items.every((item) => item.isRead)).toBe(true);
+    });
+
+    it('markAllAsRead がエラーでもクラッシュしないこと', async () => {
+      mockMarkAllAsRead.mockRejectedValue(new Error('API error'));
+      mockFetchNotifications.mockResolvedValue(mockItems);
+      const { result } = renderHook(() => useSearchView());
+
+      await act(async () => {
+        await result.current.fetch('is:open');
+      });
+
+      await act(async () => {
+        await result.current.markAllAsRead();
+      });
+
+      expect(result.current.items[0].isRead).toBe(false);
+    });
+
+    it('アイテムが空の場合 markAllAsRead が空配列で呼ばれること', async () => {
+      const { result } = renderHook(() => useSearchView());
+
+      await act(async () => {
+        await result.current.markAllAsRead();
+      });
+
+      expect(mockMarkAllAsRead).toHaveBeenCalledWith([]);
+    });
+  });
+
   describe('返り値の構造', () => {
     it('必要なプロパティとメソッドが全て返されること', () => {
       const { result } = renderHook(() => useSearchView());

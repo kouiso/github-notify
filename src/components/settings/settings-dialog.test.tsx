@@ -18,6 +18,12 @@ vi.mock('@/hooks', () => ({
   }),
 }));
 
+const mockCheckKeychainStatus = vi.fn<() => Promise<boolean>>();
+
+vi.mock('@/lib/tauri/commands', () => ({
+  checkKeychainStatus: () => mockCheckKeychainStatus(),
+}));
+
 vi.mock('@/lib/utils/logger', () => ({
   logger: { error: vi.fn(), info: vi.fn(), debug: vi.fn(), warn: vi.fn() },
 }));
@@ -55,6 +61,7 @@ function openIssueStatusRulesEditor(settingsOverride?: Partial<AppSettings>) {
 beforeEach(() => {
   vi.clearAllMocks();
   mockUpdateSettings.mockResolvedValue(undefined);
+  mockCheckKeychainStatus.mockResolvedValue(true);
 });
 
 // ============================================================
@@ -205,5 +212,150 @@ describe('IssueStatusRulesEditor', () => {
       const repoInputs = screen.getAllByPlaceholderText('getozinc/mypappy-*（ワイルドカード対応）');
       expect(repoInputs.length).toBe(2);
     });
+  });
+});
+
+// ============================================================
+// タブ切り替え
+// ============================================================
+
+describe('タブ切り替え', () => {
+  it('外観タブを開くとテーマ選択が表示される', () => {
+    renderSettingsDialog();
+    fireEvent.click(screen.getByText('外観'));
+
+    expect(screen.getByText('テーマ')).toBeInTheDocument();
+    expect(screen.getByText('ライト')).toBeInTheDocument();
+    expect(screen.getByText('ダーク')).toBeInTheDocument();
+    expect(screen.getByText('システム')).toBeInTheDocument();
+  });
+
+  it('外観タブでテーマをクリックするとsetThemeが呼ばれる', () => {
+    renderSettingsDialog();
+    fireEvent.click(screen.getByText('外観'));
+    fireEvent.click(screen.getByText('ダーク'));
+
+    expect(mockSetTheme).toHaveBeenCalledWith('dark');
+  });
+
+  it('外観タブにバージョン情報が表示される', () => {
+    renderSettingsDialog();
+    fireEvent.click(screen.getByText('外観'));
+
+    expect(screen.getByText('GitHub Notify v0.1.0')).toBeInTheDocument();
+  });
+
+  it('アカウントタブを開くとユーザー情報が表示される', () => {
+    renderSettingsDialog();
+    fireEvent.click(screen.getByText('アカウント'));
+
+    expect(screen.getByText('testuser')).toBeInTheDocument();
+    expect(screen.getByText('ログアウト')).toBeInTheDocument();
+  });
+
+  it('アカウントタブでアバターが表示される', () => {
+    renderSettingsDialog();
+    fireEvent.click(screen.getByText('アカウント'));
+
+    const avatar = screen.getByAltText('testuser');
+    expect(avatar).toBeInTheDocument();
+  });
+
+  it('アバターがない場合はプレースホルダーが表示される', () => {
+    mockSettings = { ...DEFAULT_SETTINGS };
+    const { container } = render(
+      <SettingsDialog
+        open={true}
+        onOpenChange={vi.fn()}
+        user={{ login: 'testuser', avatarUrl: null }}
+        onLogout={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByText('アカウント'));
+
+    const placeholder = container.querySelector('.rounded-full.bg-accent');
+    expect(placeholder).toBeInTheDocument();
+  });
+
+  it('プロジェクトタブを開くとグループマネージャーが表示される', () => {
+    renderSettingsDialog();
+    fireEvent.click(screen.getByText('プロジェクト'));
+
+    expect(screen.getByText('+ プロジェクトを追加')).toBeInTheDocument();
+  });
+});
+
+// ============================================================
+// フィルター操作
+// ============================================================
+
+describe('フィルター操作', () => {
+  it('通知フィルターがない場合にテンプレートが表示される', () => {
+    const searchViewOnly = DEFAULT_INITIAL_FILTERS.filter(
+      (f) => 'searchQuery' in f && f.searchQuery,
+    );
+    renderSettingsDialog({ customFilters: searchViewOnly });
+
+    expect(screen.getByText('おすすめテンプレート:')).toBeInTheDocument();
+  });
+
+  it('フィルター追加ボタンが表示される', () => {
+    renderSettingsDialog();
+
+    expect(screen.getByText('+ 新しいフィルターを追加')).toBeInTheDocument();
+  });
+
+  it('フィルター追加ボタンをクリックするとエディターが開く', () => {
+    renderSettingsDialog();
+
+    fireEvent.click(screen.getByText('+ 新しいフィルターを追加'));
+
+    expect(screen.getByText('フィルターを作成')).toBeInTheDocument();
+  });
+
+  it('ログアウトボタンをクリックするとonLogoutとonOpenChangeが呼ばれる', () => {
+    const onLogout = vi.fn();
+    const onOpenChange = vi.fn();
+    mockSettings = { ...DEFAULT_SETTINGS };
+    render(
+      <SettingsDialog
+        open={true}
+        onOpenChange={onOpenChange}
+        user={{ login: 'testuser' }}
+        onLogout={onLogout}
+      />,
+    );
+
+    fireEvent.click(screen.getByText('アカウント'));
+    fireEvent.click(screen.getByText('ログアウト'));
+
+    expect(onLogout).toHaveBeenCalled();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+});
+
+// ============================================================
+// Keychain ステータス警告
+// ============================================================
+
+describe('Keychain ステータス', () => {
+  it('keychain が利用不可の場合に警告が表示される', async () => {
+    mockCheckKeychainStatus.mockResolvedValue(false);
+    renderSettingsDialog();
+
+    fireEvent.click(screen.getByText('アカウント'));
+
+    await screen.findByText('OS キーチェーンが利用できません');
+  });
+
+  it('keychain が利用可能な場合に警告が表示されない', async () => {
+    mockCheckKeychainStatus.mockResolvedValue(true);
+    renderSettingsDialog();
+
+    fireEvent.click(screen.getByText('アカウント'));
+
+    // 少し待ってから確認
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByText('OS キーチェーンが利用できません')).not.toBeInTheDocument();
   });
 });
