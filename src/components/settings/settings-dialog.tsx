@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button, Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui';
 import { useSettings, useTheme } from '@/hooks';
+import * as commands from '@/lib/tauri/commands';
 import { cn } from '@/lib/utils/cn';
 import {
   type CustomFilter,
@@ -60,6 +61,7 @@ function SettingsDialogContent({
   const [activeTab, setActiveTab] = useState<TabId>('filters');
   const [editingFilter, setEditingFilter] = useState<CustomFilter | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [keychainAvailable, setKeychainAvailable] = useState<boolean | null>(null);
 
   const prevOpenRef = useRef(false);
   useEffect(() => {
@@ -77,6 +79,15 @@ function SettingsDialogContent({
     }
     prevOpenRef.current = open;
   }, [open, initialEditFilterId, initialTab, settings.customFilters]);
+
+  useEffect(() => {
+    if (open && activeTab === 'account') {
+      commands
+        .checkKeychainStatus()
+        .then(setKeychainAvailable)
+        .catch(() => setKeychainAvailable(null));
+    }
+  }, [open, activeTab]);
 
   const handleLogout = () => {
     onLogout();
@@ -319,6 +330,17 @@ function SettingsDialogContent({
 
           {activeTab === 'account' && (
             <div className="space-y-4">
+              {keychainAvailable === false && (
+                <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+                  <p className="text-[0.8125rem] font-medium text-destructive">
+                    OS キーチェーンが利用できません
+                  </p>
+                  <p className="text-[0.75rem] text-destructive/80 mt-1">
+                    トークンはローカルストレージに保存されています。セキュリティを向上させるには、OS
+                    のキーチェーンアクセスを有効にしてください。
+                  </p>
+                </div>
+              )}
               {user && (
                 <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
                   {user.avatarUrl ? (

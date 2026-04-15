@@ -16,6 +16,7 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState::new())
         .setup(|app| {
             // Setup logging in debug mode
@@ -62,8 +63,9 @@ pub fn run() {
 
             // System tray setup
             let show = MenuItem::with_id(app, "show", "表示", true, None::<&str>)?;
+            let hide = MenuItem::with_id(app, "hide", "非表示", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "終了", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show, &quit])?;
+            let menu = Menu::with_items(app, &[&show, &hide, &quit])?;
 
             // アイコンが取得できない場合は graceful degradation（トレイアイコンなしで続行）
             let mut tray_builder = TrayIconBuilder::new().tooltip("GitHub Notify").menu(&menu);
@@ -76,6 +78,11 @@ pub fn run() {
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.show();
                             let _ = window.set_focus();
+                        }
+                    }
+                    "hide" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.hide();
                         }
                     }
                     "quit" => {
@@ -124,6 +131,7 @@ pub fn run() {
             // Settings commands
             commands::get_app_settings,
             commands::save_app_settings,
+            commands::check_keychain_status,
             // Tray commands
             commands::update_tray_badge,
             // Background polling commands

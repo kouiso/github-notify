@@ -90,11 +90,14 @@ async fn filter_by_issue_status(
                 return true; // ルール非対象 → 表示
             }
 
-            let rule = check_targets
+            let Some(rule) = check_targets
                 .iter()
                 .find(|(i, _)| i == idx)
                 .map(|(_, r)| *r)
-                .unwrap();
+            else {
+                log::warn!("check_targets missing idx={idx}, keeping item");
+                return true;
+            };
 
             let linked_issues = linked_issues_map.get(&item.id);
 

@@ -184,8 +184,8 @@ pub fn migrate_token_to_keychain(app: &tauri::AppHandle) -> Result<(), AppError>
     Ok(())
 }
 
-/// Keychainが利用可能かどうかを判定する
-fn is_keychain_available() -> bool {
+/// Keychainが利用可能かどうかを判定する（publicでコマンドからも呼べるようにする）
+pub fn is_keychain_available() -> bool {
     match keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER) {
         Ok(entry) => {
             // 読み取りテストで利用可能性を確認
