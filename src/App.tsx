@@ -5,7 +5,8 @@ import { InboxList } from '@/components/inbox';
 import { Sidebar } from '@/components/layout/sidebar';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { useAuth, useInbox, useSearchView, useSettings, useTheme } from '@/hooks';
-import { isSearchView } from '@/types/settings';
+import { isGloballyExcluded } from '@/lib/filters/match-filter';
+import { DEFAULT_GLOBAL_EXCLUDE_REASONS, isSearchView } from '@/types/settings';
 
 const Dashboard = lazy(() =>
   import('@/components/dashboard/dashboard').then((m) => ({ default: m.Dashboard })),
@@ -75,13 +76,20 @@ export default function App() {
     ? settings.customFilters.find((f) => f.id === selectedFilterId)
     : null;
 
+  const globalExcludeReasons = settings.globalExcludeReasons ?? DEFAULT_GLOBAL_EXCLUDE_REASONS;
+
+  const visibleItems = useMemo(
+    () => inbox.items.filter((item) => !isGloballyExcluded(item, globalExcludeReasons)),
+    [inbox.items, globalExcludeReasons],
+  );
+
   const activeGroup = activeGroupId
     ? (settings.repositoryGroups ?? []).find((g) => g.id === activeGroupId)
     : null;
 
   const scopedItems = activeGroup
-    ? inbox.items.filter((item) => activeGroup.repositories.includes(item.repositoryFullName))
-    : inbox.items;
+    ? visibleItems.filter((item) => activeGroup.repositories.includes(item.repositoryFullName))
+    : visibleItems;
 
   const knownRepos = useMemo(() => {
     const repos = new Set<string>();

@@ -8,6 +8,7 @@ import {
   type FilterTemplate,
   isSearchView,
   type NotificationReason,
+  REASON_LABELS,
   type Theme,
 } from '@/types';
 import { FilterTemplates } from './filter-templates';
@@ -211,6 +212,11 @@ function SettingsDialogContent({
                 <ToggleSwitch enabled={settings.soundEnabled} onToggle={handleSoundToggle} />
               </div>
 
+              <GlobalExcludeReasonsSection
+                excludeReasons={settings.globalExcludeReasons ?? []}
+                onUpdate={(reasons) => updateSettings({ globalExcludeReasons: reasons })}
+              />
+
               {searchViewFilters.length > 0 && (
                 <div className="p-4 border rounded-lg space-y-3">
                   <div>
@@ -362,5 +368,56 @@ function SettingsDialogContent({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+const EXCLUDABLE_REASONS: { reason: NotificationReason; description: string }[] = [
+  { reason: 'subscribed', description: 'Slack連携やwatchingによる通知' },
+  { reason: 'author', description: '自分が作成したPR/Issueの更新' },
+  { reason: 'ci_activity', description: 'CI/CD関連の通知' },
+  { reason: 'comment', description: 'コメントの通知' },
+  { reason: 'state_change', description: 'Issue/PRのオープン・クローズ' },
+];
+
+function GlobalExcludeReasonsSection({
+  excludeReasons,
+  onUpdate,
+}: {
+  excludeReasons: NotificationReason[];
+  onUpdate: (reasons: NotificationReason[]) => void;
+}) {
+  const toggle = (reason: NotificationReason) => {
+    const next = excludeReasons.includes(reason)
+      ? excludeReasons.filter((r) => r !== reason)
+      : [...excludeReasons, reason];
+    onUpdate(next);
+  };
+
+  return (
+    <div className="p-4 border rounded-lg space-y-3">
+      <div>
+        <p className="font-semibold text-[0.9375rem]">グローバル除外</p>
+        <p className="text-[0.8125rem] text-muted-foreground leading-relaxed">
+          チェックしたreasonの通知は全ビューから除外されます
+        </p>
+      </div>
+      <div className="grid grid-cols-1 gap-1.5">
+        {EXCLUDABLE_REASONS.map(({ reason, description }) => (
+          <label
+            key={reason}
+            className="flex items-center gap-2.5 py-1 text-[0.875rem] cursor-pointer"
+          >
+            <input
+              type="checkbox"
+              checked={excludeReasons.includes(reason)}
+              onChange={() => toggle(reason)}
+              className="rounded"
+            />
+            <span className="font-medium">{REASON_LABELS[reason]}</span>
+            <span className="text-[0.75rem] text-muted-foreground">{description}</span>
+          </label>
+        ))}
+      </div>
+    </div>
   );
 }
