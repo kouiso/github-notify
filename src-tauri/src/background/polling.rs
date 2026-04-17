@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -157,7 +158,7 @@ async fn verify_assignments(
     items: &mut Vec<InboxItem>,
     viewer_login: &str,
 ) -> usize {
-    let mut to_remove: Vec<String> = Vec::new();
+    let mut to_remove: HashSet<String> = HashSet::new();
 
     for item in items.iter() {
         if item.reason != "assign" || !item.unread {
@@ -194,9 +195,8 @@ async fn verify_assignments(
                         number,
                         viewer_login
                     );
-                    // 既読化を試みる（失敗しても除外は続行）
                     let _ = client.mark_notification_read(&item.id).await;
-                    to_remove.push(item.id.clone());
+                    to_remove.insert(item.id.clone());
                 }
             }
             Err(e) => {
