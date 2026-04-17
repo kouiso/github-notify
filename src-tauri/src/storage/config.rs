@@ -121,7 +121,6 @@ fn default_initial_filters() -> Vec<CustomFilter> {
                 "mention".to_string(),
                 "team_mention".to_string(),
                 "assign".to_string(),
-                "author".to_string(),
             ],
             enable_desktop_notification: true,
             enable_sound: true,
