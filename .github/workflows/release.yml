@@ -42,7 +42,9 @@ jobs:
       - name: Install git-crypt (Windows)
         if: runner.os == 'Windows'
         shell: bash
-        run: choco install git-crypt -y
+        run: |
+          curl -L -o /tmp/git-crypt.exe https://github.com/AGWA/git-crypt/releases/download/0.7.0/git-crypt-0.7.0-x86_64.exe
+          mv /tmp/git-crypt.exe /usr/bin/git-crypt.exe
 
       - name: Unlock git-crypt
         env:
@@ -82,6 +84,9 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+
+      - name: Add Rust cross-compile target
+        run: rustup target add ${{ matrix.target }}
 
       - name: Install pnpm dependencies
         run: pnpm install --frozen-lockfile
