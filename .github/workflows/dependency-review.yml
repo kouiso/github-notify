@@ -28,6 +28,7 @@ jobs:
         uses: actions/dependency-review-action@v4
         with:
           fail-on-severity: high
+          retry-on-snapshot-warnings: true
           deny-licenses: >-
             GPL-2.0-only,
             GPL-2.0-or-later,
