@@ -85,6 +85,9 @@ jobs:
         with:
           workspaces: src-tauri
 
+      - name: Add Rust cross-compile target
+        run: rustup target add ${{ matrix.target }}
+
       - name: Install pnpm dependencies
         run: pnpm install --frozen-lockfile
 

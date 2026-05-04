@@ -36,11 +36,11 @@
       "icons/icon.ico"
     ],
     "resources": ["resources/sounds/*"],
-    "createUpdaterArtifacts": "v1Compatible"
+    "createUpdaterArtifacts": false
   },
   "plugins": {
     "updater": {
-      "pubkey": "UPDATER_PUBKEY_PLACEHOLDER",
+      "pubkey": "",
       "endpoints": ["https://github.com/kouiso/github-notify/releases/latest/download/latest.json"]
     }
   }
