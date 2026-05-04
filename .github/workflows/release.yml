@@ -31,28 +31,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install git-crypt (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y git-crypt
-
-      - name: Install git-crypt (macOS)
-        if: runner.os == 'macOS'
-        run: brew install git-crypt
-
-      - name: Install git-crypt (Windows)
-        if: runner.os == 'Windows'
-        shell: bash
-        run: choco install git-crypt -y
-
-      - name: Unlock git-crypt
-        env:
-          GIT_CRYPT_KEY: ${{ secrets.GIT_CRYPT_KEY }}
-        shell: bash
-        run: |
-          echo "$GIT_CRYPT_KEY" | base64 -d > /tmp/git-crypt.key
-          git-crypt unlock /tmp/git-crypt.key
-          rm /tmp/git-crypt.key
-
       - name: Install system dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
