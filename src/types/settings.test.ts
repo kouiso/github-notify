@@ -33,7 +33,7 @@ describe('DEFAULT_INITIAL_FILTERS', () => {
     expect(filter.reasons).toContain('mention');
     expect(filter.reasons).toContain('team_mention');
     expect(filter.reasons).toContain('assign');
-    expect(filter.reasons).toContain('author');
+    expect(filter.reasons).not.toContain('author');
   });
 
   it('default-needs-review は searchQuery を持つ', () => {
@@ -369,5 +369,81 @@ describe('isSearchView — issueStatusRules付きフィルタ', () => {
       ],
     });
     expect(isSearchView(filter)).toBe(false);
+  });
+});
+
+describe('migrateDefaultFilters — author reason 削除', () => {
+  it('旧デフォルトのまま（author含む5 reasons）なら author を除去', () => {
+    const oldDefault = makeFilter({
+      id: 'default-important',
+      name: '重要な通知',
+      reasons: ['review_requested', 'mention', 'team_mention', 'assign', 'author'],
+    });
+    const { filters, changed } = migrateDefaultFilters([
+      oldDefault,
+      makeFilter({
+        id: 'default-needs-review',
+        name: 'レビュー待ち',
+        searchQuery: 'is:open is:pr review-requested:@me -reviewed-by:@me',
+      }),
+      makeFilter({
+        id: 'default-my-prs',
+        name: '自分のPR',
+        searchQuery: 'is:open is:pr author:@me',
+      }),
+    ]);
+    expect(changed).toBe(true);
+    const important = filters.find((f) => f.id === 'default-important');
+    expect(important?.reasons).not.toContain('author');
+    expect(important?.reasons).toContain('review_requested');
+    expect(important?.reasons).toContain('mention');
+  });
+
+  it('ユーザーがカスタマイズ（authorに加えて別reason追加）していたら触らない', () => {
+    const customized = makeFilter({
+      id: 'default-important',
+      name: '重要な通知',
+      reasons: ['review_requested', 'mention', 'team_mention', 'assign', 'author', 'comment'],
+    });
+    const { filters } = migrateDefaultFilters([
+      customized,
+      makeFilter({
+        id: 'default-needs-review',
+        name: 'レビュー待ち',
+        searchQuery: 'is:open is:pr review-requested:@me -reviewed-by:@me',
+      }),
+      makeFilter({
+        id: 'default-my-prs',
+        name: '自分のPR',
+        searchQuery: 'is:open is:pr author:@me',
+      }),
+    ]);
+    const important = filters.find((f) => f.id === 'default-important');
+    expect(important?.reasons).toContain('author');
+    expect(important?.reasons).toContain('comment');
+  });
+
+  it('ユーザーがauthorを既に削除していたら何もしない', () => {
+    const alreadyFixed = makeFilter({
+      id: 'default-important',
+      name: '重要な通知',
+      reasons: ['review_requested', 'mention', 'team_mention', 'assign'],
+    });
+    const { filters, changed } = migrateDefaultFilters([
+      alreadyFixed,
+      makeFilter({
+        id: 'default-needs-review',
+        name: 'レビュー待ち',
+        searchQuery: 'is:open is:pr review-requested:@me -reviewed-by:@me',
+      }),
+      makeFilter({
+        id: 'default-my-prs',
+        name: '自分のPR',
+        searchQuery: 'is:open is:pr author:@me',
+      }),
+    ]);
+    expect(changed).toBe(false);
+    const important = filters.find((f) => f.id === 'default-important');
+    expect(important?.reasons).not.toContain('author');
   });
 });

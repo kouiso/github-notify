@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Spinner } from '@/components/ui';
 import { useSettings } from '@/hooks';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
+import { matchesFilter } from '@/lib/filters/match-filter';
 import type { InboxItem, NotificationItem } from '@/types';
 import type { CustomFilter, NotificationReason } from '@/types/settings';
 import { EmptyState } from './inbox-empty-state';
@@ -24,18 +25,6 @@ interface InboxListProps {
   searchItems?: NotificationItem[];
 }
 
-function matchesCustomFilter(item: InboxItem, filter: CustomFilter): boolean {
-  if (filter.reasons.length > 0 && !filter.reasons.includes(item.reason)) {
-    return false;
-  }
-  if (filter.repositories && filter.repositories.length > 0) {
-    if (!filter.repositories.includes(item.repositoryFullName)) {
-      return false;
-    }
-  }
-  return true;
-}
-
 function applySidebarFilterLogic(
   items: InboxItem[],
   sidebarFilter: CustomFilter | null,
@@ -43,10 +32,10 @@ function applySidebarFilterLogic(
   customFilters: CustomFilter[],
 ): InboxItem[] {
   if (sidebarFilter) {
-    return items.filter((item) => matchesCustomFilter(item, sidebarFilter));
+    return items.filter((item) => matchesFilter(item, sidebarFilter));
   }
   if (selectedFilterId === null) {
-    return items.filter((item) => customFilters.some((f) => matchesCustomFilter(item, f)));
+    return items.filter((item) => customFilters.some((f) => matchesFilter(item, f)));
   }
   return items;
 }
@@ -60,7 +49,7 @@ function applyViewFilterLogic(
     return items.filter((item) => item.unread);
   }
   if (activeCustomFilter) {
-    return items.filter((item) => matchesCustomFilter(item, activeCustomFilter));
+    return items.filter((item) => matchesFilter(item, activeCustomFilter));
   }
   return items;
 }

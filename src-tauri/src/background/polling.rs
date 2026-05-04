@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -31,7 +32,11 @@ impl PollingService {
     }
 
     /// バックグラウンドポーリングを開始する
-    pub async fn start(&mut self, app: AppHandle, http_client: reqwest::Client) -> Result<(), AppError> {
+    pub async fn start(
+        &mut self,
+        app: AppHandle,
+        http_client: reqwest::Client,
+    ) -> Result<(), AppError> {
         // ストレージからトークンを取得
         let token = storage::get_token(&app)?
             .ok_or_else(|| AppError::Auth("No token available".to_string()))?;
@@ -58,7 +63,10 @@ impl PollingService {
             let viewer_login: Option<String> = match client.verify_token().await {
                 Ok(v) => v.login,
                 Err(e) => {
-                    log::warn!("viewer login の取得に失敗（アサイン解除検知は無効化）: {}", e);
+                    log::warn!(
+                        "viewer login の取得に失敗（アサイン解除検知は無効化）: {}",
+                        e
+                    );
                     None
                 }
             };
@@ -150,7 +158,7 @@ async fn verify_assignments(
     items: &mut Vec<InboxItem>,
     viewer_login: &str,
 ) -> usize {
-    let mut to_remove: Vec<String> = Vec::new();
+    let mut to_remove: HashSet<String> = HashSet::new();
 
     for item in items.iter() {
         if item.reason != "assign" || !item.unread {
@@ -187,19 +195,12 @@ async fn verify_assignments(
                         number,
                         viewer_login
                     );
-                    // 既読化を試みる（失敗しても除外は続行）
                     let _ = client.mark_notification_read(&item.id).await;
-                    to_remove.push(item.id.clone());
+                    to_remove.insert(item.id.clone());
                 }
             }
             Err(e) => {
-                log::warn!(
-                    "アサイン確認に失敗 ({}/{}#{}): {}",
-                    owner,
-                    repo,
-                    number,
-                    e
-                );
+                log::warn!("アサイン確認に失敗 ({}/{}#{}): {}", owner, repo, number, e);
             }
         }
     }

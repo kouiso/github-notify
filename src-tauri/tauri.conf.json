@@ -35,6 +35,13 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": ["resources/sounds/*"]
+    "resources": ["resources/sounds/*"],
+    "createUpdaterArtifacts": "v1Compatible"
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "UPDATER_PUBKEY_PLACEHOLDER",
+      "endpoints": ["https://github.com/kouiso/github-notify/releases/latest/download/latest.json"]
+    }
   }
 }

@@ -1,0 +1,78 @@
+name: Beta Feedback
+description: GitHub Notify ベータ版のフィードバック
+title: "[Beta Feedback] "
+labels: ["beta", "feedback"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        GitHub Notify ベータ版を使っていただきありがとうございます！
+        以下のフォームでフィードバックをお寄せください。
+
+  - type: dropdown
+    id: feedback-type
+    attributes:
+      label: フィードバックの種類
+      options:
+        - バグ報告
+        - 機能リクエスト
+        - UX改善提案
+        - パフォーマンス問題
+        - その他
+    validations:
+      required: true
+
+  - type: dropdown
+    id: overall-impression
+    attributes:
+      label: 全体的な印象
+      description: GitHub Web 版の通知と比べてどうですか？
+      options:
+        - Web版より便利 — 常駐させたい
+        - Web版と同等 — 使うかも
+        - Web版の方がいい — 改善が必要
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 詳細
+      description: 具体的な内容を教えてください
+      placeholder: |
+        - 何をしていたとき？
+        - 何が起きた？（実際の動作）
+        - 何を期待していた？（期待する動作）
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: "macOS 15.5 / Windows 11 / Ubuntu 24.04"
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: アプリバージョン
+      placeholder: "v0.1.0"
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: スクリーンショット
+      description: 問題の再現に役立つスクリーンショットがあれば添付してください
+
+  - type: checkboxes
+    id: daily-use
+    attributes:
+      label: 使用状況
+      options:
+        - label: 毎日メインの通知クライアントとして使っている
+        - label: たまに使っている
+        - label: 初めて使った

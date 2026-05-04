@@ -6,10 +6,11 @@ export interface SpinnerProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 const Spinner = React.forwardRef<HTMLDivElement, SpinnerProps>(
-  ({ className, size = 'default', ...props }, ref) => {
+  ({ className, size = 'default', role = 'status', ...props }, ref) => {
     return (
       <div
         ref={ref}
+        role={role}
         className={cn(
           'animate-spin rounded-full border-2 border-current border-t-transparent',
           {

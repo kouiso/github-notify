@@ -97,3 +97,7 @@ export async function saveAppSettings(settings: AppSettings): Promise<void> {
 export async function updateTrayBadge(count: number): Promise<void> {
   return invoke<void>('update_tray_badge', { count });
 }
+
+export async function checkKeychainStatus(): Promise<boolean> {
+  return invoke<boolean>('check_keychain_status');
+}

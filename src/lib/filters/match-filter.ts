@@ -35,10 +35,6 @@ export function isGloballyExcluded(
 }
 
 /**
- * アイテムがいずれかのフィルタにマッチするか判定する。
- * グローバル除外を含む統合版。
- */
-/**
  * アイテムがいずれかの通知フィルタ（searchViewを除く）にマッチするか判定する。
  * searchViewはGitHub API検索で取得するため、Inbox絞り込みには使わない。
  */

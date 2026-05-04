@@ -15,3 +15,9 @@ pub async fn save_app_settings(
 ) -> Result<(), AppError> {
     config::save_settings(&app, &settings)
 }
+
+/// Check if OS keychain is available for token storage
+#[tauri::command]
+pub fn check_keychain_status() -> bool {
+    config::is_keychain_available()
+}

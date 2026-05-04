@@ -303,7 +303,6 @@ impl SearchNode {
             },
         }
     }
-
 }
 
 fn parse_state(state: &str) -> ItemState {

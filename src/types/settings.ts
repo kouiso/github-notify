@@ -95,7 +95,7 @@ export const DEFAULT_INITIAL_FILTERS: CustomFilter[] = [
   {
     id: 'default-important',
     name: '重要な通知',
-    reasons: ['review_requested', 'mention', 'team_mention', 'assign', 'author'],
+    reasons: ['review_requested', 'mention', 'team_mention', 'assign'],
     enableDesktopNotification: true,
     enableSound: true,
     soundType: 'default',
@@ -159,6 +159,11 @@ export function migrateDefaultFilters(filters: CustomFilter[]): {
   // デフォルトビューの旧英語名を日本語にリネームする必要があるか
   const needsNameFix = filters.some((f) => f.id in DEFAULT_NAMES && f.name !== DEFAULT_NAMES[f.id]);
 
+  // default-important の reasons に author が残っているか（旧デフォルトからの移行が必要）
+  const needsAuthorRemoval = filters.some(
+    (f) => f.id === 'default-important' && f.reasons.includes('author'),
+  );
+
   // マイグレーション済みなら早期リターン
   const hasOldDefaults = filters.some((f) => OLD_DEFAULT_IDS.includes(f.id));
   if (
@@ -167,7 +172,8 @@ export function migrateDefaultFilters(filters: CustomFilter[]): {
     hasMyPrs &&
     !hasOldDefaults &&
     !needsSearchQueryFix &&
-    !needsNameFix
+    !needsNameFix &&
+    !needsAuthorRemoval
   ) {
     const newDefaultReasons = new Set(DEFAULT_INITIAL_FILTERS[0].reasons);
     const hasRedundant = filters.some(
@@ -215,6 +221,16 @@ export function migrateDefaultFilters(filters: CustomFilter[]): {
     result.splice(reviewIdx + 1, 0, DEFAULT_INITIAL_FILTERS[2]);
   }
 
+  // 旧デフォルト「重要な通知」に含まれていた author reason を除去
+  // ユーザーがカスタマイズしていた場合は触らない
+  const OLD_IMPORTANT_REASONS = new Set<NotificationReason>([
+    'review_requested',
+    'mention',
+    'team_mention',
+    'assign',
+    'author',
+  ]);
+
   // searchQuery未設定のデフォルト検索ビューを補完 + デフォルトビュー名を日本語に統一
   result = result.map((f) => {
     let updated = f;
@@ -232,12 +248,21 @@ export function migrateDefaultFilters(filters: CustomFilter[]): {
     if (f.id in DEFAULT_NAMES && f.name !== DEFAULT_NAMES[f.id]) {
       updated = { ...updated, name: DEFAULT_NAMES[f.id] };
     }
+    // default-important の reasons が旧デフォルトと完全一致する場合のみ author を除去
+    if (
+      f.id === 'default-important' &&
+      f.reasons.length === OLD_IMPORTANT_REASONS.size &&
+      f.reasons.every((r) => OLD_IMPORTANT_REASONS.has(r))
+    ) {
+      updated = { ...updated, reasons: ['review_requested', 'mention', 'team_mention', 'assign'] };
+    }
     return updated;
   });
 
   const changed =
     needsNameFix ||
     needsSearchQueryFix ||
+    needsAuthorRemoval ||
     result.length !== filters.length ||
     result.some((f, i) => f.id !== filters[i]?.id);
   return { filters: result, changed };

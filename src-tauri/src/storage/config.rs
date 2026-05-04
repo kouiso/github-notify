@@ -121,7 +121,6 @@ fn default_initial_filters() -> Vec<CustomFilter> {
                 "mention".to_string(),
                 "team_mention".to_string(),
                 "assign".to_string(),
-                "author".to_string(),
             ],
             enable_desktop_notification: true,
             enable_sound: true,
@@ -171,7 +170,10 @@ pub fn migrate_token_to_keychain(app: &tauri::AppHandle) -> Result<(), AppError>
         .store(STORE_FILE)
         .map_err(|e| AppError::Storage(e.to_string()))?;
 
-    if let Some(token) = store.get(TOKEN_KEY).and_then(|v| v.as_str().map(|s| s.to_string())) {
+    if let Some(token) = store
+        .get(TOKEN_KEY)
+        .and_then(|v| v.as_str().map(|s| s.to_string()))
+    {
         save_token(app, &token)?;
         store.delete(TOKEN_KEY);
         let _ = store.save();
@@ -181,8 +183,8 @@ pub fn migrate_token_to_keychain(app: &tauri::AppHandle) -> Result<(), AppError>
     Ok(())
 }
 
-/// Keychainが利用可能かどうかを判定する
-fn is_keychain_available() -> bool {
+/// Keychainが利用可能かどうかを判定する（publicでコマンドからも呼べるようにする）
+pub fn is_keychain_available() -> bool {
     match keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER) {
         Ok(entry) => {
             // 読み取りテストで利用可能性を確認
@@ -227,7 +229,9 @@ pub fn get_token(app: &tauri::AppHandle) -> Result<Option<String>, AppError> {
     let store = app
         .store(STORE_FILE)
         .map_err(|e| AppError::Storage(e.to_string()))?;
-    Ok(store.get(TOKEN_KEY).and_then(|v| v.as_str().map(|s| s.to_string())))
+    Ok(store
+        .get(TOKEN_KEY)
+        .and_then(|v| v.as_str().map(|s| s.to_string())))
 }
 
 /// Clear the GitHub token (両方のストレージから削除)
@@ -258,7 +262,10 @@ pub fn get_read_items(app: &tauri::AppHandle) -> Result<Vec<String>, AppError> {
         match serde_json::from_value::<Vec<String>>(v.clone()) {
             Ok(items) => Some(items),
             Err(e) => {
-                log::warn!("read_itemsのデシリアライズに失敗しました（デフォルト値を使用）: {}", e);
+                log::warn!(
+                    "read_itemsのデシリアライズに失敗しました（デフォルト値を使用）: {}",
+                    e
+                );
                 None
             }
         }
@@ -334,7 +341,10 @@ pub fn get_settings(app: &tauri::AppHandle) -> Result<AppSettings, AppError> {
         match serde_json::from_value::<AppSettings>(v.clone()) {
             Ok(s) => Some(s),
             Err(e) => {
-                log::warn!("app_settingsのデシリアライズに失敗しました（デフォルト値を使用）: {}", e);
+                log::warn!(
+                    "app_settingsのデシリアライズに失敗しました（デフォルト値を使用）: {}",
+                    e
+                );
                 None
             }
         }

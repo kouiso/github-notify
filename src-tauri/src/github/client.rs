@@ -321,8 +321,10 @@ impl GitHubClient {
             AppError::Serialization(format!("Failed to parse notifications: {}", e))
         })?;
 
-        let mut all_items: Vec<InboxItem> =
-            notifications.into_iter().map(|n| n.to_inbox_item()).collect();
+        let mut all_items: Vec<InboxItem> = notifications
+            .into_iter()
+            .map(|n| n.to_inbox_item())
+            .collect();
 
         // Paginate through remaining pages
         let mut current_next = next_url;
@@ -352,10 +354,12 @@ impl GitHubClient {
 
             current_next = parse_next_link(resp.headers());
 
-            let page_notifications: Vec<GitHubNotification> =
-                resp.json().await.map_err(|e| {
-                    AppError::Serialization(format!("Failed to parse notifications page {}: {}", page, e))
-                })?;
+            let page_notifications: Vec<GitHubNotification> = resp.json().await.map_err(|e| {
+                AppError::Serialization(format!(
+                    "Failed to parse notifications page {}: {}",
+                    page, e
+                ))
+            })?;
 
             if page_notifications.is_empty() {
                 break;
