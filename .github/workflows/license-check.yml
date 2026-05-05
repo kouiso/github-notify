@@ -18,13 +18,13 @@ jobs:
     name: License Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "25.6.1"
           cache: "pnpm"
@@ -38,19 +38,24 @@ jobs:
       - name: Check licenses
         run: |
           DISALLOW="GPL-2.0;GPL-3.0;LGPL-2.0;LGPL-3.0;AGPL-3.0;SSPL-1.0;CDDL-1.0;EPL-1.0"
-          FAIL_ON=$(echo "$DISALLOW" | tr ';' ' ' | xargs -n1 echo "--failOn" | tr '\n' ' ')
+          read -r -a DISALLOWED_LICENSES <<< "$(echo "$DISALLOW" | tr ';' ' ')"
+          FAIL_ON=()
+          for license in "${DISALLOWED_LICENSES[@]}"; do
+            FAIL_ON+=(--failOn "$license")
+          done
 
-          echo "## License Check Results" >> "$GITHUB_STEP_SUMMARY"
+          license-checker --production --summary "${FAIL_ON[@]}" | tee license-summary.txt
 
-          license-checker --production --summary $FAIL_ON | tee license-summary.txt
-
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          cat license-summary.txt >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "## License Check Results"
+            echo '```'
+            cat license-summary.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload license report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: license-report
           path: license-summary.txt

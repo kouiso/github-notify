@@ -29,7 +29,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup mise (node + pnpm)
         uses: jdx/mise-action@v2
@@ -38,7 +38,7 @@ jobs:
 
       - name: Get pnpm store directory
         id: pnpm-cache
-        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
 
       - name: Cache pnpm store
         uses: actions/cache@v4
@@ -73,7 +73,7 @@ jobs:
     if: github.event.pull_request.draft == false
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup mise (node + pnpm)
         uses: jdx/mise-action@v2
@@ -97,7 +97,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install git-crypt
         run: sudo apt-get update && sudo apt-get install -y git-crypt
@@ -160,7 +160,7 @@ jobs:
     if: github.event.pull_request.draft == false
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install cargo-audit
         run: cargo install cargo-audit
