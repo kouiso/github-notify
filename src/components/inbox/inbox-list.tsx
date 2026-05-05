@@ -23,6 +23,7 @@ interface InboxListProps {
   selectedFilterId: string | null;
   isSearchMode?: boolean;
   searchItems?: NotificationItem[];
+  activeRepositories?: string[] | null;
 }
 
 function applySidebarFilterLogic(
@@ -82,6 +83,7 @@ export function InboxList({
   selectedFilterId,
   isSearchMode = false,
   searchItems,
+  activeRepositories = null,
 }: InboxListProps) {
   const { settings } = useSettings();
   const [filter, setFilter] = useState<FilterType>('unread');
@@ -142,14 +144,20 @@ export function InboxList({
 
   const filteredSearchItems = useMemo(() => {
     if (!isSearchMode || !searchItems) return [];
-    if (!searchQuery.trim()) return searchItems;
+    const scopedItems =
+      activeRepositories && activeRepositories.length > 0
+        ? searchItems.filter((item) =>
+            activeRepositories.includes(`${item.repository.owner.login}/${item.repository.name}`),
+          )
+        : searchItems;
+    if (!searchQuery.trim()) return scopedItems;
     const query = searchQuery.toLowerCase();
-    return searchItems.filter(
+    return scopedItems.filter(
       (item) =>
         item.title.toLowerCase().includes(query) ||
         `${item.repository.owner.login}/${item.repository.name}`.toLowerCase().includes(query),
     );
-  }, [isSearchMode, searchItems, searchQuery]);
+  }, [isSearchMode, searchItems, searchQuery, activeRepositories]);
 
   // 理由クイックフィルター適用前のベース件数を集計してタブに表示する
   const reasonCounts = useMemo(() => {
@@ -237,6 +245,18 @@ export function InboxList({
   const isAllSelected =
     !isSearchMode && filteredItems.length > 0 && selectedIds.size === filteredItems.length;
   const hasSelection = selectedIds.size > 0;
+
+  useEffect(() => {
+    if (isSearchMode) {
+      setSelectedIds(new Set());
+      return;
+    }
+    const visibleIds = new Set(filteredItems.map((item) => item.id));
+    setSelectedIds((prev) => {
+      const next = new Set([...prev].filter((id) => visibleIds.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [isSearchMode, filteredItems]);
 
   return (
     <div className="flex flex-col h-full">

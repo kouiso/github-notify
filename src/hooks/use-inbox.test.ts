@@ -154,6 +154,48 @@ describe('useInbox', () => {
       expect(result.current.items[0].id).toBe(matchingItem.id);
     });
 
+    it('プロジェクトグループ所属の通知は保存済みビューに不一致でも保持される', async () => {
+      const projectItem = createMockItem({
+        id: 'project-comment',
+        reason: 'comment',
+        repositoryFullName: 'org/project',
+      });
+      const otherItem = createMockItem({
+        id: 'other-comment',
+        reason: 'comment',
+        repositoryFullName: 'org/other',
+      });
+      mockGetAppSettings.mockResolvedValue({
+        ...defaultSettings,
+        repositoryGroups: [{ id: 'g1', name: 'Project', repositories: ['org/project'] }],
+      });
+      mockFetchInbox.mockResolvedValue([projectItem, otherItem]);
+
+      const { result } = renderHook(() => useInbox());
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      expect(result.current.items).toHaveLength(1);
+      expect(result.current.items[0].id).toBe('project-comment');
+    });
+
+    it('プロジェクトグループ所属でもグローバル除外 reason は保持しない', async () => {
+      const subscribedItem = createMockItem({
+        id: 'project-subscribed',
+        reason: 'subscribed',
+        repositoryFullName: 'org/project',
+      });
+      mockGetAppSettings.mockResolvedValue({
+        ...defaultSettings,
+        repositoryGroups: [{ id: 'g1', name: 'Project', repositories: ['org/project'] }],
+      });
+      mockFetchInbox.mockResolvedValue([subscribedItem]);
+
+      const { result } = renderHook(() => useInbox());
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      expect(result.current.items).toEqual([]);
+    });
+
     it('fetch 後に lastUpdated が設定される', async () => {
       mockFetchInbox.mockResolvedValue([]);
       const { result } = renderHook(() => useInbox());

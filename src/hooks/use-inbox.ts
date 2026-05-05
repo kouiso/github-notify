@@ -58,6 +58,7 @@ export function useInbox() {
       item,
       settingsRef.current.customFilters,
       settingsRef.current.globalExcludeReasons,
+      settingsRef.current.repositoryGroups,
     );
   }, []);
 
@@ -160,7 +161,7 @@ export function useInbox() {
           settingsRef.current = {
             desktopNotifications: settings.desktopNotifications,
             soundEnabled: settings.soundEnabled ?? true,
-            customFilters: settings.customFilters,
+            customFilters: migrateDefaultFilters(settings.customFilters).filters,
             globalExcludeReasons: settings.globalExcludeReasons ?? DEFAULT_GLOBAL_EXCLUDE_REASONS,
             repositoryGroups: settings.repositoryGroups ?? [],
           };
