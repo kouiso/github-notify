@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { InboxItem } from '@/types';
-import type { CustomFilter, NotificationReason } from '@/types/settings';
+import type { CustomFilter } from '@/types/settings';
 import { isGloballyExcluded, matchesFilter, shouldShowItem } from './match-filter';
 
 function makeItem(overrides: Partial<InboxItem> = {}): InboxItem {
@@ -126,5 +126,21 @@ describe('shouldShowItem', () => {
     const item = makeItem({ reason: 'mention' });
     const filters = [makeFilter({ id: 'search', reasons: [], searchQuery: 'is:open' })];
     expect(shouldShowItem(item, filters)).toBe(false);
+  });
+
+  it('プロジェクトグループ所属なら保存済みビューに不一致でも表示対象になる', () => {
+    const item = makeItem({ reason: 'comment', repositoryFullName: 'org/project' });
+    const filters = [makeFilter({ id: 'f1', reasons: ['mention'] })];
+    const groups = [{ id: 'g1', name: 'Project', repositories: ['org/project'] }];
+
+    expect(shouldShowItem(item, filters, [], groups)).toBe(true);
+  });
+
+  it('プロジェクトグループ所属でもグローバル除外 reason は表示対象外になる', () => {
+    const item = makeItem({ reason: 'subscribed', repositoryFullName: 'org/project' });
+    const filters = [makeFilter({ id: 'f1', reasons: ['mention'] })];
+    const groups = [{ id: 'g1', name: 'Project', repositories: ['org/project'] }];
+
+    expect(shouldShowItem(item, filters, ['subscribed'], groups)).toBe(false);
   });
 });

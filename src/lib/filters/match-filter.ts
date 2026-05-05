@@ -1,5 +1,5 @@
 import type { InboxItem } from '@/types';
-import type { CustomFilter, NotificationReason } from '@/types/settings';
+import type { CustomFilter, NotificationReason, RepositoryGroup } from '@/types/settings';
 import { isSearchView } from '@/types/settings';
 
 /**
@@ -34,15 +34,27 @@ export function isGloballyExcluded(
   return globalExcludeReasons.includes(item.reason as NotificationReason);
 }
 
+export function matchesRepositoryGroup(item: InboxItem, group: RepositoryGroup): boolean {
+  return group.repositories.includes(item.repositoryFullName);
+}
+
 /**
  * アイテムがいずれかの通知フィルタ（searchViewを除く）にマッチするか判定する。
  * searchViewはGitHub API検索で取得するため、Inbox絞り込みには使わない。
+ * プロジェクトグループ所属の通知は、保存済みビュー設定に依存せず受信トレイに残す。
  */
 export function shouldShowItem(
   item: InboxItem,
   customFilters: CustomFilter[],
   globalExcludeReasons: NotificationReason[] = [],
+  repositoryGroups: RepositoryGroup[] = [],
 ): boolean {
+  if (isGloballyExcluded(item, globalExcludeReasons)) {
+    return false;
+  }
+  if (repositoryGroups.some((group) => matchesRepositoryGroup(item, group))) {
+    return true;
+  }
   const inboxFilters = customFilters.filter((f) => !isSearchView(f));
   if (inboxFilters.length === 0) {
     return false;
