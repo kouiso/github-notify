@@ -24,7 +24,7 @@ export default tseslint.config(
     },
     rules: {
       // React Hooks rules (not fully covered by Biome)
-      ...reactHooks.configs.recommended.rules,
+      'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
 
       // React Refresh rules (Vite/Fast Refresh support)
