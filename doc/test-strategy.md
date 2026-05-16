@@ -250,7 +250,7 @@
 | f02 inbox-display | Inbox表示 | 一覧/空状態 | 要（大量データ・視認性） |
 | f03 background-polling | バックグラウンド | インジケータ中心 | 要（OS通知/音） |
 | f04 filters | フィルター | 設定画面の存在確認中心 | 要（実絞り込み精査） |
-| f05 notification-click | 通知クリック | shell openの間接検証 | 要（実ブラウザ遷移） |
+| f05 notification-click | 通知クリック | `cursor: pointer` の style 確認のみ (クリック実行/shell.open 呼び出しは未検証) | 必須（実ブラウザ遷移とクリック→URL展開を手動で確認） |
 | f06 read-unread | 既読/未読 | Mark all存在確認中心 | 要（同期整合） |
 | f07 unassign-detection | 担当外検出 | E2E skip、Rust側重視 | 要（UIラベル確認） |
 | f08 dashboard | ダッシュボード | タブ遷移・セクション表示 | 要（実データ妥当性） |
