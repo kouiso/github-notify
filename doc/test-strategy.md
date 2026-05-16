@@ -247,14 +247,14 @@
 | シナリオ | 主機能 | 補足 | 手動QA要否 |
 |---|---|---|---|
 | f01 oauth-login | 認証 | Device Flow開始・キャンセル | 要（実OAuth障害系） |
-| f02 inbox-display | Inbox表示 | 一覧/空状態 | 要（大量データ・視認性） |
+| f02 inbox-display | Inbox表示 | 一覧表示中心 (空状態は OR pattern で 0件強制せず未検証) | 必須（0件状態を強制再現して空UIの崩れを確認） |
 | f03 background-polling | バックグラウンド | インジケータ中心 | 要（OS通知/音） |
 | f04 filters | フィルター | 設定画面の存在確認中心 | 要（実絞り込み精査） |
 | f05 notification-click | 通知クリック | `cursor: pointer` の style 確認のみ (クリック実行/shell.open 呼び出しは未検証) | 必須（実ブラウザ遷移とクリック→URL展開を手動で確認） |
 | f06 read-unread | 既読/未読 | Mark all存在確認中心 | 要（同期整合） |
 | f07 unassign-detection | 担当外検出 | E2E skip、Rust側重視 | 要（UIラベル確認） |
 | f08 dashboard | ダッシュボード | タブ遷移・セクション表示 | 要（実データ妥当性） |
-| f09 settings | 設定 | 開閉と一部設定項目 | 要（永続化/失敗系） |
+| f09 settings | 設定 | dialog 開く動作 + ポーリング項目ラベル可視性のみ (閉じる操作・値変更・保存は未検証) | 必須（閉じる操作・値変更・保存・永続化・失敗系） |
 | f10 system-tray | システムトレイ | E2E skip | 必須（ネイティブ検証） |
 | f11 onboarding | 初回導線 | 初回表示確認は `if isVisible()` 条件付きで dialog 未表示でも fail せず (自動検知力弱) | 必須（初回状態再現 + dialog 表示の手動確認） |
 
