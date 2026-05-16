@@ -149,7 +149,7 @@
 - 複数フィルター重複時の件数集計が不自然にならない。
 - 理由種別の追加/欠落があっても既存設定を安全に扱う。
 
-関連E2E: `f04-filters`, `f09-settings`
+関連E2E: `f04-filters` のみ (f09-settings は dialog 開閉 + ポーリング項目可視性のみで filter UI/操作のアサーションなし)
 
 ## 5.5 グループ管理（Group Manager / RepositoryGroup）
 
