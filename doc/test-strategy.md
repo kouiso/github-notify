@@ -46,7 +46,7 @@
 |---|---|---|
 | Frontend Unit/Component (Vitest) | lines/functions/branches/statements | 80%以上（既存閾値を維持） |
 | Rust Unit (cargo test) | 主要モジュールの分岐網羅 | 重要ロジック100%の振る舞い観点（行数よりシナリオ重視） |
-| E2E (Playwright) | 主要フロー | f01〜f11を常時実行可能状態 |
+| E2E (Playwright) | 主要フロー | f01-f11 中 9 シナリオが CI 実行可能 (f07 / f10 は `test.skip(true)` で恒久スキップ — ネイティブ層 Rust unit test または手動 QA に委譲) |
 | Manual QA | リリース判定項目 | チェックリスト全項目実施、Fail 0 件 |
 
 ### 3.2 目標設定の補足
