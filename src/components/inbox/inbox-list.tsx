@@ -23,6 +23,7 @@ interface InboxListProps {
   selectedFilterId: string | null;
   isSearchMode?: boolean;
   searchItems?: NotificationItem[];
+  activeRepositories?: string[] | null;
 }
 
 function applySidebarFilterLogic(
@@ -82,6 +83,7 @@ export function InboxList({
   selectedFilterId,
   isSearchMode = false,
   searchItems,
+  activeRepositories = null,
 }: InboxListProps) {
   const { settings } = useSettings();
   const [filter, setFilter] = useState<FilterType>('unread');
@@ -142,14 +144,20 @@ export function InboxList({
 
   const filteredSearchItems = useMemo(() => {
     if (!isSearchMode || !searchItems) return [];
-    if (!searchQuery.trim()) return searchItems;
+    const scopedItems =
+      activeRepositories && activeRepositories.length > 0
+        ? searchItems.filter((item) =>
+            activeRepositories.includes(`${item.repository.owner.login}/${item.repository.name}`),
+          )
+        : searchItems;
+    if (!searchQuery.trim()) return scopedItems;
     const query = searchQuery.toLowerCase();
-    return searchItems.filter(
+    return scopedItems.filter(
       (item) =>
         item.title.toLowerCase().includes(query) ||
         `${item.repository.owner.login}/${item.repository.name}`.toLowerCase().includes(query),
     );
-  }, [isSearchMode, searchItems, searchQuery]);
+  }, [isSearchMode, searchItems, searchQuery, activeRepositories]);
 
   // 理由クイックフィルター適用前のベース件数を集計してタブに表示する
   const reasonCounts = useMemo(() => {
@@ -179,6 +187,11 @@ export function InboxList({
 
   const displayItems = isSearchMode ? filteredSearchItems : filteredItems;
   const displayCount = displayItems.length;
+  const unreadCount = isSearchMode ? 0 : filteredItems.filter((item) => item.unread).length;
+  const viewTitle = isSearchMode ? '保存ビューの検索結果' : '未処理通知をさばく';
+  const viewDescription = isSearchMode
+    ? '保存した GitHub 検索条件に一致する Issue / PR を確認します'
+    : 'GitHub 通知を理由別に仕分けて、読んだものから完了にします';
 
   useKeyboardShortcuts({
     items: isSearchMode ? [] : filteredItems,
@@ -238,8 +251,44 @@ export function InboxList({
     !isSearchMode && filteredItems.length > 0 && selectedIds.size === filteredItems.length;
   const hasSelection = selectedIds.size > 0;
 
+  useEffect(() => {
+    if (isSearchMode) {
+      setSelectedIds(new Set());
+      return;
+    }
+    const visibleIds = new Set(filteredItems.map((item) => item.id));
+    setSelectedIds((prev) => {
+      const next = new Set([...prev].filter((id) => visibleIds.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [isSearchMode, filteredItems]);
+
   return (
     <div className="flex flex-col h-full">
+      <div className="px-4 py-3 border-b border-border/50 bg-background">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold text-foreground">{viewTitle}</h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">{viewDescription}</p>
+          </div>
+          <div className="flex flex-shrink-0 items-center gap-2 text-[0.8125rem]">
+            <span className="rounded-md border border-border/50 px-2 py-1 text-muted-foreground">
+              表示 {displayCount}
+            </span>
+            {!isSearchMode && (
+              <span className="rounded-md border border-border/50 px-2 py-1 text-muted-foreground">
+                未読 {unreadCount}
+              </span>
+            )}
+            {hasSelection && (
+              <span className="rounded-md border border-primary/40 bg-primary/10 px-2 py-1 text-primary">
+                選択 {selectedIds.size}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
       <InboxListHeader
         isAllSelected={isAllSelected}
         hasSelection={hasSelection}

@@ -45,7 +45,7 @@ export const Dashboard = ({
         q += ` org:${selectedRepo}`;
       }
       if (activeGroup && activeGroup.repositories.length > 0) {
-        q += ' ' + activeGroup.repositories.map((r) => `repo:${r}`).join(' ');
+        q += ` ${activeGroup.repositories.map((r) => `repo:${r}`).join(' ')}`;
       }
       return q;
     },
@@ -100,88 +100,92 @@ export const Dashboard = ({
 
   const isAnyLoading = needsReviewView.isLoading || myPrsView.isLoading;
 
-  const handleDropdownKeyDown = (handler: () => void) => (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      handler();
-    }
-  };
-
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-5 py-3 border-b border-border/50">
-        <div className="flex items-center gap-3">
-          <h2 className="text-base font-semibold">ダッシュボード</h2>
-          <div className="relative" ref={dropdownRef}>
-            <button
-              type="button"
-              onClick={() => setRepoDropdownOpen(!repoDropdownOpen)}
-              className={cn(
-                'flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors border',
-                selectedRepo === 'all'
-                  ? 'text-muted-foreground border-border/50 hover:bg-accent/50'
-                  : 'text-foreground border-primary/40 bg-primary/10',
+      <div className="px-5 py-3 border-b border-border/50">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-3">
+              <h2 className="text-base font-semibold text-foreground">あなた用の監視面</h2>
+              {activeGroup && (
+                <span className="rounded-md border border-border/50 px-2 py-1 text-xs text-muted-foreground">
+                  {activeGroup.name} を表示中
+                </span>
               )}
-            >
-              <FunnelIcon className="w-3 h-3" />
-              <span>{selectedRepo === 'all' ? 'すべて' : selectedRepo}</span>
-              <ChevronIcon className="w-3 h-3" />
-            </button>
-            {repoDropdownOpen && (
-              <div className="absolute top-full left-0 mt-1 min-w-[10rem] rounded-md border border-border bg-popover shadow-lg z-20 py-1">
-                <div
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => {
-                    setSelectedRepo('all');
-                    setRepoDropdownOpen(false);
-                  }}
-                  onKeyDown={handleDropdownKeyDown(() => {
-                    setSelectedRepo('all');
-                    setRepoDropdownOpen(false);
-                  })}
-                  className={cn(
-                    'w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors cursor-pointer',
-                    selectedRepo === 'all' && 'font-medium text-primary',
-                  )}
-                >
-                  すべて
-                </div>
-                {repoOrgs.map((org) => (
-                  <div
-                    key={org}
-                    role="button"
-                    tabIndex={0}
+            </div>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              レビュー待ち、自分のPR、プロジェクト別の動きを GitHub から集めて確認します
+            </p>
+          </div>
+          <div className="flex flex-shrink-0 items-center gap-2">
+            <div className="relative" ref={dropdownRef}>
+              <button
+                type="button"
+                onClick={() => setRepoDropdownOpen(!repoDropdownOpen)}
+                className={cn(
+                  'flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors border',
+                  selectedRepo === 'all'
+                    ? 'text-muted-foreground border-border/50 hover:bg-accent/50'
+                    : 'text-foreground border-primary/40 bg-primary/10',
+                )}
+              >
+                <FunnelIcon className="w-3 h-3" />
+                <span>{selectedRepo === 'all' ? 'すべて' : selectedRepo}</span>
+                <ChevronIcon className="w-3 h-3" />
+              </button>
+              {repoDropdownOpen && (
+                <div className="absolute top-full left-0 mt-1 min-w-[10rem] rounded-md border border-border bg-popover shadow-lg z-20 py-1">
+                  <button
+                    type="button"
                     onClick={() => {
-                      setSelectedRepo(org);
+                      setSelectedRepo('all');
                       setRepoDropdownOpen(false);
                     }}
-                    onKeyDown={handleDropdownKeyDown(() => {
-                      setSelectedRepo(org);
-                      setRepoDropdownOpen(false);
-                    })}
                     className={cn(
                       'w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors cursor-pointer',
-                      selectedRepo === org && 'font-medium text-primary',
+                      selectedRepo === 'all' && 'font-medium text-primary',
                     )}
                   >
-                    {org}
-                  </div>
-                ))}
-              </div>
-            )}
+                    すべて
+                  </button>
+                  {repoOrgs.map((org) => (
+                    <button
+                      key={org}
+                      type="button"
+                      onClick={() => {
+                        setSelectedRepo(org);
+                        setRepoDropdownOpen(false);
+                      }}
+                      className={cn(
+                        'w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors cursor-pointer',
+                        selectedRepo === org && 'font-medium text-primary',
+                      )}
+                    >
+                      {org}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={onOpenReviewSettings}
+              className="px-2.5 py-1 text-xs rounded-md border border-border/50 text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+            >
+              監視面を調整
+            </button>
+            <button
+              type="button"
+              onClick={handleRefreshAll}
+              className="p-1.5 rounded-md hover:bg-accent transition-colors"
+              title="すべて更新"
+            >
+              <RefreshIcon
+                className={cn('w-4 h-4 text-muted-foreground', isAnyLoading && 'animate-spin')}
+              />
+            </button>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={handleRefreshAll}
-          className="p-1.5 rounded-md hover:bg-accent transition-colors"
-          title="すべて更新"
-        >
-          <RefreshIcon
-            className={cn('w-4 h-4 text-muted-foreground', isAnyLoading && 'animate-spin')}
-          />
-        </button>
       </div>
 
       <div className="flex-1 overflow-y-auto scrollbar-thin px-5 py-4 space-y-4">

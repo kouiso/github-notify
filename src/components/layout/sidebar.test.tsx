@@ -117,14 +117,21 @@ describe('Sidebar', () => {
       expect(screen.getByText('Settings')).toBeInTheDocument();
     });
 
-    it('New view ボタンが表示される', () => {
+    it('保存ビュー追加ボタンが表示される', () => {
       render(<Sidebar {...defaultProps} />);
-      expect(screen.getByText('ビューを追加')).toBeInTheDocument();
+      expect(screen.getByText('+ 保存ビュー')).toBeInTheDocument();
     });
 
-    it('Views セクションヘッダーが表示される', () => {
+    it('主要セクションヘッダーが表示される', () => {
       render(<Sidebar {...defaultProps} />);
-      expect(screen.getByText('ビュー')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: '今日見る' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'プロジェクト' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: '保存ビュー' })).toBeInTheDocument();
+    });
+
+    it('プロジェクト追加ボタンが表示される', () => {
+      render(<Sidebar {...defaultProps} />);
+      expect(screen.getByRole('button', { name: '+ プロジェクト' })).toBeInTheDocument();
     });
   });
 
@@ -232,11 +239,11 @@ describe('Sidebar', () => {
   });
 
   describe('ビュー作成', () => {
-    it('「New view」クリックで作成ダイアログが開く', async () => {
+    it('「+ 保存ビュー」クリックで作成ダイアログが開く', async () => {
       const user = userEvent.setup();
       render(<Sidebar {...defaultProps} />);
 
-      await user.click(screen.getByText('ビューを追加'));
+      await user.click(screen.getByText('+ 保存ビュー'));
       expect(screen.getByText('ビューを作成')).toBeInTheDocument();
       expect(screen.getByPlaceholderText('ビュー名')).toBeInTheDocument();
     });
@@ -245,7 +252,7 @@ describe('Sidebar', () => {
       const user = userEvent.setup();
       render(<Sidebar {...defaultProps} />);
 
-      await user.click(screen.getByText('ビューを追加'));
+      await user.click(screen.getByText('+ 保存ビュー'));
 
       // ビュー名を入力
       const nameInput = screen.getByPlaceholderText('ビュー名');
@@ -377,7 +384,7 @@ describe('Sidebar', () => {
       const user = userEvent.setup();
       render(<Sidebar {...defaultProps} />);
 
-      await user.click(screen.getByText('ビューを追加'));
+      await user.click(screen.getByText('+ 保存ビュー'));
       expect(screen.getByText('ビューを作成')).toBeInTheDocument();
 
       await user.click(screen.getByText('キャンセル'));
@@ -390,7 +397,7 @@ describe('Sidebar', () => {
       const user = userEvent.setup();
       render(<Sidebar {...defaultProps} />);
 
-      await user.click(screen.getByText('ビューを追加'));
+      await user.click(screen.getByText('+ 保存ビュー'));
 
       // 「レビュー依頼」チェックボックスをONにする
       const reviewLabel = screen.getByText('レビュー依頼');
@@ -424,7 +431,7 @@ describe('Sidebar', () => {
       const user = userEvent.setup();
       render(<Sidebar {...defaultProps} />);
 
-      await user.click(screen.getByText('ビューを追加'));
+      await user.click(screen.getByText('+ 保存ビュー'));
 
       const desktopLabel = screen.getByText('デスクトップ通知');
       const checkbox = desktopLabel.closest('label')!.querySelector('input[type="checkbox"]')!;
@@ -437,7 +444,7 @@ describe('Sidebar', () => {
       const user = userEvent.setup();
       render(<Sidebar {...defaultProps} />);
 
-      await user.click(screen.getByText('ビューを追加'));
+      await user.click(screen.getByText('+ 保存ビュー'));
 
       // デスクトップ通知をON
       const desktopLabel = screen.getByText('デスクトップ通知');
@@ -453,7 +460,7 @@ describe('Sidebar', () => {
       const user = userEvent.setup();
       render(<Sidebar {...defaultProps} />);
 
-      await user.click(screen.getByText('ビューを追加'));
+      await user.click(screen.getByText('+ 保存ビュー'));
 
       const desktopLabel = screen.getByText('デスクトップ通知');
       await user.click(desktopLabel.closest('label')!.querySelector('input[type="checkbox"]')!);
@@ -471,7 +478,7 @@ describe('Sidebar', () => {
       const user = userEvent.setup();
       render(<Sidebar {...defaultProps} />);
 
-      await user.click(screen.getByText('ビューを追加'));
+      await user.click(screen.getByText('+ 保存ビュー'));
 
       const desktopLabel = screen.getByText('デスクトップ通知');
       await user.click(desktopLabel.closest('label')!.querySelector('input[type="checkbox"]')!);
@@ -494,7 +501,7 @@ describe('Sidebar', () => {
       const user = userEvent.setup();
       render(<Sidebar {...defaultProps} />);
 
-      await user.click(screen.getByText('ビューを追加'));
+      await user.click(screen.getByText('+ 保存ビュー'));
 
       const repoInput = screen.getByPlaceholderText('owner/repo');
       await user.type(repoInput, 'owner/new-repo');
@@ -510,7 +517,7 @@ describe('Sidebar', () => {
       const user = userEvent.setup();
       render(<Sidebar {...defaultProps} />);
 
-      await user.click(screen.getByText('ビューを追加'));
+      await user.click(screen.getByText('+ 保存ビュー'));
 
       const repoInput = screen.getByPlaceholderText('owner/repo');
       await user.type(repoInput, 'owner/enter-repo');
@@ -524,7 +531,7 @@ describe('Sidebar', () => {
       const user = userEvent.setup();
       render(<Sidebar {...defaultProps} />);
 
-      await user.click(screen.getByText('ビューを追加'));
+      await user.click(screen.getByText('+ 保存ビュー'));
 
       const repoInput = screen.getByPlaceholderText('owner/repo');
       await user.type(repoInput, 'owner/dup-repo');
@@ -542,7 +549,7 @@ describe('Sidebar', () => {
       const user = userEvent.setup();
       render(<Sidebar {...defaultProps} />);
 
-      await user.click(screen.getByText('ビューを追加'));
+      await user.click(screen.getByText('+ 保存ビュー'));
 
       // リポジトリを追加
       const repoInput = screen.getByPlaceholderText('owner/repo');
@@ -566,7 +573,7 @@ describe('Sidebar', () => {
       const items = [createMockItem({ repositoryFullName: 'owner/suggested-repo' })];
       render(<Sidebar {...defaultProps} items={items} />);
 
-      await user.click(screen.getByText('ビューを追加'));
+      await user.click(screen.getByText('+ 保存ビュー'));
 
       // サジェストリポジトリが表示される
       expect(screen.getByText('+ suggested-repo')).toBeInTheDocument();
@@ -577,7 +584,7 @@ describe('Sidebar', () => {
       const items = [createMockItem({ repositoryFullName: 'owner/click-repo' })];
       render(<Sidebar {...defaultProps} items={items} />);
 
-      await user.click(screen.getByText('ビューを追加'));
+      await user.click(screen.getByText('+ 保存ビュー'));
       await user.click(screen.getByText('+ click-repo'));
 
       // タグが追加される
@@ -589,7 +596,7 @@ describe('Sidebar', () => {
       const items = [createMockItem({ repositoryFullName: 'owner/hidden-repo' })];
       render(<Sidebar {...defaultProps} items={items} />);
 
-      await user.click(screen.getByText('ビューを追加'));
+      await user.click(screen.getByText('+ 保存ビュー'));
 
       // まずサジェストが表示されている
       expect(screen.getByText('+ hidden-repo')).toBeInTheDocument();
@@ -687,6 +694,17 @@ describe('Sidebar', () => {
     it('グループがないときタブバーが表示されない', () => {
       render(<Sidebar {...defaultProps} repositoryGroups={[]} />);
       expect(screen.queryByText('ALL')).not.toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'プロジェクト' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '+ プロジェクト' })).toBeInTheDocument();
+    });
+
+    it('プロジェクト追加ボタンクリックで onOpenProjectSettings が呼ばれる', async () => {
+      const user = userEvent.setup();
+      const onOpenProjectSettings = vi.fn();
+      render(<Sidebar {...defaultProps} onOpenProjectSettings={onOpenProjectSettings} />);
+
+      await user.click(screen.getByRole('button', { name: '+ プロジェクト' }));
+      expect(onOpenProjectSettings).toHaveBeenCalledTimes(1);
     });
 
     it('ALLタブクリックで onSelectGroup(null) が呼ばれる', async () => {
@@ -866,10 +884,10 @@ describe('Sidebar', () => {
       expect(onSelectGroup).toHaveBeenCalledWith(null);
     });
 
-    it('旧リストスタイル要素（プロジェクトヘッダー・GlobeIcon・FolderIcon）が存在しない', () => {
+    it('旧リストスタイルアイコンが存在しない', () => {
       render(<Sidebar {...defaultProps} repositoryGroups={groups} />);
 
-      expect(screen.queryByText('プロジェクト')).not.toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'プロジェクト' })).toBeInTheDocument();
       expect(document.querySelector('[data-testid="globe-icon"]')).not.toBeInTheDocument();
       expect(document.querySelector('[data-testid="folder-icon"]')).not.toBeInTheDocument();
     });

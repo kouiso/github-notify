@@ -87,6 +87,14 @@ export default function App() {
     ? (settings.repositoryGroups ?? []).find((g) => g.id === activeGroupId)
     : null;
 
+  useEffect(() => {
+    if (activeGroupId && !activeGroup) {
+      setActiveGroupId(null);
+    }
+  }, [activeGroupId, activeGroup]);
+
+  const activeRepositories = activeGroup?.repositories ?? null;
+
   const scopedItems = activeGroup
     ? visibleItems.filter((item) => activeGroup.repositories.includes(item.repositoryFullName))
     : visibleItems;
@@ -106,9 +114,13 @@ export default function App() {
       const resolved = userLogin
         ? selectedFilter.searchQuery.replace(/@me\b/g, userLogin)
         : selectedFilter.searchQuery;
-      fetchSearchView(resolved);
+      const scopedQuery =
+        activeGroup && activeGroup.repositories.length > 0
+          ? `${resolved} ${activeGroup.repositories.map((repo) => `repo:${repo}`).join(' ')}`
+          : resolved;
+      fetchSearchView(scopedQuery);
     }
-  }, [selectedFilterId, userLogin, selectedFilter, fetchSearchView]);
+  }, [selectedFilterId, userLogin, selectedFilter, activeGroup, fetchSearchView]);
 
   if (auth.isLoading) {
     return (
@@ -182,6 +194,7 @@ export default function App() {
                 selectedFilterId={selectedFilterId}
                 isSearchMode
                 searchItems={searchView.items}
+                activeRepositories={activeRepositories}
               />
             ) : (
               <InboxList
@@ -194,6 +207,7 @@ export default function App() {
                 selectedIndex={inbox.selectedIndex}
                 setSelectedIndex={inbox.setSelectedIndex}
                 selectedFilterId={selectedFilterId}
+                activeRepositories={activeRepositories}
               />
             )}
           </Suspense>

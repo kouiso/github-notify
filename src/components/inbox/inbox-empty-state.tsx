@@ -9,20 +9,20 @@ interface EmptyStateProps {
 
 export function EmptyState({ isSearchMode, filter, searchQuery, onSetFilter }: EmptyStateProps) {
   const title = isSearchMode
-    ? 'No results'
+    ? '保存ビューに一致する項目はありません'
     : filter === 'unread'
-      ? 'No unread notifications'
-      : 'No notifications';
+      ? '今さばく未読通知はありません'
+      : '通知はありません';
 
   const description = isSearchMode
     ? searchQuery
-      ? 'No items match your search.'
-      : 'No items found for this query.'
+      ? '検索語に一致する Issue / PR はありません。'
+      : '保存した検索条件に一致する Issue / PR はありません。'
     : filter === 'unread'
-      ? "You're all caught up."
+      ? '受信トレイは片付いています。必要なら既読を含めて確認できます。'
       : searchQuery
-        ? 'No notifications match your search.'
-        : 'New notifications will appear here.';
+        ? '検索語に一致する通知はありません。'
+        : '新しい GitHub 通知はここに表示されます。';
 
   return (
     <div className="flex flex-col items-center justify-center h-full text-center px-8">
@@ -34,7 +34,7 @@ export function EmptyState({ isSearchMode, filter, searchQuery, onSetFilter }: E
           className="mt-3 px-3 py-1 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-md transition-colors"
           onClick={() => onSetFilter('all')}
         >
-          View all
+          既読も見る
         </button>
       )}
     </div>
