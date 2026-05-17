@@ -100,13 +100,6 @@ export const Dashboard = ({
 
   const isAnyLoading = needsReviewView.isLoading || myPrsView.isLoading;
 
-  const handleDropdownKeyDown = (handler: () => void) => (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      handler();
-    }
-  };
-
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-5 py-3 border-b border-border/50">
@@ -129,44 +122,34 @@ export const Dashboard = ({
             </button>
             {repoDropdownOpen && (
               <div className="absolute top-full left-0 mt-1 min-w-[10rem] rounded-md border border-border bg-popover shadow-lg z-20 py-1">
-                <div
-                  role="button"
-                  tabIndex={0}
+                <button
+                  type="button"
                   onClick={() => {
                     setSelectedRepo('all');
                     setRepoDropdownOpen(false);
                   }}
-                  onKeyDown={handleDropdownKeyDown(() => {
-                    setSelectedRepo('all');
-                    setRepoDropdownOpen(false);
-                  })}
                   className={cn(
-                    'w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors cursor-pointer',
+                    'w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors cursor-pointer bg-transparent border-0',
                     selectedRepo === 'all' && 'font-medium text-primary',
                   )}
                 >
                   すべて
-                </div>
+                </button>
                 {repoOrgs.map((org) => (
-                  <div
+                  <button
                     key={org}
-                    role="button"
-                    tabIndex={0}
+                    type="button"
                     onClick={() => {
                       setSelectedRepo(org);
                       setRepoDropdownOpen(false);
                     }}
-                    onKeyDown={handleDropdownKeyDown(() => {
-                      setSelectedRepo(org);
-                      setRepoDropdownOpen(false);
-                    })}
                     className={cn(
-                      'w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors cursor-pointer',
+                      'w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors cursor-pointer bg-transparent border-0',
                       selectedRepo === org && 'font-medium text-primary',
                     )}
                   >
                     {org}
-                  </div>
+                  </button>
                 ))}
               </div>
             )}
@@ -174,12 +157,14 @@ export const Dashboard = ({
         </div>
         <button
           type="button"
+          aria-label="すべて更新"
           onClick={handleRefreshAll}
-          className="p-1.5 rounded-md hover:bg-accent transition-colors"
+          className="inline-flex items-center justify-center min-w-11 min-h-11 rounded-md hover:bg-accent transition-colors"
           title="すべて更新"
         >
           <RefreshIcon
             className={cn('w-4 h-4 text-muted-foreground', isAnyLoading && 'animate-spin')}
+            aria-hidden="true"
           />
         </button>
       </div>

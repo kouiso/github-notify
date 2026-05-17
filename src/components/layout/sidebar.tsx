@@ -224,11 +224,12 @@ export function Sidebar({
               })}
               <button
                 type="button"
+                aria-label="プロジェクトを追加"
                 onClick={onOpenProjectSettings}
-                className="flex-shrink-0 px-1.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-md transition-colors"
+                className="flex-shrink-0 inline-flex items-center justify-center min-w-11 min-h-11 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-md transition-colors"
                 title="プロジェクトを追加"
               >
-                <PlusIcon className="w-3.5 h-3.5" />
+                <PlusIcon className="w-3.5 h-3.5" aria-hidden="true" />
               </button>
             </div>
             {activeGroupId &&
@@ -343,15 +344,16 @@ export function Sidebar({
                         {repo.split('/')[1] || repo}
                         <button
                           type="button"
+                          aria-label={`${repo} をフィルターから除外`}
                           onClick={() =>
                             setEditingFilter({
                               ...editingFilter,
                               repositories: editingFilter.repositories?.filter((r) => r !== repo),
                             })
                           }
-                          className="text-muted-foreground hover:text-foreground ml-0.5"
+                          className="relative inline-flex items-center justify-center text-muted-foreground hover:text-foreground ml-0.5 before:absolute before:inset-[-10px] before:content-['']"
                         >
-                          <CloseIcon className="w-3 h-3" />
+                          <CloseIcon className="w-3 h-3" aria-hidden="true" />
                         </button>
                       </span>
                     ))}

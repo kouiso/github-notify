@@ -77,14 +77,27 @@ function DialogOverlay({ className, ...props }: React.HTMLAttributes<HTMLDivElem
         'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
         className,
       )}
-      onClick={() => onOpenChange(false)}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onOpenChange(false);
+      // Only close when the overlay itself was clicked, not when a click on
+      // DialogContent bubbles up to here. Lets us drop the previous
+      // stopPropagation on DialogContent that was killing global listeners.
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onOpenChange(false);
       }}
       {...props}
     />
   );
 }
+
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]';
+
+const getTabbables = (root: HTMLElement): HTMLElement[] => {
+  // querySelectorAll catches elements that are *focusable in principle*; filter
+  // out anything explicitly removed from the tab order via tabindex="-1".
+  return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+    (el) => el.tabIndex !== -1,
+  );
+};
 
 function DialogContent({
   className,
@@ -94,15 +107,85 @@ function DialogContent({
 }: React.HTMLAttributes<HTMLDivElement>) {
   const generatedId = React.useId();
   const titleId = ariaLabelledBy ?? generatedId;
+  const { open, onOpenChange } = useDialogContext();
+  const contentRef = React.useRef<HTMLDivElement>(null);
+  const previousFocusRef = React.useRef<HTMLElement | null>(null);
+  // Mirror onOpenChange in a ref so the effect below only fires on `open`
+  // changes, not on every parent re-render that recreates the handler. Without
+  // this, the effect would re-run on every render, bouncing focus back to the
+  // trigger element and breaking interactive dialog flows.
+  const onOpenChangeRef = React.useRef(onOpenChange);
+  React.useEffect(() => {
+    onOpenChangeRef.current = onOpenChange;
+  }, [onOpenChange]);
+
+  // Focus trap + window-level Escape: WCAG 2.4.3 (Focus Order) + 2.1.2
+  // (No Keyboard Trap). Without this, Tab escapes the modal and Escape
+  // never fires because the overlay isn't focusable.
+  React.useEffect(() => {
+    if (!open) return;
+    const previousFocus = (document.activeElement as HTMLElement | null) ?? null;
+    previousFocusRef.current = previousFocus;
+    const content = contentRef.current;
+    if (content) {
+      const tabbables = getTabbables(content);
+      if (tabbables.length > 0) {
+        tabbables[0].focus();
+      } else {
+        // Fallback: focus the container itself so SR/keyboard users aren't
+        // left interacting with elements outside the modal (gemini #5954).
+        content.focus();
+      }
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        // preventDefault to suppress browser defaults (e.g. cancelling
+        // long-running fetch), stopPropagation to keep nested dialogs from
+        // closing their parents (gemini #5959).
+        event.preventDefault();
+        event.stopPropagation();
+        onOpenChangeRef.current(false);
+        return;
+      }
+      if (event.key !== 'Tab' || !content) return;
+      const tabbables = getTabbables(content);
+      if (tabbables.length === 0) {
+        event.preventDefault();
+        return;
+      }
+      const first = tabbables[0];
+      const last = tabbables[tabbables.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      // Restore focus to whatever element opened the dialog.
+      previousFocusRef.current?.focus?.();
+    };
+  }, [open]);
 
   return (
     <DialogPortal>
       <DialogOverlay />
       <DialogTitleIdContext.Provider value={titleId}>
         <div
+          ref={contentRef}
           role="dialog"
           aria-modal="true"
           aria-labelledby={titleId}
+          // tabIndex={-1} lets us programmatically focus the container as a
+          // fallback when there are no focusable descendants (gemini #5954).
+          tabIndex={-1}
           className={cn(
             'fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%]',
             'gap-4 border bg-background p-6 shadow-lg duration-200',
@@ -114,8 +197,6 @@ function DialogContent({
             'sm:rounded-lg',
             className,
           )}
-          onClick={(e) => e.stopPropagation()}
-          onKeyDown={(e) => e.stopPropagation()}
           {...props}
         >
           {children}
