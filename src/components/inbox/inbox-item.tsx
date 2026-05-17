@@ -1,4 +1,4 @@
-import { forwardRef, type KeyboardEvent, memo } from 'react';
+import { forwardRef, memo } from 'react';
 import { cn } from '@/lib/utils/cn';
 import type { InboxItem, NotificationItem } from '@/types';
 import { REASON_LABELS } from '@/types/settings';
@@ -46,13 +46,6 @@ interface InboxRowProps {
   onMarkAsDone: () => void;
 }
 
-const handleDivKeyDown = (onClick: () => void) => (e: KeyboardEvent<HTMLDivElement>) => {
-  if (e.key === 'Enter' || e.key === ' ') {
-    e.preventDefault();
-    onClick();
-  }
-};
-
 export const InboxRow = memo(
   forwardRef<HTMLDivElement, InboxRowProps>(
     ({ item, isSelected, isChecked, onCheckChange, onClick, onMarkAsDone }, ref) => {
@@ -68,7 +61,7 @@ export const InboxRow = memo(
         <div
           ref={ref}
           className={cn(
-            'inbox-row flex items-center gap-3 px-4 py-3 transition-colors cursor-pointer group border-b border-border/30',
+            'inbox-row flex items-center gap-3 px-4 py-3 transition-colors group border-b border-border/30',
             item.unread ? 'bg-background' : 'bg-background/60',
             isSelected && 'bg-accent',
             !isSelected && 'hover:bg-accent/30',
@@ -87,9 +80,10 @@ export const InboxRow = memo(
             }}
             onClick={(e) => e.stopPropagation()}
             className="flex-shrink-0"
+            aria-label={`${item.title} を選択`}
           />
 
-          <div className="flex-shrink-0">
+          <div className="flex-shrink-0" aria-hidden="true">
             {isPR && <PRIcon className="w-4.5 h-4.5 text-[var(--color-gh-pr)]" />}
             {isIssue && <IssueIcon className="w-4.5 h-4.5 text-[var(--color-gh-issue)]" />}
             {!isPR && !isIssue && (
@@ -97,12 +91,10 @@ export const InboxRow = memo(
             )}
           </div>
 
-          <div
-            className="flex-1 min-w-0"
-            role="button"
-            tabIndex={0}
+          <button
+            type="button"
+            className="flex-1 min-w-0 text-left bg-transparent border-0 p-0 cursor-pointer"
             onClick={onClick}
-            onKeyDown={handleDivKeyDown(onClick)}
           >
             <span
               className={cn(
@@ -112,7 +104,7 @@ export const InboxRow = memo(
             >
               {item.title}
             </span>
-            <div className="flex items-center gap-2 mt-1">
+            <span className="flex items-center gap-2 mt-1">
               <span className="text-[0.8125rem] text-muted-foreground truncate">
                 {item.repositoryFullName}
               </span>
@@ -125,8 +117,8 @@ export const InboxRow = memo(
               >
                 {reasonLabel}
               </span>
-            </div>
-          </div>
+            </span>
+          </button>
 
           <span className="text-[0.8125rem] text-muted-foreground flex-shrink-0 tabular-nums">
             {formatRelativeTime(item.updatedAt)}
@@ -135,13 +127,14 @@ export const InboxRow = memo(
           <div className="row-actions flex-shrink-0">
             <button
               type="button"
-              className="p-1 rounded hover:bg-accent transition-colors"
+              aria-label={`「${item.title}」を既読にする`}
+              className="inline-flex items-center justify-center min-w-11 min-h-11 rounded hover:bg-accent transition-colors"
               onClick={(e) => {
                 e.stopPropagation();
                 onMarkAsDone();
               }}
             >
-              <CheckIcon className="w-4 h-4 text-muted-foreground" />
+              <CheckIcon className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
             </button>
           </div>
         </div>
@@ -162,23 +155,21 @@ export const SearchRow = memo(({ item, onClick }: SearchRowProps) => {
   const reviewConfig = item.reviewDecision ? REVIEW_DECISION_CONFIG[item.reviewDecision] : null;
 
   return (
-    <div
-      className="inbox-row flex items-center gap-3 px-4 py-3 transition-colors cursor-pointer border-b border-border/30 hover:bg-accent/30"
-      role="button"
-      tabIndex={0}
+    <button
+      type="button"
+      className="inbox-row w-full text-left flex items-center gap-3 px-4 py-3 transition-colors cursor-pointer border-b border-border/30 hover:bg-accent/30 bg-transparent"
       onClick={onClick}
-      onKeyDown={handleDivKeyDown(onClick)}
     >
-      <div className="flex-shrink-0">
+      <span className="flex-shrink-0" aria-hidden="true">
         {isPR ? (
           <PRIcon className="w-4.5 h-4.5 text-[var(--color-gh-pr)]" />
         ) : (
           <IssueIcon className="w-4.5 h-4.5 text-[var(--color-gh-issue)]" />
         )}
-      </div>
+      </span>
 
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
+      <span className="flex-1 min-w-0">
+        <span className="flex items-center gap-2">
           <span className="text-[0.9375rem] text-foreground truncate leading-snug">
             {item.title}
           </span>
@@ -187,8 +178,8 @@ export const SearchRow = memo(({ item, onClick }: SearchRowProps) => {
               Draft
             </span>
           )}
-        </div>
-        <div className="flex items-center gap-2 mt-1">
+        </span>
+        <span className="flex items-center gap-2 mt-1">
           <span className="text-[0.8125rem] text-muted-foreground truncate">
             {item.repository.owner.login}/{item.repository.name}
           </span>
@@ -202,13 +193,13 @@ export const SearchRow = memo(({ item, onClick }: SearchRowProps) => {
               {reviewConfig.label}
             </span>
           )}
-        </div>
-      </div>
+        </span>
+      </span>
 
       <span className="text-[0.8125rem] text-muted-foreground flex-shrink-0 tabular-nums">
         {formatRelativeTime(item.updatedAt)}
       </span>
-    </div>
+    </button>
   );
 });
 

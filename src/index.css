@@ -166,18 +166,44 @@ input[type="checkbox"] {
   cursor: pointer;
 }
 
-/* Row action buttons - show on hover */
-.inbox-row:hover .row-actions {
+/* Row action buttons: always partially visible, full opacity on hover/focus-within
+   so keyboard users and touch devices can reach them (WCAG 2.4.7 Focus Visible). */
+.row-actions {
+  opacity: 0.5;
+  transition: opacity 150ms ease;
+}
+.inbox-row:hover .row-actions,
+.inbox-row:focus-within .row-actions {
   opacity: 1;
 }
 
-.row-actions {
-  opacity: 0;
-  transition: opacity 150ms ease;
+/* Global focus-visible outline for all focusable elements that don't carry a
+   component-level focus style. Button (ui/button.tsx) and Input (ui/input.tsx)
+   ship their own focus-visible:ring-* classes which take precedence; this rule
+   catches plain <button>, <a>, and other elements that would otherwise lack a
+   visible focus indicator (WCAG 2.4.7). */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+  /* Suppress the default browser focus ring; rely on :focus-visible above. */
+  button:focus:not(:focus-visible),
+  a:focus:not(:focus-visible),
+  [tabindex]:focus:not(:focus-visible) {
+    outline: none;
+  }
 }
 
-/* Better focus visible */
-.focus-visible-ring:focus-visible {
-  outline: 2px solid var(--color-gh-mention);
-  outline-offset: 2px;
+/* Respect user motion preferences (WCAG 2.3.3 Animation from Interactions — AAA).
+   Reduces or disables animations for users with vestibular disorders. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

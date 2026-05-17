@@ -88,11 +88,15 @@ export function InboxListHeader({
       </div>
       <button
         type="button"
+        aria-label="通知を更新"
         onClick={onRefresh}
         disabled={isLoading}
-        className="p-1.5 rounded-md hover:bg-accent transition-colors disabled:opacity-50"
+        className="inline-flex items-center justify-center min-w-11 min-h-11 rounded-md hover:bg-accent transition-colors disabled:opacity-50"
       >
-        <RefreshIcon className={cn('w-4 h-4 text-muted-foreground', isLoading && 'animate-spin')} />
+        <RefreshIcon
+          className={cn('w-4 h-4 text-muted-foreground', isLoading && 'animate-spin')}
+          aria-hidden="true"
+        />
       </button>
     </div>
   );

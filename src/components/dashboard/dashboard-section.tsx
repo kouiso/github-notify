@@ -88,11 +88,12 @@ export const HeroSection = ({
           {onSettings && (
             <button
               type="button"
+              aria-label="レビュー対象ルールを設定"
               onClick={onSettings}
-              className="ml-auto p-1 rounded-md hover:bg-accent/50 transition-colors"
+              className="ml-auto inline-flex items-center justify-center min-w-11 min-h-11 rounded-md hover:bg-accent/50 transition-colors"
               title="レビュー対象ルールを設定"
             >
-              <GearIcon className="w-3.5 h-3.5 text-muted-foreground" />
+              <GearIcon className="w-3.5 h-3.5 text-muted-foreground" aria-hidden="true" />
             </button>
           )}
         </div>
@@ -210,13 +211,6 @@ export const SearchItemList = ({
   );
 };
 
-const handleKeyDown = (onClick: () => void) => (e: React.KeyboardEvent) => {
-  if (e.key === 'Enter' || e.key === ' ') {
-    e.preventDefault();
-    onClick();
-  }
-};
-
 const SearchRow = ({
   item,
   showReviewDecision,
@@ -234,52 +228,57 @@ const SearchRow = ({
   const visibleLabels = item.labels.slice(0, 3);
 
   return (
-    <div
+    <button
+      type="button"
       className={cn(
-        'flex items-center gap-3 px-4 py-2.5 hover:bg-accent/30 cursor-pointer transition-colors border-b border-border/20 last:border-b-0',
+        'w-full text-left flex items-center gap-3 px-4 py-2.5 hover:bg-accent/30 cursor-pointer transition-colors border-b border-border/20 last:border-b-0 bg-transparent',
         urgency === 'critical' && 'bg-destructive/[0.04]',
         urgency === 'warning' && 'bg-[var(--color-gh-review)]/[0.04]',
       )}
-      role="button"
-      tabIndex={0}
       onClick={onClick}
-      onKeyDown={handleKeyDown(onClick)}
     >
       {showUrgency && (
-        <div className="w-1.5 flex-shrink-0">
+        <span className="w-1.5 flex-shrink-0">
           {urgency === 'critical' && (
             <span
               className="block w-1.5 h-1.5 rounded-full bg-destructive"
+              role="img"
               title="7日以上レビュー待ち"
+              aria-label="7日以上レビュー待ち"
             />
           )}
           {urgency === 'warning' && (
             <span
               className="block w-1.5 h-1.5 rounded-full bg-[var(--color-gh-review)]"
+              role="img"
               title="3日以上レビュー待ち"
+              aria-label="3日以上レビュー待ち"
             />
           )}
-        </div>
+        </span>
       )}
 
       {item.author?.avatarUrl ? (
         <img
           src={item.author.avatarUrl}
-          alt={item.author.login}
+          alt=""
+          width={24}
+          height={24}
+          loading="lazy"
           className="w-6 h-6 rounded-full flex-shrink-0"
         />
       ) : (
-        <div className="flex-shrink-0">
+        <span className="flex-shrink-0" aria-hidden="true">
           {isPR ? (
             <PRIcon className="w-4 h-4 text-[var(--color-gh-pr)]" />
           ) : (
             <IssueIcon className="w-4 h-4 text-[var(--color-gh-issue)]" />
           )}
-        </div>
+        </span>
       )}
 
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
+      <span className="flex-1 min-w-0">
+        <span className="flex items-center gap-2">
           <span className="text-[0.9375rem] text-foreground truncate leading-snug">
             {item.title}
           </span>
@@ -288,8 +287,8 @@ const SearchRow = ({
               下書き
             </span>
           )}
-        </div>
-        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+        </span>
+        <span className="flex items-center gap-2 mt-0.5 flex-wrap">
           <span className="text-[0.8125rem] text-muted-foreground">
             {item.repository.owner.login}/{item.repository.name}
             <span className="text-muted-foreground/50">#{item.number}</span>
@@ -305,22 +304,22 @@ const SearchRow = ({
           {item.labels.length > 3 && (
             <span className="text-xs text-muted-foreground/50">+{item.labels.length - 3}</span>
           )}
-        </div>
-      </div>
+        </span>
+      </span>
 
       {showReviewDecision && reviewConfig && (
-        <div className="flex items-center gap-1.5 flex-shrink-0">
+        <span className="flex items-center gap-1.5 flex-shrink-0">
           <span className={cn('w-2 h-2 rounded-full flex-shrink-0', reviewConfig.dotColor)} />
           <span className={cn('text-xs font-medium', reviewConfig.color)}>
             {reviewConfig.label}
           </span>
-        </div>
+        </span>
       )}
 
       <span className="text-[0.8125rem] text-muted-foreground flex-shrink-0 tabular-nums">
         {formatRelativeTime(item.updatedAt)}
       </span>
-    </div>
+    </button>
   );
 };
 
