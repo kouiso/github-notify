@@ -1,6 +1,6 @@
 [package]
 name = "github-notify"
-version = "0.1.1"
+version = "0.1.2"
 description = "GitHub Notification Manager Desktop App"
 authors = ["kouiso"]
 license = "MIT"
@@ -17,7 +17,7 @@ tauri-build = { version = "2.5.3", features = [] }
 
 [dependencies]
 # Tauri core and plugins
-tauri = { version = "2.10", features = ["devtools", "tray-icon"] }
+tauri = { version = "2.11", features = ["devtools", "tray-icon"] }
 tauri-plugin-log = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-store = "2"
