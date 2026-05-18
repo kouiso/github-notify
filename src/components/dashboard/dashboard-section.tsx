@@ -200,14 +200,15 @@ export const SearchItemList = ({
       ))}
       {items.length > DEFAULT_VISIBLE && (
         <div className="w-full flex flex-col">
-          {expanded && (
-            <p
-              className="w-full px-4 pt-2 text-[0.6875rem] text-muted-foreground/70 text-center"
-              aria-live="polite"
-            >
-              {items.length} 件すべて表示中
-            </p>
-          )}
+          <p
+            className={cn(
+              'w-full text-[0.6875rem] text-muted-foreground/70 text-center',
+              expanded ? 'px-4 pt-2' : 'sr-only',
+            )}
+            aria-live="polite"
+          >
+            {expanded ? `${items.length} 件すべて表示中` : ''}
+          </p>
           <button
             type="button"
             onClick={() => setExpanded(!expanded)}

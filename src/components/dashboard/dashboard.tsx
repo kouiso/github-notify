@@ -34,6 +34,7 @@ export const Dashboard = ({
   const [selectedRepo, setSelectedRepo] = useState('all');
   const [repoDropdownOpen, setRepoDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const repoTriggerRef = useRef<HTMLButtonElement>(null);
 
   const needsReviewFilter = filters.find((f) => f.id === 'default-needs-review');
   const myPrsFilter = filters.find((f) => f.id === 'default-my-prs');
@@ -107,6 +108,7 @@ export const Dashboard = ({
           <h2 className="text-base font-semibold">ダッシュボード</h2>
           <div className="relative" ref={dropdownRef}>
             <button
+              ref={repoTriggerRef}
               type="button"
               onClick={() => setRepoDropdownOpen(!repoDropdownOpen)}
               className={cn(
@@ -123,7 +125,10 @@ export const Dashboard = ({
             {selectedRepo !== 'all' && (
               <button
                 type="button"
-                onClick={() => setSelectedRepo('all')}
+                onClick={() => {
+                  setSelectedRepo('all');
+                  repoTriggerRef.current?.focus();
+                }}
                 aria-label="絞り込みを解除"
                 title="絞り込みを解除"
                 className="ml-1 inline-flex items-center justify-center min-w-11 min-h-11 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
