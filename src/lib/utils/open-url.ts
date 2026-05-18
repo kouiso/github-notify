@@ -1,6 +1,6 @@
 import { open } from '@tauri-apps/plugin-shell';
 
-export function openExternalUrl(url: string): Promise<void> {
+export async function openExternalUrl(url: string): Promise<void> {
   const u = new URL(url);
   if (u.protocol !== 'https:') throw new Error(`non-https blocked: ${url}`);
   if (!/(^|\.)github\.com$/.test(u.hostname)) {
