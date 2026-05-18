@@ -157,6 +157,7 @@ impl GitHubClient {
                 valid: false,
                 login: None,
                 avatar_url: None,
+                poll_interval: None,
             });
         }
 
@@ -167,6 +168,7 @@ impl GitHubClient {
                 valid: false,
                 login: None,
                 avatar_url: None,
+                poll_interval: None,
             });
         }
 
@@ -181,6 +183,7 @@ impl GitHubClient {
             valid: login.is_some(),
             login,
             avatar_url,
+            poll_interval: None,
         })
     }
 

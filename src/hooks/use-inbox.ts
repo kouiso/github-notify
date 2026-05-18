@@ -185,6 +185,7 @@ export function useInbox() {
       );
     } catch (err) {
       logger.error('Failed to mark as read', err);
+      throw err;
     }
   }, []);
 

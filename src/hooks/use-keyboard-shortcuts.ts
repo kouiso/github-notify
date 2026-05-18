@@ -7,7 +7,7 @@ interface UseKeyboardShortcutsOptions {
   items: InboxItem[];
   selectedIndex: number;
   setSelectedIndex: (index: number) => void;
-  onMarkAsRead: (threadId: string) => void;
+  onMarkAsRead: (threadId: string) => Promise<void>;
 }
 
 function isInputElement(target: EventTarget | null): boolean {
@@ -46,7 +46,12 @@ export function useKeyboardShortcuts({
         }
       }
       if (item.unread) {
-        onMarkAsRead(item.id);
+        Promise.resolve(onMarkAsRead(item.id)).catch((error) => {
+          logger.error('既読化に失敗しました', error, {
+            component: 'useKeyboardShortcuts',
+            action: 'markOpenedItemRead',
+          });
+        });
       }
     }
   }, [selectedIndex, items, onMarkAsRead]);
@@ -55,7 +60,12 @@ export function useKeyboardShortcuts({
     if (selectedIndex >= 0 && selectedIndex < items.length) {
       const item = items[selectedIndex];
       if (item.unread) {
-        onMarkAsRead(item.id);
+        Promise.resolve(onMarkAsRead(item.id)).catch((error) => {
+          logger.error('既読化に失敗しました', error, {
+            component: 'useKeyboardShortcuts',
+            action: 'markSelectedItemRead',
+          });
+        });
       }
     }
   }, [selectedIndex, items, onMarkAsRead]);

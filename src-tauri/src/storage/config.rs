@@ -97,6 +97,8 @@ pub struct AppSettings {
     #[serde(default)]
     pub active_filter_id: Option<String>,
     #[serde(default)]
+    pub onboarding_completed: bool,
+    #[serde(default)]
     pub repository_groups: Vec<RepositoryGroup>,
     #[serde(default = "default_global_exclude_reasons")]
     pub global_exclude_reasons: Vec<String>,
@@ -125,6 +127,7 @@ impl Default for AppSettings {
             sound_enabled: true,
             custom_filters: default_initial_filters(),
             active_filter_id: Some("dashboard".to_string()),
+            onboarding_completed: false,
             repository_groups: vec![],
             global_exclude_reasons: default_global_exclude_reasons(),
         }

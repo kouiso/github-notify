@@ -232,6 +232,8 @@ pub struct TokenVerification {
     pub valid: bool,
     pub login: Option<String>,
     pub avatar_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub poll_interval: Option<i32>,
 }
 
 impl SearchNode {

@@ -12,6 +12,7 @@ const TokenVerificationSchema = v.object({
   valid: v.boolean(),
   login: v.optional(v.nullable(v.string())),
   avatarUrl: v.optional(v.nullable(v.string())),
+  pollInterval: v.optional(v.number()),
 });
 
 const ItemStateSchema = v.picklist(['open', 'closed', 'merged']);

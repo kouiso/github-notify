@@ -42,6 +42,7 @@ pub async fn poll_device_flow(
     app: AppHandle,
     state: tauri::State<'_, AppState>,
     device_code: String,
+    interval: Option<i32>,
 ) -> Result<TokenVerification, AppError> {
     // トークン取得前のため空トークンでClientのみ共有する
     let client = GitHubClient::with_shared_client(state.http_client.clone(), String::new());
@@ -49,32 +50,7 @@ pub async fn poll_device_flow(
 
     // Check if we got an error
     if let Some(error) = response.error {
-        if error == "authorization_pending" {
-            return Ok(TokenVerification {
-                valid: false,
-                login: None,
-                avatar_url: None,
-            });
-        }
-        if error == "slow_down" {
-            return Ok(TokenVerification {
-                valid: false,
-                login: None,
-                avatar_url: None,
-            });
-        }
-        if error == "expired_token" {
-            return Err(AppError::Auth(
-                "Device code expired. Please restart authentication.".to_string(),
-            ));
-        }
-        if error == "access_denied" {
-            return Err(AppError::Auth("Access was denied by user.".to_string()));
-        }
-        return Err(AppError::Auth(format!(
-            "Authentication error: {}",
-            response.error_description.unwrap_or(error)
-        )));
+        return handle_device_flow_error(error, response.error_description, interval.unwrap_or(5));
     }
 
     // Check if we got a token
@@ -92,7 +68,40 @@ pub async fn poll_device_flow(
         valid: false,
         login: None,
         avatar_url: None,
+        poll_interval: None,
     })
+}
+
+fn pending_verification(poll_interval: Option<i32>) -> TokenVerification {
+    TokenVerification {
+        valid: false,
+        login: None,
+        avatar_url: None,
+        poll_interval,
+    }
+}
+
+fn handle_device_flow_error(
+    error: String,
+    error_description: Option<String>,
+    current_interval: i32,
+) -> Result<TokenVerification, AppError> {
+    match error.as_str() {
+        "authorization_pending" => Ok(pending_verification(None)),
+        "slow_down" => {
+            let next_interval = current_interval.saturating_add(5);
+            log::info!("oauth slow_down received; polling interval bumped to {next_interval}s");
+            Ok(pending_verification(Some(next_interval)))
+        }
+        "expired_token" => Err(AppError::Auth(
+            "Device code expired. Please restart authentication.".to_string(),
+        )),
+        "access_denied" => Err(AppError::Auth("Access was denied by user.".to_string())),
+        _ => Err(AppError::Auth(format!(
+            "Authentication error: {}",
+            error_description.unwrap_or(error)
+        ))),
+    }
 }
 
 /// GitHubトークンを保存・検証する（PAT入力時）
@@ -137,6 +146,7 @@ pub async fn verify_github_token(
             valid: false,
             login: None,
             avatar_url: None,
+            poll_interval: None,
         }),
     }
 }
@@ -145,4 +155,17 @@ pub async fn verify_github_token(
 #[tauri::command]
 pub fn clear_github_token(app: AppHandle) -> Result<(), AppError> {
     storage::clear_token(&app)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::handle_device_flow_error;
+
+    #[test]
+    fn slow_down_returns_bumped_poll_interval() {
+        let result = handle_device_flow_error("slow_down".to_string(), None, 5).unwrap();
+
+        assert!(!result.valid);
+        assert_eq!(result.poll_interval, Some(10));
+    }
 }
