@@ -38,9 +38,6 @@ export function matchesFilter(
   if (globalExcludeReasons.includes(reason)) {
     return false;
   }
-  if (filter.reasons.length === 0 && reason === 'other') {
-    return false;
-  }
   if (filter.reasons.length > 0 && !filter.reasons.includes(reason)) {
     return false;
   }

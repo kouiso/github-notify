@@ -63,10 +63,11 @@ describe('matchesFilter', () => {
     expect(matchesFilter(item, filter)).toBe(true);
   });
 
-  it('未知の reason は other として明示フィルタ時のみ通過', () => {
+  it('未知の reason は other として扱われ、reasons空配列(全許可) と reasons:["other"] で通過', () => {
     const item = makeItem({ reason: 'unknown_reason' as InboxItem['reason'] });
 
-    expect(matchesFilter(item, makeFilter({ reasons: [] }))).toBe(false);
+    // reasons 空配列 = 全許可仕様に従い other も通過
+    expect(matchesFilter(item, makeFilter({ reasons: [] }))).toBe(true);
     expect(matchesFilter(item, makeFilter({ reasons: ['mention'] }))).toBe(false);
     expect(matchesFilter(item, makeFilter({ reasons: ['other'] }))).toBe(true);
   });

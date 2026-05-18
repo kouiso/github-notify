@@ -1,4 +1,4 @@
-use futures::future::join_all;
+use futures::stream::{self, StreamExt};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -161,31 +161,40 @@ async fn verify_assignments(
 ) -> usize {
     let mut to_remove: HashSet<String> = HashSet::new();
 
-    let checks = items.iter().filter_map(|item| {
-        if item.reason != "assign" || !item.unread {
-            return None;
-        }
+    let checks: Vec<_> = items
+        .iter()
+        .filter_map(|item| {
+            if item.reason != "assign" || !item.unread {
+                return None;
+            }
 
-        let (owner, repo) = item.repository_full_name.split_once('/')?;
+            let (owner, repo) = item.repository_full_name.split_once('/')?;
 
-        // URL から Issue 番号を抽出 (e.g. ".../issues/42" or ".../pull/42")
-        let number = item
-            .url
-            .as_deref()
-            .and_then(|u| u.rsplit('/').next())
-            .and_then(|n| n.parse::<u64>().ok())?;
+            // URL から Issue 番号を抽出 (e.g. ".../issues/42" or ".../pull/42")
+            let number = item
+                .url
+                .as_deref()
+                .and_then(|u| u.rsplit('/').next())
+                .and_then(|n| n.parse::<u64>().ok())?;
 
-        let id = item.id.clone();
-        let owner = owner.to_string();
-        let repo = repo.to_string();
+            let id = item.id.clone();
+            let owner = owner.to_string();
+            let repo = repo.to_string();
 
-        Some(async move {
-            let result = client.fetch_issue_assignees(&owner, &repo, number).await;
-            (id, owner, repo, number, result)
+            Some(async move {
+                let result = client.fetch_issue_assignees(&owner, &repo, number).await;
+                (id, owner, repo, number, result)
+            })
         })
-    });
+        .collect();
 
-    for (id, owner, repo, number, result) in join_all(checks).await {
+    // GitHub の secondary rate limit を避けるため同時実行数を 10 に制限
+    const ASSIGNEE_CHECK_CONCURRENCY: usize = 10;
+    let results: Vec<_> = stream::iter(checks)
+        .buffer_unordered(ASSIGNEE_CHECK_CONCURRENCY)
+        .collect()
+        .await;
+    for (id, owner, repo, number, result) in results {
         match result {
             Ok(assignees) => {
                 let still_assigned = assignees
