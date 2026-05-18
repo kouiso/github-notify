@@ -1,8 +1,8 @@
+use futures::future::join_all;
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use futures::future::join_all;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::sleep;
