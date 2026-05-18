@@ -1,5 +1,6 @@
-import { open } from '@tauri-apps/plugin-shell';
 import { useCallback, useEffect } from 'react';
+import { logger } from '@/lib/utils/logger';
+import { openExternalUrl } from '@/lib/utils/open-url';
 import type { InboxItem } from '@/types';
 
 interface UseKeyboardShortcutsOptions {
@@ -35,7 +36,14 @@ export function useKeyboardShortcuts({
     if (selectedIndex >= 0 && selectedIndex < items.length) {
       const item = items[selectedIndex];
       if (item.url) {
-        await open(item.url);
+        try {
+          await openExternalUrl(item.url);
+        } catch (error) {
+          logger.error('外部URLを開けませんでした', error, {
+            component: 'useKeyboardShortcuts',
+            action: 'openSelectedItem',
+          });
+        }
       }
       if (item.unread) {
         onMarkAsRead(item.id);

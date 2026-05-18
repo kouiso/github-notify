@@ -1,9 +1,10 @@
-import { open } from '@tauri-apps/plugin-shell';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Spinner } from '@/components/ui';
 import { useSettings } from '@/hooks';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { matchesFilter } from '@/lib/filters/match-filter';
+import { logger } from '@/lib/utils/logger';
+import { openExternalUrl } from '@/lib/utils/open-url';
 import type { InboxItem, NotificationItem } from '@/types';
 import type { CustomFilter, NotificationReason } from '@/types/settings';
 import { EmptyState } from './inbox-empty-state';
@@ -201,7 +202,14 @@ export function InboxList({
 
   const handleClick = async (item: InboxItem) => {
     if (item.url) {
-      await open(item.url);
+      try {
+        await openExternalUrl(item.url);
+      } catch (error) {
+        logger.error('外部URLを開けませんでした', error, {
+          component: 'InboxList',
+          action: 'openInboxItem',
+        });
+      }
     }
     if (item.unread) {
       onMarkAsRead(item.id);
@@ -210,7 +218,14 @@ export function InboxList({
 
   const handleSearchItemClick = async (item: NotificationItem) => {
     if (item.url) {
-      await open(item.url);
+      try {
+        await openExternalUrl(item.url);
+      } catch (error) {
+        logger.error('外部URLを開けませんでした', error, {
+          component: 'InboxList',
+          action: 'openSearchItem',
+        });
+      }
     }
   };
 

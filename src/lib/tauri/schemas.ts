@@ -64,6 +64,7 @@ const NotificationReasonSchema = v.picklist([
   'manual',
   'push',
   'your_activity',
+  'other',
 ]);
 
 const InboxItemSchema = v.object({
@@ -113,6 +114,7 @@ const RepositoryGroupSchema = v.object({
 });
 
 const AppSettingsSchema = v.object({
+  version: v.optional(v.number(), 1),
   theme: ThemeSchema,
   notificationPreset: v.string(),
   customReasons: v.array(NotificationReasonSchema),

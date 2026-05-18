@@ -11,7 +11,8 @@ export type NotificationReason =
   | 'security_alert'
   | 'manual'
   | 'push'
-  | 'your_activity';
+  | 'your_activity'
+  | 'other';
 
 export const REASON_LABELS: Record<NotificationReason, string> = {
   review_requested: 'レビュー依頼',
@@ -27,6 +28,7 @@ export const REASON_LABELS: Record<NotificationReason, string> = {
   manual: '手動',
   push: 'プッシュ',
   your_activity: '自分の操作',
+  other: 'その他',
 };
 
 export type SoundType = 'default' | 'soft' | 'chime';
@@ -77,6 +79,7 @@ export interface RepositoryGroup {
 }
 
 export interface AppSettings {
+  version?: number;
   theme: Theme;
   notificationPreset: string;
   customReasons: NotificationReason[];
@@ -271,6 +274,7 @@ export function migrateDefaultFilters(filters: CustomFilter[]): {
 export const DEFAULT_GLOBAL_EXCLUDE_REASONS: NotificationReason[] = ['subscribed'];
 
 export const DEFAULT_SETTINGS: AppSettings = {
+  version: 1,
   theme: 'system',
   notificationPreset: 'none',
   customReasons: [],

@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+use futures::future::join_all;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::sleep;
@@ -160,29 +161,32 @@ async fn verify_assignments(
 ) -> usize {
     let mut to_remove: HashSet<String> = HashSet::new();
 
-    for item in items.iter() {
+    let checks = items.iter().filter_map(|item| {
         if item.reason != "assign" || !item.unread {
-            continue;
+            return None;
         }
 
-        let parts: Vec<&str> = item.repository_full_name.splitn(2, '/').collect();
-        if parts.len() != 2 {
-            continue;
-        }
-        let (owner, repo) = (parts[0], parts[1]);
+        let (owner, repo) = item.repository_full_name.split_once('/')?;
 
         // URL から Issue 番号を抽出 (e.g. ".../issues/42" or ".../pull/42")
-        let issue_number = item
+        let number = item
             .url
             .as_deref()
             .and_then(|u| u.rsplit('/').next())
-            .and_then(|n| n.parse::<u64>().ok());
+            .and_then(|n| n.parse::<u64>().ok())?;
 
-        let Some(number) = issue_number else {
-            continue;
-        };
+        let id = item.id.clone();
+        let owner = owner.to_string();
+        let repo = repo.to_string();
 
-        match client.fetch_issue_assignees(owner, repo, number).await {
+        Some(async move {
+            let result = client.fetch_issue_assignees(&owner, &repo, number).await;
+            (id, owner, repo, number, result)
+        })
+    });
+
+    for (id, owner, repo, number, result) in join_all(checks).await {
+        match result {
             Ok(assignees) => {
                 let still_assigned = assignees
                     .iter()
@@ -195,8 +199,8 @@ async fn verify_assignments(
                         number,
                         viewer_login
                     );
-                    let _ = client.mark_notification_read(&item.id).await;
-                    to_remove.insert(item.id.clone());
+                    let _ = client.mark_notification_read(&id).await;
+                    to_remove.insert(id);
                 }
             }
             Err(e) => {
