@@ -99,7 +99,7 @@ export const InboxRow = memo(
             <span
               className={cn(
                 'text-[0.9375rem] truncate block leading-snug',
-                item.unread ? 'font-medium text-foreground' : 'text-muted-foreground',
+                item.unread ? 'font-semibold text-foreground' : 'font-normal text-muted-foreground',
               )}
             >
               {item.title}
