@@ -120,6 +120,17 @@ export const Dashboard = ({
               <span>{selectedRepo === 'all' ? 'すべて' : selectedRepo}</span>
               <ChevronIcon className="w-3 h-3" />
             </button>
+            {selectedRepo !== 'all' && (
+              <button
+                type="button"
+                onClick={() => setSelectedRepo('all')}
+                aria-label="絞り込みを解除"
+                title="絞り込みを解除"
+                className="ml-1 inline-flex items-center justify-center w-5 h-5 rounded-sm text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+              >
+                <span aria-hidden="true">×</span>
+              </button>
+            )}
             {repoDropdownOpen && (
               <div className="absolute top-full left-0 mt-1 min-w-[10rem] rounded-md border border-border bg-popover shadow-lg z-20 py-1">
                 <button

@@ -199,13 +199,24 @@ export const SearchItemList = ({
         />
       ))}
       {items.length > DEFAULT_VISIBLE && (
-        <button
-          type="button"
-          onClick={() => setExpanded(!expanded)}
-          className="w-full px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/30 transition-colors text-center"
-        >
-          {expanded ? '折りたたむ' : `他 ${items.length - DEFAULT_VISIBLE} 件を表示`}
-        </button>
+        <div className="flex flex-col items-center">
+          {expanded && (
+            <p
+              className="w-full px-4 pt-2 text-[0.6875rem] text-muted-foreground/70 text-center"
+              aria-live="polite"
+            >
+              {items.length} 件すべて表示中
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={() => setExpanded(!expanded)}
+            aria-expanded={expanded}
+            className="w-full px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/30 transition-colors text-center"
+          >
+            {expanded ? '折りたたむ' : `他 ${items.length - DEFAULT_VISIBLE} 件を表示`}
+          </button>
+        </div>
       )}
     </div>
   );
