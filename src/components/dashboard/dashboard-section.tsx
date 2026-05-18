@@ -199,7 +199,7 @@ export const SearchItemList = ({
         />
       ))}
       {items.length > DEFAULT_VISIBLE && (
-        <div className="flex flex-col items-center">
+        <div className="w-full flex flex-col">
           {expanded && (
             <p
               className="w-full px-4 pt-2 text-[0.6875rem] text-muted-foreground/70 text-center"

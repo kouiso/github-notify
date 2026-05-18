@@ -126,7 +126,7 @@ export const Dashboard = ({
                 onClick={() => setSelectedRepo('all')}
                 aria-label="絞り込みを解除"
                 title="絞り込みを解除"
-                className="ml-1 inline-flex items-center justify-center w-5 h-5 rounded-sm text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+                className="ml-1 inline-flex items-center justify-center min-w-11 min-h-11 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
               >
                 <span aria-hidden="true">×</span>
               </button>
