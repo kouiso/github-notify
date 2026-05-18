@@ -12,6 +12,7 @@ const TokenVerificationSchema = v.object({
   valid: v.boolean(),
   login: v.optional(v.nullable(v.string())),
   avatarUrl: v.optional(v.nullable(v.string())),
+  pollInterval: v.optional(v.number()),
 });
 
 const ItemStateSchema = v.picklist(['open', 'closed', 'merged']);
@@ -64,6 +65,7 @@ const NotificationReasonSchema = v.picklist([
   'manual',
   'push',
   'your_activity',
+  'other',
 ]);
 
 const InboxItemSchema = v.object({
@@ -113,6 +115,7 @@ const RepositoryGroupSchema = v.object({
 });
 
 const AppSettingsSchema = v.object({
+  version: v.optional(v.number(), 1),
   theme: ThemeSchema,
   notificationPreset: v.string(),
   customReasons: v.array(NotificationReasonSchema),

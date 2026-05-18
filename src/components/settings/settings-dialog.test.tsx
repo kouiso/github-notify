@@ -10,6 +10,7 @@ vi.mock('@/hooks', () => ({
   useSettings: () => ({
     settings: mockSettings,
     isLoading: false,
+    saveError: mockSaveError,
     updateSettings: mockUpdateSettings,
   }),
   useTheme: () => ({
@@ -19,9 +20,14 @@ vi.mock('@/hooks', () => ({
 }));
 
 const mockCheckKeychainStatus = vi.fn<() => Promise<boolean>>();
+const mockGetVersion = vi.fn<() => Promise<string>>();
 
 vi.mock('@/lib/tauri/commands', () => ({
   checkKeychainStatus: () => mockCheckKeychainStatus(),
+}));
+
+vi.mock('@tauri-apps/api/app', () => ({
+  getVersion: () => mockGetVersion(),
 }));
 
 vi.mock('@/lib/utils/logger', () => ({
@@ -31,6 +37,7 @@ vi.mock('@/lib/utils/logger', () => ({
 import { SettingsDialog } from './settings-dialog';
 
 let mockSettings: AppSettings;
+let mockSaveError: string | null = null;
 
 const _needsReviewFilter = DEFAULT_INITIAL_FILTERS.find((f) => f.id === 'default-needs-review')!;
 
@@ -60,8 +67,10 @@ function openIssueStatusRulesEditor(settingsOverride?: Partial<AppSettings>) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockSaveError = null;
   mockUpdateSettings.mockResolvedValue(undefined);
   mockCheckKeychainStatus.mockResolvedValue(true);
+  mockGetVersion.mockResolvedValue('1.2.3');
 });
 
 // ============================================================
@@ -238,11 +247,26 @@ describe('タブ切り替え', () => {
     expect(mockSetTheme).toHaveBeenCalledWith('dark');
   });
 
-  it('外観タブにバージョン情報が表示される', () => {
+  it('外観タブにTauriメタデータのバージョン情報が表示される', async () => {
     renderSettingsDialog();
     fireEvent.click(screen.getByText('外観'));
 
-    expect(screen.getByText('GitHub Notify v0.1.0')).toBeInTheDocument();
+    expect(await screen.findByText('GitHub Notify v1.2.3')).toBeInTheDocument();
+  });
+
+  it('バージョン取得に失敗したら dev を表示する', async () => {
+    mockGetVersion.mockRejectedValue(new Error('version error'));
+    renderSettingsDialog();
+    fireEvent.click(screen.getByText('外観'));
+
+    expect(await screen.findByText('GitHub Notify vdev')).toBeInTheDocument();
+  });
+
+  it('設定保存エラーがある場合は表示する', () => {
+    mockSaveError = '保存に失敗しました - 再試行してください';
+    renderSettingsDialog();
+
+    expect(screen.getByText('保存に失敗しました - 再試行してください')).toBeInTheDocument();
   });
 
   it('アカウントタブを開くとユーザー情報が表示される', () => {

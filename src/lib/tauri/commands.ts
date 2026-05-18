@@ -25,8 +25,11 @@ export async function startDeviceFlow(): Promise<DeviceFlowInfo> {
   return parse(DeviceFlowInfoSchema, raw);
 }
 
-export async function pollDeviceFlow(deviceCode: string): Promise<TokenVerification> {
-  const raw = await invoke('poll_device_flow', { deviceCode });
+export async function pollDeviceFlow(
+  deviceCode: string,
+  interval?: number,
+): Promise<TokenVerification> {
+  const raw = await invoke('poll_device_flow', { deviceCode, interval });
   return parse(TokenVerificationSchema, raw);
 }
 

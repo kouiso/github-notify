@@ -9,7 +9,7 @@
 - Machine: MacOS or Windows or Linux
 - [Rust](https://www.rust-lang.org/tools/install): 1.77.2 以上（rustup 経由でインストール）
 - NodeJS: LTS 推奨（16 以上）
-- npm: Node.js に付属
+- pnpm: mise 経由で管理
 
 <details>
 <summary>Tauri の OS 別依存パッケージ</summary>
@@ -40,7 +40,7 @@ sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev
 ### ステップ 1: 依存パッケージのインストール
 
 ```bash
-npm install
+pnpm install --frozen-lockfile
 ```
 
 ### ステップ 2: 開発サーバーの起動
@@ -48,7 +48,7 @@ npm install
 フロントエンド（Vite）+ Tauri を同時に起動します：
 
 ```bash
-npm run tauri dev
+pnpm run tauri dev
 ```
 
 - フロントエンド: `http://localhost:5173`
@@ -58,19 +58,19 @@ npm run tauri dev
 
 ```bash
 # フロントエンドのみ起動（ブラウザ確認用）
-npm run dev
+pnpm run dev
 
 # プロダクションビルド
-npm run build
+pnpm run build
 
 # Tauri アプリのビルド（インストーラー生成）
-npm run tauri build
+pnpm run tauri build
 
 # コード品質チェック
-npm run lint
+pnpm run lint
 
 # コード自動修正 + フォーマット
-npm run lint:fix
+pnpm run lint:fix
 ```
 
 ## 技術スタック

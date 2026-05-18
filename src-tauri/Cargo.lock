@@ -1704,6 +1704,7 @@ name = "github-notify"
 version = "0.1.2"
 dependencies = [
  "chrono",
+ "futures",
  "keyring",
  "log",
  "reqwest 0.12.28",

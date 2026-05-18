@@ -7,6 +7,7 @@ import { SettingsContext } from './settings-context';
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [isLoading, setIsLoading] = useState(true);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     // Tauri環境外ではスキップ（ブラウザプレビュー対応）
@@ -40,12 +41,15 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const updateSettings = useCallback(
     async (updates: Partial<AppSettings>) => {
       const newSettings = { ...settings, ...updates };
+      setSaveError(null);
       setSettings(newSettings);
 
       if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
         try {
           await saveAppSettings(newSettings);
         } catch (err) {
+          setSettings(settings);
+          setSaveError('保存に失敗しました - 再試行してください');
           logger.error('Failed to save settings', err);
         }
       }
@@ -54,7 +58,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <SettingsContext.Provider value={{ settings, isLoading, updateSettings }}>
+    <SettingsContext.Provider value={{ settings, isLoading, saveError, updateSettings }}>
       {children}
     </SettingsContext.Provider>
   );
