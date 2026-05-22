@@ -208,7 +208,14 @@ async fn verify_assignments(
                         number,
                         viewer_login
                     );
-                    let _ = client.mark_notification_read(&id).await;
+                    if let Err(e) = client.mark_notification_read(&id).await {
+                        log::warn!(
+                            "既読化に失敗したため通知は保持: thread_id={} error={}",
+                            id,
+                            e
+                        );
+                        continue;
+                    }
                     to_remove.insert(id);
                 }
             }

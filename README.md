@@ -116,7 +116,7 @@ pnpm tauri build          # Build desktop app for distribution
 | Item | Path |
 |------|------|
 | Logs (macOS) | `~/Library/Logs/github-notify/` |
-| Logs (Windows) | `%APPDATA%\github-notify\logs\` |
+| Logs (Windows) | `%LOCALAPPDATA%\github-notify\logs\` |
 | Logs (Linux) | `~/.local/share/github-notify/logs/` |
 | Settings | Managed by `tauri-plugin-store` in app data directory |
 | Token | OS Keychain (preferred) or `store.bin` in app data directory |

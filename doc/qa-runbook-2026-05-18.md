@@ -37,7 +37,7 @@ pnpm install --frozen-lockfile
 # 3. Static tier (FAIL gate — if any non-zero exit, STOP and capture log)
 pnpm run typecheck                                     # tsc -b --noEmit
 pnpm run lint                                          # biome check
-pnpm run test                                          # vitest run (expect 449+ PASS)
+pnpm run test                                          # vitest run (expect 439+ PASS)
 pnpm run test:coverage 2>&1 | tail -10                 # branch ≥72% per current threshold
 pnpm run build                                         # vite build
 cd src-tauri && cargo fmt --check && cargo clippy -- -D warnings && cargo check && cargo test

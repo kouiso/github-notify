@@ -6,5 +6,5 @@ export async function openExternalUrl(url: string): Promise<void> {
   if (!/(^|\.)github\.com$/.test(u.hostname)) {
     throw new Error(`non-github host blocked: ${u.hostname}`);
   }
-  return open(url);
+  return open(u.toString());
 }

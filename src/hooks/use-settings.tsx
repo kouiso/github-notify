@@ -40,7 +40,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   const updateSettings = useCallback(
     async (updates: Partial<AppSettings>) => {
-      const newSettings = { ...settings, ...updates };
+      const previousSettings = settings;
+      const newSettings = { ...previousSettings, ...updates };
       setSaveError(null);
       setSettings(newSettings);
 
@@ -48,7 +49,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         try {
           await saveAppSettings(newSettings);
         } catch (err) {
-          setSettings(settings);
+          setSettings((current) => (current === newSettings ? previousSettings : current));
           setSaveError('保存に失敗しました - 再試行してください');
           logger.error('Failed to save settings', err);
         }

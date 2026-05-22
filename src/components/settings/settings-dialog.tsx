@@ -171,7 +171,12 @@ function SettingsDialogContent({
         </DialogHeader>
 
         {saveError && (
-          <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-[0.8125rem] text-destructive">
+          <div
+            role="alert"
+            aria-live="assertive"
+            aria-atomic="true"
+            className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-[0.8125rem] text-destructive"
+          >
             {saveError}
           </div>
         )}

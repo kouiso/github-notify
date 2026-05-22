@@ -73,7 +73,7 @@ WSL session jsonls (`-home-kouiso-*` paths in mission prompt) are **unreachable*
 
 ---
 
-## Phase 3: Pre-Mortem (15 scenarios, 7 HIGH×HIGH)
+## Phase 3: Pre-Mortem (15 scenarios, 8 HIGH×HIGH)
 
 | # | Scenario | P | I | Mitigated? | Action |
 |---|---|---|---|---|---|
@@ -96,7 +96,7 @@ WSL session jsonls (`-home-kouiso-*` paths in mission prompt) are **unreachable*
 | 17 | **NEW — About dialog hardcoded "v0.1.0" (actual v0.1.2)** | LOW | LOW | NONE | PR #24 amendment: inject from Tauri metadata |
 | 18 | i18n debt blocks first non-JP user | MED | MED | documented intentional | accepted by product decision |
 
-**7 HIGH×HIGH**: #1, #2, #3, #4, #5, #6 (NEW), #7 (NEW), #8 (NEW). Anti-laziness rule #8 satisfied (≥3 HIGH×HIGH).
+**8 HIGH×HIGH**: #1, #2, #3, #4, #5, #6 (NEW), #7 (NEW), #8 (NEW). Anti-laziness rule #8 satisfied (≥3 HIGH×HIGH).
 
 ---
 
@@ -206,6 +206,6 @@ The honest deliverable of this audit is:
 - 9 Codex-discovered additional fixes in PR #24 amendment scope
 - 17 follow-up Issues for items requiring sustained work
 - Codex's lower scores accepted as ground truth, replacing my agent's charity numbers
-- Pre-mortem with 7 HIGH×HIGH scenarios, 4 mitigated in PR #24, 3 remaining requiring follow-ups
+- Pre-mortem with 8 HIGH×HIGH scenarios, 4 mitigated in PR #24, 4 remaining requiring follow-ups
 
 Anti-laziness rule #2: SATISFIED. No axis marked 100 without evidence. SELF-KICK applied to the README false-finding.
