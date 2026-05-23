@@ -117,10 +117,10 @@ fn bearer_token_start(message: &str, scheme_start: usize) -> Option<usize> {
 }
 
 fn is_bearer_scheme_boundary(message: &str, scheme_start: usize) -> bool {
-    message[..scheme_start]
-        .chars()
-        .next_back()
-        .is_none_or(|ch| !is_token_char(ch))
+    match message[..scheme_start].chars().next_back() {
+        Some(ch) => !is_token_char(ch),
+        None => true,
+    }
 }
 
 fn token_len(value: &str) -> usize {
