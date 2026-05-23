@@ -7,7 +7,7 @@ const interpolation = /\{[^\n}]*\}/;
 const namedInterpolation =
   /\{\s*(?:[a-zA-Z_][a-zA-Z0-9_]*(?:token|secret|credential|authorization|bearer)[a-zA-Z0-9_]*|err|error)\s*(?::[^}\n]*)?\}/i;
 const sensitiveArgument =
-  /,\s*&?(?:[a-zA-Z_][a-zA-Z0-9_]*(?:token|secret|credential|authorization|bearer)[a-zA-Z0-9_]*|err|error)\b/i;
+  /,(?:\s|\/\/[^\n]*(?:\n|$)|\/\*[\s\S]*?\*\/)*&?(?:[a-zA-Z_][a-zA-Z0-9_]*(?:token|secret|credential|authorization|bearer)[a-zA-Z0-9_]*|err|error)\b/i;
 const riskyMacroStart = /(format!|println!|log::(?:trace|debug|info|warn|error)!)\s*\(/;
 
 function isRiskyLine(line) {
@@ -61,7 +61,7 @@ function collectInvocations(source) {
 
     const startLine = index + 1;
     const parts = [line];
-    const literalState = { quote: null, rawStringEnd: null };
+    const literalState = { blockComment: false, quote: null, rawStringEnd: null };
     let balance = parenBalance(line, literalState);
 
     while (balance > 0 && index + 1 < lines.length) {
@@ -76,7 +76,10 @@ function collectInvocations(source) {
   return invocations;
 }
 
-function parenBalance(line, literalState = { quote: null, rawStringEnd: null }) {
+function parenBalance(
+  line,
+  literalState = { blockComment: false, quote: null, rawStringEnd: null },
+) {
   let balance = 0;
   for (const char of stripRustLiterals(line, literalState)) {
     if (char === '(') balance += 1;
@@ -97,6 +100,13 @@ function stripRustLiterals(line, literalState) {
     }
 
     const char = line[index];
+    const newComment = consumeNewComment(line, index, literalState);
+    if (newComment) {
+      if (newComment.open) return result;
+      index = newComment.end;
+      continue;
+    }
+
     const newLiteral = consumeNewLiteral(line, index, literalState);
     if (newLiteral) {
       if (newLiteral.literalChar) result += newLiteral.literalChar;
@@ -112,6 +122,13 @@ function stripRustLiterals(line, literalState) {
 }
 
 function consumeActiveLiteral(line, index, literalState) {
+  if (literalState.blockComment) {
+    const endIndex = line.indexOf('*/', index);
+    if (endIndex === -1) return { open: true };
+    literalState.blockComment = false;
+    return { open: false, end: endIndex + 1 };
+  }
+
   if (literalState.rawStringEnd) {
     const endIndex = line.indexOf(literalState.rawStringEnd, index);
     if (endIndex === -1) return { open: true };
@@ -128,6 +145,19 @@ function consumeActiveLiteral(line, index, literalState) {
   }
 
   return null;
+}
+
+function consumeNewComment(line, index, literalState) {
+  if (line[index] !== '/') return null;
+  if (line[index + 1] === '/') return { open: true };
+  if (line[index + 1] !== '*') return null;
+
+  const endIndex = line.indexOf('*/', index + 2);
+  if (endIndex === -1) {
+    literalState.blockComment = true;
+    return { open: true };
+  }
+  return { open: false, end: endIndex + 1 };
 }
 
 function consumeNewLiteral(line, index, literalState) {
