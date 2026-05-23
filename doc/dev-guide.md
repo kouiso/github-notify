@@ -122,3 +122,12 @@ Husky + lint-staged で pre-commit フックを実行：
 1. `src-tauri/src/` 内で `log::info!`, `log::error!` 等でログ出力
 2. Tauri のログプラグイン（`tauri-plugin-log`）でファイルに保存
 3. VS Code の Rust Analyzer + CodeLLDB でブレークポイントデバッグ
+
+### トークンのログ出力禁止
+
+GitHub トークンは絶対に全文をログへ出力しない。エラー調査で識別が必要な場合は `***REDACTED***` または末尾 4 文字だけを使う。
+
+- NG: `log::error!("token={}", token)`
+- OK: `log::warn!("GitHub token rejected; suffix={}", &token[token.len().saturating_sub(4)..])`
+- pre-commit は Rust の `format!` / `println!` / `log::*` で `token`、`Authorization`、`Bearer` を直接扱う行を検出して止める
+- Tauri ログ境界でも `ghp_` / `gho_` / `ghu_` / `ghs_` / `ghr_` と `Bearer ...`、実行時に保持しているトークン値を `***REDACTED***` に置換する

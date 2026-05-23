@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use reqwest::Client;
 use serde_json::json;
 
-use crate::error::AppError;
+use crate::{error::AppError, log_sanitizer};
 
 use super::queries::{PR_LINKED_ISSUES_STATUS_QUERY, SEARCH_QUERY, VIEWER_QUERY};
 use super::types::{
@@ -67,6 +67,8 @@ impl GitHubClient {
     /// AppStateが保持する共有Clientを受け取るコンストラクタ。
     /// Clientの再生成を避け、接続プールを再利用する。
     pub fn with_shared_client(client: Client, token: String) -> Self {
+        log_sanitizer::remember_token(&token);
+
         Self {
             client,
             // 空文字列はトークン未設定を示す（デバイスフロー完了前など）
@@ -77,6 +79,8 @@ impl GitHubClient {
 
     #[cfg(test)]
     pub fn with_base_url(client: Client, token: String, base_url: String) -> Self {
+        log_sanitizer::remember_token(&token);
+
         Self {
             client,
             token: if token.is_empty() { None } else { Some(token) },
