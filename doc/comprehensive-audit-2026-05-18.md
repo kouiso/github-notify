@@ -157,6 +157,7 @@ Accepted. My agent scores were charity. Codex's lower scores are the honest asse
 - A9. Add Tauri command round-trip test for `onboardingCompleted` (mock store, save + load)
 
 ### Follow-up Issues (deferred to separate PRs)
+
 | # | Title | Severity | GitHub Issue |
 |---|---|---|---|
 | F1 | OAuth token scrubbing at logger boundary | CRITICAL | `#25` |
