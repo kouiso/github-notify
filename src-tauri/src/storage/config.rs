@@ -1,5 +1,6 @@
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use std::sync::{Mutex, OnceLock};
 use tauri_plugin_store::StoreExt;
 
 use crate::error::AppError;
@@ -9,9 +10,25 @@ const TOKEN_KEY: &str = "github_token";
 const READ_ITEMS_KEY: &str = "read_items";
 const SETTINGS_KEY: &str = "app_settings";
 
+static STORE_WRITE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
 /// Maximum number of read items to keep in storage (retain last N days worth)
 /// GitHub API keeps notifications for 30 days, so we keep 60 days worth for safety
 const MAX_READ_ITEMS: usize = 10_000;
+
+fn store_write_lock() -> &'static Mutex<()> {
+    STORE_WRITE_LOCK.get_or_init(|| Mutex::new(()))
+}
+
+fn with_store_write_lock<T>(
+    operation: impl FnOnce() -> Result<T, AppError>,
+) -> Result<T, AppError> {
+    let _guard = store_write_lock()
+        .lock()
+        .map_err(|_| AppError::Storage("store write lock poisoned".to_string()))?;
+
+    operation()
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -204,8 +221,10 @@ pub fn migrate_token_to_keychain(app: &tauri::AppHandle) -> Result<(), AppError>
         .and_then(|v| v.as_str().map(|s| s.to_string()))
     {
         save_token(app, &token)?;
-        store.delete(TOKEN_KEY);
-        let _ = store.save();
+        with_store_write_lock(|| {
+            store.delete(TOKEN_KEY);
+            store.save().map_err(|e| AppError::Storage(e.to_string()))
+        })?;
         log::info!("トークンをOS Keychainへ移行しました");
     }
 
@@ -235,12 +254,13 @@ pub fn save_token(app: &tauri::AppHandle, token: &str) -> Result<(), AppError> {
         log::warn!("Keychain保存に失敗しました。tauri-plugin-storeにフォールバックします");
     }
 
-    let store = app
-        .store(STORE_FILE)
-        .map_err(|e| AppError::Storage(e.to_string()))?;
-    store.set(TOKEN_KEY, serde_json::json!(token));
-    store.save().map_err(|e| AppError::Storage(e.to_string()))?;
-    Ok(())
+    with_store_write_lock(|| {
+        let store = app
+            .store(STORE_FILE)
+            .map_err(|e| AppError::Storage(e.to_string()))?;
+        store.set(TOKEN_KEY, serde_json::json!(token));
+        store.save().map_err(|e| AppError::Storage(e.to_string()))
+    })
 }
 
 /// Get the GitHub token (Keychain優先、なければtauri-plugin-storeから読み取り)
@@ -272,12 +292,13 @@ pub fn clear_token(app: &tauri::AppHandle) -> Result<(), AppError> {
         }
     }
 
-    let store = app
-        .store(STORE_FILE)
-        .map_err(|e| AppError::Storage(e.to_string()))?;
-    store.delete(TOKEN_KEY);
-    let _ = store.save();
-    Ok(())
+    with_store_write_lock(|| {
+        let store = app
+            .store(STORE_FILE)
+            .map_err(|e| AppError::Storage(e.to_string()))?;
+        store.delete(TOKEN_KEY);
+        store.save().map_err(|e| AppError::Storage(e.to_string()))
+    })
 }
 
 fn load_read_items(app: &tauri::AppHandle) -> Result<ReadItems, AppError> {
@@ -338,41 +359,49 @@ pub fn get_read_items(app: &tauri::AppHandle) -> Result<Vec<String>, AppError> {
 
 /// Add an item to the read items set
 pub fn mark_item_as_read(app: &tauri::AppHandle, item_id: &str) -> Result<(), AppError> {
-    let mut read_items = load_read_items(app)?;
+    with_store_write_lock(|| {
+        let mut read_items = load_read_items(app)?;
 
-    if !read_items.items.iter().any(|item| item.id == item_id) {
-        read_items.items.push(ReadItem {
-            id: item_id.to_string(),
-            marked_at: Utc::now().timestamp_millis(),
-        });
+        if !read_items.items.iter().any(|item| item.id == item_id) {
+            read_items.items.push(ReadItem {
+                id: item_id.to_string(),
+                marked_at: Utc::now().timestamp_millis(),
+            });
 
-        save_read_items(app, &truncate_read_items(read_items))?;
-    }
+            save_read_items_unlocked(app, &truncate_read_items(read_items))?;
+        }
 
-    Ok(())
+        Ok(())
+    })
 }
 
 /// Mark multiple items as read
 pub fn mark_items_as_read(app: &tauri::AppHandle, item_ids: &[String]) -> Result<(), AppError> {
-    let mut read_items = load_read_items(app)?;
-    let mut marked_at = Utc::now().timestamp_millis();
+    with_store_write_lock(|| {
+        let mut read_items = load_read_items(app)?;
+        let mut marked_at = Utc::now().timestamp_millis();
 
-    for id in item_ids {
-        if !read_items.items.iter().any(|item| item.id == *id) {
-            read_items.items.push(ReadItem {
-                id: id.clone(),
-                marked_at,
-            });
-            marked_at += 1;
+        for id in item_ids {
+            if !read_items.items.iter().any(|item| item.id == *id) {
+                read_items.items.push(ReadItem {
+                    id: id.clone(),
+                    marked_at,
+                });
+                marked_at += 1;
+            }
         }
-    }
 
-    save_read_items(app, &truncate_read_items(read_items))?;
-    Ok(())
+        save_read_items_unlocked(app, &truncate_read_items(read_items))?;
+        Ok(())
+    })
 }
 
 /// Save read items to the store
 fn save_read_items(app: &tauri::AppHandle, items: &ReadItems) -> Result<(), AppError> {
+    with_store_write_lock(|| save_read_items_unlocked(app, items))
+}
+
+fn save_read_items_unlocked(app: &tauri::AppHandle, items: &ReadItems) -> Result<(), AppError> {
     let store = app
         .store(STORE_FILE)
         .map_err(|e| AppError::Storage(e.to_string()))?;
@@ -413,18 +442,24 @@ pub fn get_settings(app: &tauri::AppHandle) -> Result<AppSettings, AppError> {
 
 /// Save application settings
 pub fn save_settings(app: &tauri::AppHandle, settings: &AppSettings) -> Result<(), AppError> {
-    let store = app
-        .store(STORE_FILE)
-        .map_err(|e| AppError::Storage(e.to_string()))?;
+    with_store_write_lock(|| {
+        let store = app
+            .store(STORE_FILE)
+            .map_err(|e| AppError::Storage(e.to_string()))?;
 
-    store.set(SETTINGS_KEY, serde_json::json!(settings));
-    store.save().map_err(|e| AppError::Storage(e.to_string()))?;
-
-    Ok(())
+        store.set(SETTINGS_KEY, serde_json::json!(settings));
+        store.save().map_err(|e| AppError::Storage(e.to_string()))
+    })
 }
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, Barrier,
+    };
+    use std::thread;
+
     use super::*;
 
     #[test]
@@ -447,5 +482,34 @@ mod tests {
             .items
             .iter()
             .any(|item| item.id == format!("item-{}", MAX_READ_ITEMS + 49)));
+    }
+
+    #[test]
+    fn store_write_lock_serializes_concurrent_writers() {
+        let active_writers = Arc::new(AtomicUsize::new(0));
+        let max_active_writers = Arc::new(AtomicUsize::new(0));
+        let start = Arc::new(Barrier::new(8));
+
+        thread::scope(|scope| {
+            for _ in 0..8 {
+                let active_writers = Arc::clone(&active_writers);
+                let max_active_writers = Arc::clone(&max_active_writers);
+                let start = Arc::clone(&start);
+
+                scope.spawn(move || {
+                    start.wait();
+                    with_store_write_lock(|| {
+                        let current = active_writers.fetch_add(1, Ordering::SeqCst) + 1;
+                        max_active_writers.fetch_max(current, Ordering::SeqCst);
+                        thread::sleep(std::time::Duration::from_millis(5));
+                        active_writers.fetch_sub(1, Ordering::SeqCst);
+                        Ok(())
+                    })
+                    .expect("writer should acquire store write lock");
+                });
+            }
+        });
+
+        assert_eq!(max_active_writers.load(Ordering::SeqCst), 1);
     }
 }
