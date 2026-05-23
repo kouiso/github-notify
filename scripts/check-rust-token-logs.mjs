@@ -77,9 +77,60 @@ function collectInvocations(source) {
 
 function parenBalance(line) {
   let balance = 0;
-  for (const char of line) {
+  for (const char of stripRustLiterals(line)) {
     if (char === '(') balance += 1;
     if (char === ')') balance -= 1;
   }
   return balance;
+}
+
+function stripRustLiterals(line) {
+  let result = '';
+
+  for (let index = 0; index < line.length; index += 1) {
+    const rawString = rawStringDelimiter(line, index);
+    if (rawString) {
+      const endIndex = line.indexOf(rawString.end, rawString.contentStart);
+      if (endIndex === -1) break;
+      index = endIndex + rawString.end.length - 1;
+      continue;
+    }
+
+    const char = line[index];
+    if (char === '"' || char === "'") {
+      index = skipQuotedLiteral(line, index, char);
+      continue;
+    }
+
+    result += char;
+  }
+
+  return result;
+}
+
+function rawStringDelimiter(line, startIndex) {
+  if (line[startIndex] !== 'r') return null;
+
+  let index = startIndex + 1;
+  while (line[index] === '#') index += 1;
+  if (line[index] !== '"') return null;
+
+  const hashes = line.slice(startIndex + 1, index);
+  return {
+    contentStart: index + 1,
+    end: `"${hashes}`,
+  };
+}
+
+function skipQuotedLiteral(line, startIndex, quote) {
+  for (let index = startIndex + 1; index < line.length; index += 1) {
+    if (line[index] === '\\') {
+      index += 1;
+      continue;
+    }
+    if (line[index] === quote) return index;
+  }
+
+  if (quote === "'") return startIndex;
+  return line.length - 1;
 }
