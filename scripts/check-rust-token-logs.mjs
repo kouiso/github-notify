@@ -4,10 +4,14 @@ import { readFileSync } from 'node:fs';
 const rustFiles = process.argv.slice(2).filter((file) => file.endsWith('.rs'));
 const riskyWords = /(token|Authorization|Bearer)/i;
 const interpolation = /\{[^\n}]*\}/;
-const namedInterpolation =
-  /\{\s*(?:[a-zA-Z_][a-zA-Z0-9_]*(?:token|secret|credential|authorization|bearer)[a-zA-Z0-9_]*|err|error)\s*(?::[^}\n]*)?\}/i;
-const sensitiveArgument =
-  /,(?:\s|\/\/[^\n]*(?:\n|$)|\/\*[\s\S]*?\*\/)*&?(?:[a-zA-Z_][a-zA-Z0-9_]*(?:token|secret|credential|authorization|bearer)[a-zA-Z0-9_]*|err|error)\b/i;
+const sensitiveName =
+  '(?:(?:token|secret|credential|authorization|bearer)|[a-zA-Z_][a-zA-Z0-9_]*(?:token|secret|credential|authorization|bearer)[a-zA-Z0-9_]*|err|error)';
+const argumentSpacing = '(?:\\s|//[^\\n]*(?:\\n|$)|/\\*[\\s\\S]*?\\*/)*';
+const namedInterpolation = new RegExp(`\\{\\s*${sensitiveName}\\s*(?::[^}\\n]*)?\\}`, 'i');
+const sensitiveArgument = new RegExp(
+  `,${argumentSpacing}&?(?:[a-zA-Z_][a-zA-Z0-9_]*\\.)*${sensitiveName}\\b`,
+  'i',
+);
 const riskyMacroStart = /(format!|println!|log::(?:trace|debug|info|warn|error)!)\s*\(/;
 
 function isRiskyLine(line) {
