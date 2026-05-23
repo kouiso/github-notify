@@ -20,6 +20,12 @@ pub fn remember_token(token: &str) {
     }
 }
 
+pub fn clear_remembered_token() {
+    if let Ok(mut active) = active_token().write() {
+        *active = None;
+    }
+}
+
 pub fn scrub_log_message(message: &str) -> String {
     let scrubbed = redact_github_tokens(message);
     let scrubbed = redact_bearer_tokens(&scrubbed);
@@ -147,7 +153,7 @@ fn is_token_char(ch: char) -> bool {
 mod tests {
     use std::sync::{Mutex, Once};
 
-    use super::{remember_token, scrub_log_message};
+    use super::{clear_remembered_token, remember_token, scrub_log_message};
 
     static LOGGER: CaptureLogger = CaptureLogger;
     static LOGGER_INSTALL: Once = Once::new();
@@ -241,6 +247,16 @@ mod tests {
         let line = scrub_log_message("auth failed for runtime-token-value-1234567890");
 
         assert_eq!(line, "auth failed for ***REDACTED***");
+    }
+
+    #[test]
+    fn clears_runtime_active_token_value() {
+        remember_token("runtime-token-to-clear-1234567890");
+        clear_remembered_token();
+
+        let line = scrub_log_message("auth failed for runtime-token-to-clear-1234567890");
+
+        assert_eq!(line, "auth failed for runtime-token-to-clear-1234567890");
     }
 
     #[test]

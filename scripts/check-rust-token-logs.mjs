@@ -12,16 +12,17 @@ const sensitiveArgument = new RegExp(
   `,${argumentSpacing}&?(?:${rustIdentifier}\\.)*${sensitiveName}\\b`,
   'i',
 );
-const riskyMacroStart = /(format!|println!|log::(?:trace|debug|info|warn|error)!)\s*\(/;
+const riskyMacroName = /(format!|println!|log::(?:trace|debug|info|warn|error)!)/;
+const riskyMacroStart = /(format!|println!|log::(?:trace|debug|info|warn|error)!)\s*[({[]/;
 
 function isRiskyLine(line) {
   if (!riskyWords.test(line)) return false;
   if (line.includes('.header(')) return false;
 
   const usesRiskyMacro =
-    /format!\s*\(/.test(line) ||
-    /println!\s*\(/.test(line) ||
-    /log::(?:trace|debug|info|warn|error)!\s*\(/.test(line);
+    /format!\s*[({[]/.test(line) ||
+    /println!\s*[({[]/.test(line) ||
+    /log::(?:trace|debug|info|warn|error)!\s*[({[]/.test(line);
 
   return (
     usesRiskyMacro &&
@@ -58,7 +59,7 @@ function collectInvocations(source) {
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
-    if (!riskyMacroStart.test(line)) {
+    if (!riskyMacroName.test(line)) {
       invocations.push({ text: line, lineNumber: index + 1 });
       continue;
     }
@@ -66,12 +67,14 @@ function collectInvocations(source) {
     const startLine = index + 1;
     const parts = [line];
     const literalState = { blockComment: false, quote: null, rawStringEnd: null };
-    let balance = parenBalance(line, literalState);
+    let hasDelimiter = riskyMacroStart.test(line);
+    let balance = delimiterBalance(line, literalState);
 
-    while (balance > 0 && index + 1 < lines.length) {
+    while ((!hasDelimiter || balance > 0) && index + 1 < lines.length) {
       index += 1;
       parts.push(lines[index]);
-      balance += parenBalance(lines[index], literalState);
+      hasDelimiter = hasDelimiter || /^\s*[({[]/.test(lines[index]);
+      balance += delimiterBalance(lines[index], literalState);
     }
 
     invocations.push({ text: parts.join('\n'), lineNumber: startLine });
@@ -80,14 +83,14 @@ function collectInvocations(source) {
   return invocations;
 }
 
-function parenBalance(
+function delimiterBalance(
   line,
   literalState = { blockComment: false, quote: null, rawStringEnd: null },
 ) {
   let balance = 0;
   for (const char of stripRustLiterals(line, literalState)) {
-    if (char === '(') balance += 1;
-    if (char === ')') balance -= 1;
+    if (char === '(' || char === '{' || char === '[') balance += 1;
+    if (char === ')' || char === '}' || char === ']') balance -= 1;
   }
   return balance;
 }
