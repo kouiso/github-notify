@@ -38,7 +38,29 @@ fn redact_active_token(message: &str) -> String {
 }
 
 fn redact_bearer_tokens(message: &str) -> String {
-    redact_after_marker(message, "Bearer ", "Bearer ", 1)
+    let mut output = String::with_capacity(message.len());
+    let mut index = 0;
+
+    while let Some(offset) = find_bearer_scheme(&message[index..]) {
+        let scheme_start = index + offset;
+        let Some(token_start) = bearer_token_start(message, scheme_start) else {
+            output.push_str(&message[index..scheme_start + "bearer".len()]);
+            index = scheme_start + "bearer".len();
+            continue;
+        };
+        let token_len = token_len(&message[token_start..]);
+
+        output.push_str(&message[index..token_start]);
+        if token_len >= 1 {
+            output.push_str(REDACTION);
+            index = token_start + token_len;
+        } else {
+            index = token_start;
+        }
+    }
+
+    output.push_str(&message[index..]);
+    output
 }
 
 fn redact_github_tokens(message: &str) -> String {
@@ -71,33 +93,34 @@ fn redact_github_tokens(message: &str) -> String {
     output
 }
 
-fn redact_after_marker(
-    message: &str,
-    marker: &str,
-    replacement_prefix: &str,
-    min_token_len: usize,
-) -> String {
-    let mut output = String::with_capacity(message.len());
-    let mut index = 0;
+fn find_bearer_scheme(message: &str) -> Option<usize> {
+    message
+        .as_bytes()
+        .windows("bearer".len())
+        .enumerate()
+        .find(|(index, window)| {
+            window.eq_ignore_ascii_case(b"bearer") && is_bearer_scheme_boundary(message, *index)
+        })
+        .map(|(index, _)| index)
+}
 
-    while let Some(offset) = message[index..].find(marker) {
-        let marker_start = index + offset;
-        let token_start = marker_start + marker.len();
-        let token_len = token_len(&message[token_start..]);
+fn bearer_token_start(message: &str, scheme_start: usize) -> Option<usize> {
+    let whitespace_start = scheme_start + "bearer".len();
+    let whitespace_len = message[whitespace_start..]
+        .char_indices()
+        .take_while(|(_, ch)| ch.is_ascii_whitespace())
+        .map(|(index, ch)| index + ch.len_utf8())
+        .last()
+        .unwrap_or(0);
 
-        output.push_str(&message[index..marker_start]);
-        if token_len >= min_token_len {
-            output.push_str(replacement_prefix);
-            output.push_str(REDACTION);
-            index = token_start + token_len;
-        } else {
-            output.push_str(marker);
-            index = token_start;
-        }
-    }
+    (whitespace_len > 0).then_some(whitespace_start + whitespace_len)
+}
 
-    output.push_str(&message[index..]);
-    output
+fn is_bearer_scheme_boundary(message: &str, scheme_start: usize) -> bool {
+    message[..scheme_start]
+        .chars()
+        .next_back()
+        .is_none_or(|ch| !is_token_char(ch))
 }
 
 fn token_len(value: &str) -> usize {
@@ -160,6 +183,23 @@ mod tests {
             scrub_log_message("request failed Authorization: Bearer abcDEF_123.eyJ0eXAi+/sig");
 
         assert_eq!(line, "request failed Authorization: Bearer ***REDACTED***");
+    }
+
+    #[test]
+    fn scrubs_bearer_tokens_case_insensitively_with_spacing() {
+        let line = scrub_log_message("request failed authorization: bearer   abcDEF_123");
+
+        assert_eq!(
+            line,
+            "request failed authorization: bearer   ***REDACTED***"
+        );
+    }
+
+    #[test]
+    fn leaves_bearer_inside_words_intact() {
+        let line = scrub_log_message("request failed notbearer token");
+
+        assert_eq!(line, "request failed notbearer token");
     }
 
     #[test]
