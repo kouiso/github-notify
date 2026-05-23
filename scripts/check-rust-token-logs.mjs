@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 
 const rustFiles = process.argv.slice(2).filter((file) => file.endsWith('.rs'));
-const riskyWords = /(token|Authorization|Bearer)/i;
+const riskyWords = /(token|secret|credential|authorization|bearer|err|error)/i;
 const interpolation = /\{[^\n}]*\}/;
 const rustIdentifier = '(?:r#)?[a-zA-Z_][a-zA-Z0-9_]*';
 const sensitiveName = `(?:(?:r#)?(?:token|secret|credential|authorization|bearer)|${rustIdentifier}(?:token|secret|credential|authorization|bearer)[a-zA-Z0-9_]*|(?:r#)?(?:err|error))`;
