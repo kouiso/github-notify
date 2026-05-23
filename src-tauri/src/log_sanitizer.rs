@@ -1,7 +1,7 @@
 use std::sync::{OnceLock, RwLock};
 
 const REDACTION: &str = "***REDACTED***";
-const GITHUB_TOKEN_PREFIXES: [&str; 5] = ["ghp_", "gho_", "ghu_", "ghs_", "ghr_"];
+const GITHUB_TOKEN_PREFIXES: [&str; 6] = ["github_pat_", "ghp_", "gho_", "ghu_", "ghs_", "ghr_"];
 const MIN_GITHUB_TOKEN_SUFFIX_LEN: usize = 36;
 
 static ACTIVE_TOKEN: OnceLock<RwLock<Option<String>>> = OnceLock::new();
@@ -170,6 +170,14 @@ mod tests {
         let line = scrub_log_message(&["auth failed for ", token].concat());
 
         assert_eq!(line, "auth failed for ghp_***REDACTED***");
+    }
+
+    #[test]
+    fn scrubs_fine_grained_pat_prefixes() {
+        let line =
+            scrub_log_message("auth failed: github_pat_11AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+
+        assert_eq!(line, "auth failed: github_pat_***REDACTED***");
     }
 
     #[test]
