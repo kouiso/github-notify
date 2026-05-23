@@ -61,12 +61,13 @@ function collectInvocations(source) {
 
     const startLine = index + 1;
     const parts = [line];
-    let balance = parenBalance(line);
+    const literalState = { quote: null, rawStringEnd: null };
+    let balance = parenBalance(line, literalState);
 
     while (balance > 0 && index + 1 < lines.length) {
       index += 1;
       parts.push(lines[index]);
-      balance += parenBalance(lines[index]);
+      balance += parenBalance(lines[index], literalState);
     }
 
     invocations.push({ text: parts.join('\n'), lineNumber: startLine });
@@ -75,30 +76,32 @@ function collectInvocations(source) {
   return invocations;
 }
 
-function parenBalance(line) {
+function parenBalance(line, literalState = { quote: null, rawStringEnd: null }) {
   let balance = 0;
-  for (const char of stripRustLiterals(line)) {
+  for (const char of stripRustLiterals(line, literalState)) {
     if (char === '(') balance += 1;
     if (char === ')') balance -= 1;
   }
   return balance;
 }
 
-function stripRustLiterals(line) {
+function stripRustLiterals(line, literalState) {
   let result = '';
 
   for (let index = 0; index < line.length; index += 1) {
-    const rawString = rawStringDelimiter(line, index);
-    if (rawString) {
-      const endIndex = line.indexOf(rawString.end, rawString.contentStart);
-      if (endIndex === -1) break;
-      index = endIndex + rawString.end.length - 1;
+    const activeLiteral = consumeActiveLiteral(line, index, literalState);
+    if (activeLiteral) {
+      if (activeLiteral.open) return result;
+      index = activeLiteral.end;
       continue;
     }
 
     const char = line[index];
-    if (char === '"' || char === "'") {
-      index = skipQuotedLiteral(line, index, char);
+    const newLiteral = consumeNewLiteral(line, index, literalState);
+    if (newLiteral) {
+      if (newLiteral.literalChar) result += newLiteral.literalChar;
+      if (newLiteral.open) return result;
+      index = newLiteral.end;
       continue;
     }
 
@@ -106,6 +109,48 @@ function stripRustLiterals(line) {
   }
 
   return result;
+}
+
+function consumeActiveLiteral(line, index, literalState) {
+  if (literalState.rawStringEnd) {
+    const endIndex = line.indexOf(literalState.rawStringEnd, index);
+    if (endIndex === -1) return { open: true };
+    const end = endIndex + literalState.rawStringEnd.length - 1;
+    literalState.rawStringEnd = null;
+    return { open: false, end };
+  }
+
+  if (literalState.quote) {
+    const quoted = skipQuotedLiteral(line, index - 1, literalState.quote);
+    if (!quoted.closed) return { open: true };
+    literalState.quote = null;
+    return { open: false, end: quoted.end };
+  }
+
+  return null;
+}
+
+function consumeNewLiteral(line, index, literalState) {
+  const rawString = rawStringDelimiter(line, index);
+  if (rawString) {
+    const endIndex = line.indexOf(rawString.end, rawString.contentStart);
+    if (endIndex === -1) {
+      literalState.rawStringEnd = rawString.end;
+      return { open: true };
+    }
+    return { open: false, end: endIndex + rawString.end.length - 1 };
+  }
+
+  const char = line[index];
+  if (char !== '"' && char !== "'") return null;
+
+  const quoted = skipQuotedLiteral(line, index, char);
+  if (quoted.closed) return { open: false, end: quoted.end };
+  if (char === '"') {
+    literalState.quote = char;
+    return { open: true };
+  }
+  return { open: false, end: index, literalChar: char };
 }
 
 function rawStringDelimiter(line, startIndex) {
@@ -128,9 +173,8 @@ function skipQuotedLiteral(line, startIndex, quote) {
       index += 1;
       continue;
     }
-    if (line[index] === quote) return index;
+    if (line[index] === quote) return { closed: true, end: index };
   }
 
-  if (quote === "'") return startIndex;
-  return line.length - 1;
+  return { closed: false, end: startIndex };
 }
