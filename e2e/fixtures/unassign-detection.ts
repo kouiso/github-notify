@@ -1,0 +1,56 @@
+export const UNASSIGN_DETECTION_FIXTURE = {
+  viewer: 'viewer',
+  removedThreadIds: ['thread-unassigned-42'],
+  removedTitle: 'Unassigned issue should disappear',
+  inboxAfterVerification: [
+    {
+      id: 'thread-still-assigned-10',
+      title: 'Still assigned issue remains visible',
+      url: 'https://github.com/kouiso/github-notify/issues/10',
+      reason: 'assign',
+      unread: true,
+      updatedAt: '2026-05-23T10:00:00.000Z',
+      itemType: 'Issue',
+      repositoryName: 'github-notify',
+      repositoryFullName: 'kouiso/github-notify',
+      ownerLogin: 'kouiso',
+      ownerAvatar: '',
+    },
+    {
+      id: 'thread-mention-20',
+      title: 'Mention notification is not part of unassign filtering',
+      url: 'https://github.com/kouiso/github-notify/issues/20',
+      reason: 'mention',
+      unread: true,
+      updatedAt: '2026-05-23T10:05:00.000Z',
+      itemType: 'Issue',
+      repositoryName: 'github-notify',
+      repositoryFullName: 'kouiso/github-notify',
+      ownerLogin: 'kouiso',
+      ownerAvatar: '',
+    },
+  ],
+} as const;
+
+export const E2E_APP_SETTINGS = {
+  version: 1,
+  theme: 'system',
+  notificationPreset: 'none',
+  customReasons: [],
+  desktopNotifications: false,
+  soundEnabled: false,
+  customFilters: [
+    {
+      id: 'default-important',
+      name: '重要',
+      reasons: ['review_requested', 'mention', 'team_mention', 'assign'],
+      enableDesktopNotification: true,
+      enableSound: false,
+      soundType: 'default',
+    },
+  ],
+  activeFilterId: 'dashboard',
+  onboardingCompleted: true,
+  repositoryGroups: [],
+  globalExcludeReasons: ['subscribed'],
+};

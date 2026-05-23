@@ -1,22 +1,33 @@
-import { test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { installTauriMock } from '../fixtures/tauri-mock';
+import { E2E_APP_SETTINGS, UNASSIGN_DETECTION_FIXTURE } from '../fixtures/unassign-detection';
 
 /**
  * F7: Unassign 検出 (verify_assignments)
  *
- * Rust 側 polling.rs テストで検証済み。
- * E2E では通知リスト内に「担当外」ラベルの表示を確認。
+ * Rust 側は wiremock unit test で GitHub API の assignees と既読化を検証する。
+ * E2E ではその検証済み結果を Tauri IPC fixture として流し、担当外通知が UI に残らないことを確認する。
  */
 test.describe('F7: Unassign Detection', () => {
-  // TODO: https://github.com/kouiso/github-notify/issues/30 で実GitHub fixtureを用意してE2E化する
-  test.fixme(true, '実GitHub通知fixtureが未整備のため、安定したE2E検証は follow-up issue に委譲');
+  test('担当外になった assign 通知は受信トレイに表示されない', async ({ page }) => {
+    await installTauriMock(page, {
+      verify_github_token: {
+        valid: true,
+        login: UNASSIGN_DETECTION_FIXTURE.viewer,
+        avatarUrl: null,
+      },
+      get_app_settings: E2E_APP_SETTINGS,
+      fetch_inbox: UNASSIGN_DETECTION_FIXTURE.inboxAfterVerification,
+      update_tray_badge: null,
+    });
 
-  test('担当外の通知が区別して表示される（データ依存）', async ({ page }) => {
     await page.goto('/');
-    // Unassign された通知は Rust テストで確認済み
-    // WebView 側は通知リストの表示を確認するのみ
-    test.skip(
-      true,
-      'Unassign 検出は Rust unit test (polling.rs) で網羅。E2E はデータ依存のためスキップ',
-    );
+    await page.getByRole('button', { name: /受信トレイ/ }).click();
+
+    await expect(page.getByText('Still assigned issue remains visible')).toBeVisible();
+    await expect(
+      page.getByText('Mention notification is not part of unassign filtering'),
+    ).toBeVisible();
+    await expect(page.getByText(UNASSIGN_DETECTION_FIXTURE.removedTitle)).toHaveCount(0);
   });
 });
