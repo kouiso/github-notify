@@ -1,3 +1,4 @@
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use tauri_plugin_store::StoreExt;
 
@@ -11,6 +12,19 @@ const SETTINGS_KEY: &str = "app_settings";
 /// Maximum number of read items to keep in storage (retain last N days worth)
 /// GitHub API keeps notifications for 30 days, so we keep 60 days worth for safety
 const MAX_READ_ITEMS: usize = 10_000;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct ReadItem {
+    id: String,
+    marked_at: i64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct ReadItems {
+    items: Vec<ReadItem>,
+}
 
 /// リポジトリ別Issue Status条件ルール
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -70,6 +84,8 @@ fn default_sound_type() -> String {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
+    #[serde(default = "default_settings_version")]
+    pub version: u32,
     pub theme: String,
     pub notification_preset: String,
     pub custom_reasons: Vec<String>,
@@ -81,6 +97,8 @@ pub struct AppSettings {
     #[serde(default)]
     pub active_filter_id: Option<String>,
     #[serde(default)]
+    pub onboarding_completed: bool,
+    #[serde(default)]
     pub repository_groups: Vec<RepositoryGroup>,
     #[serde(default = "default_global_exclude_reasons")]
     pub global_exclude_reasons: Vec<String>,
@@ -90,6 +108,10 @@ fn default_true() -> bool {
     true
 }
 
+fn default_settings_version() -> u32 {
+    1
+}
+
 fn default_global_exclude_reasons() -> Vec<String> {
     vec!["subscribed".to_string()]
 }
@@ -97,6 +119,7 @@ fn default_global_exclude_reasons() -> Vec<String> {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
+            version: default_settings_version(),
             theme: "system".to_string(),
             notification_preset: "none".to_string(),
             custom_reasons: vec![],
@@ -104,10 +127,16 @@ impl Default for AppSettings {
             sound_enabled: true,
             custom_filters: default_initial_filters(),
             active_filter_id: Some("dashboard".to_string()),
+            onboarding_completed: false,
             repository_groups: vec![],
             global_exclude_reasons: default_global_exclude_reasons(),
         }
     }
+}
+
+/// 将来の設定マイグレーションは version を見てここで分岐する。
+fn migrate(value: serde_json::Value) -> serde_json::Value {
+    value
 }
 
 /// Default views matching frontend DEFAULT_INITIAL_FILTERS (settings.ts)
@@ -251,43 +280,73 @@ pub fn clear_token(app: &tauri::AppHandle) -> Result<(), AppError> {
     Ok(())
 }
 
-/// Get the set of read item IDs
-pub fn get_read_items(app: &tauri::AppHandle) -> Result<Vec<String>, AppError> {
+fn load_read_items(app: &tauri::AppHandle) -> Result<ReadItems, AppError> {
     let store = app
         .store(STORE_FILE)
         .map_err(|e| AppError::Storage(e.to_string()))?;
 
     let items = store.get(READ_ITEMS_KEY).and_then(|v| {
-        // デシリアライズ失敗時は警告を出しデフォルト値にフォールバック
-        match serde_json::from_value::<Vec<String>>(v.clone()) {
+        match serde_json::from_value::<ReadItems>(v.clone()) {
             Ok(items) => Some(items),
-            Err(e) => {
-                log::warn!(
-                    "read_itemsのデシリアライズに失敗しました（デフォルト値を使用）: {}",
-                    e
-                );
-                None
-            }
+            Err(struct_error) => match serde_json::from_value::<Vec<String>>(v.clone()) {
+                Ok(ids) => Some(ReadItems {
+                    items: ids
+                        .into_iter()
+                        .enumerate()
+                        .map(|(index, id)| ReadItem {
+                            id,
+                            marked_at: index as i64,
+                        })
+                        .collect(),
+                }),
+                Err(vec_error) => {
+                    // デシリアライズ失敗時は警告を出しデフォルト値にフォールバック
+                    log::warn!(
+                        "read_itemsのデシリアライズに失敗しました（デフォルト値を使用）: {}, {}",
+                        struct_error,
+                        vec_error
+                    );
+                    None
+                }
+            },
         }
     });
 
-    Ok(items.unwrap_or_default())
+    Ok(truncate_read_items(items.unwrap_or_default()))
+}
+
+fn truncate_read_items(mut read_items: ReadItems) -> ReadItems {
+    let item_count = read_items.items.len();
+    if item_count <= MAX_READ_ITEMS {
+        return read_items;
+    }
+
+    read_items.items.sort_by_key(|item| item.marked_at);
+    read_items.items = read_items
+        .items
+        .into_iter()
+        .skip(item_count - MAX_READ_ITEMS)
+        .collect();
+    read_items
+}
+
+/// Get the set of read item IDs
+pub fn get_read_items(app: &tauri::AppHandle) -> Result<Vec<String>, AppError> {
+    let read_items = load_read_items(app)?;
+    Ok(read_items.items.into_iter().map(|item| item.id).collect())
 }
 
 /// Add an item to the read items set
 pub fn mark_item_as_read(app: &tauri::AppHandle, item_id: &str) -> Result<(), AppError> {
-    let mut read_items = get_read_items(app)?;
+    let mut read_items = load_read_items(app)?;
 
-    if !read_items.contains(&item_id.to_string()) {
-        read_items.push(item_id.to_string());
+    if !read_items.items.iter().any(|item| item.id == item_id) {
+        read_items.items.push(ReadItem {
+            id: item_id.to_string(),
+            marked_at: Utc::now().timestamp_millis(),
+        });
 
-        // Trim to max size (keep most recent items)
-        if read_items.len() > MAX_READ_ITEMS {
-            let start = read_items.len() - MAX_READ_ITEMS;
-            read_items = read_items[start..].to_vec();
-        }
-
-        save_read_items(app, &read_items)?;
+        save_read_items(app, &truncate_read_items(read_items))?;
     }
 
     Ok(())
@@ -295,26 +354,25 @@ pub fn mark_item_as_read(app: &tauri::AppHandle, item_id: &str) -> Result<(), Ap
 
 /// Mark multiple items as read
 pub fn mark_items_as_read(app: &tauri::AppHandle, item_ids: &[String]) -> Result<(), AppError> {
-    let mut read_items = get_read_items(app)?;
+    let mut read_items = load_read_items(app)?;
+    let mut marked_at = Utc::now().timestamp_millis();
 
     for id in item_ids {
-        if !read_items.contains(id) {
-            read_items.push(id.clone());
+        if !read_items.items.iter().any(|item| item.id == *id) {
+            read_items.items.push(ReadItem {
+                id: id.clone(),
+                marked_at,
+            });
+            marked_at += 1;
         }
     }
 
-    // Trim to max size (keep most recent items)
-    if read_items.len() > MAX_READ_ITEMS {
-        let start = read_items.len() - MAX_READ_ITEMS;
-        read_items = read_items[start..].to_vec();
-    }
-
-    save_read_items(app, &read_items)?;
+    save_read_items(app, &truncate_read_items(read_items))?;
     Ok(())
 }
 
 /// Save read items to the store
-fn save_read_items(app: &tauri::AppHandle, items: &[String]) -> Result<(), AppError> {
+fn save_read_items(app: &tauri::AppHandle, items: &ReadItems) -> Result<(), AppError> {
     let store = app
         .store(STORE_FILE)
         .map_err(|e| AppError::Storage(e.to_string()))?;
@@ -327,7 +385,7 @@ fn save_read_items(app: &tauri::AppHandle, items: &[String]) -> Result<(), AppEr
 
 /// Clear all read items
 pub fn clear_read_items(app: &tauri::AppHandle) -> Result<(), AppError> {
-    save_read_items(app, &[])
+    save_read_items(app, &ReadItems::default())
 }
 
 /// Get application settings
@@ -338,7 +396,7 @@ pub fn get_settings(app: &tauri::AppHandle) -> Result<AppSettings, AppError> {
 
     let settings = store.get(SETTINGS_KEY).and_then(|v| {
         // デシリアライズ失敗時は警告を出しデフォルト値にフォールバック
-        match serde_json::from_value::<AppSettings>(v.clone()) {
+        match serde_json::from_value::<AppSettings>(migrate(v.clone())) {
             Ok(s) => Some(s),
             Err(e) => {
                 log::warn!(
@@ -363,4 +421,31 @@ pub fn save_settings(app: &tauri::AppHandle, settings: &AppSettings) -> Result<(
     store.save().map_err(|e| AppError::Storage(e.to_string()))?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn truncate_read_items_keeps_newest_by_marked_at() {
+        let read_items = ReadItems {
+            items: (0..(MAX_READ_ITEMS + 50))
+                .map(|index| ReadItem {
+                    id: format!("item-{index}"),
+                    marked_at: index as i64,
+                })
+                .collect(),
+        };
+
+        let truncated = truncate_read_items(read_items);
+
+        assert_eq!(truncated.items.len(), MAX_READ_ITEMS);
+        assert!(truncated.items.iter().all(|item| item.marked_at >= 50));
+        assert!(truncated.items.iter().any(|item| item.id == "item-50"));
+        assert!(truncated
+            .items
+            .iter()
+            .any(|item| item.id == format!("item-{}", MAX_READ_ITEMS + 49)));
+    }
 }

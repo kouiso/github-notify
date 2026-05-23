@@ -46,7 +46,7 @@
 |---|---|---|
 | Frontend Unit/Component (Vitest) | lines/functions/branches/statements | 80%以上（既存閾値を維持） |
 | Rust Unit (cargo test) | 主要モジュールの分岐網羅 | 重要ロジック100%の振る舞い観点（行数よりシナリオ重視） |
-| E2E (Playwright) | 主要フロー | f01-f11 中 9 シナリオが CI 実行可能 (f07 / f10 は `test.skip(true)` で恒久スキップ — ネイティブ層 Rust unit test または手動 QA に委譲) |
+| E2E (Playwright) | 主要フロー | f01-f11 中 9 シナリオが CI 実行可能 (f07 / f10 は `test.skip(true)` で恒久スキップ — f07 は実GitHub fixture待ちとして [#30](https://github.com/kouiso/github-notify/issues/30) にデスコープ、ネイティブ層 Rust unit test または手動 QA に委譲) |
 | Manual QA | リリース判定項目 | チェックリスト全項目実施、Fail 0 件 |
 
 ### 3.2 目標設定の補足
@@ -276,4 +276,3 @@
 - f07/f10 のようなネイティブ依存領域は、将来的にTauri統合テスト導入を検討する。
 - Flaky 観測時は retry に依存せず、待機条件とテストデータ制御を先に見直す。
 - 手動QAで頻出する不具合は優先的に自動化候補へ昇格する。
-

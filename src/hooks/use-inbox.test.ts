@@ -235,7 +235,7 @@ describe('useInbox', () => {
       expect(result.current.items[0].unread).toBe(false);
     });
 
-    it('markAsRead がエラーを投げてもクラッシュしない', async () => {
+    it('markAsRead がエラーを投げたら呼び出し元へ失敗を返す', async () => {
       mockMarkInboxRead.mockRejectedValue(new Error('Failed'));
       const item = createMockItem({ id: 'thread-1' });
       mockFetchInbox.mockResolvedValue([item]);
@@ -243,11 +243,7 @@ describe('useInbox', () => {
       const { result } = renderHook(() => useInbox());
       await waitFor(() => expect(result.current.items).toHaveLength(1));
 
-      await expect(
-        act(async () => {
-          await result.current.markAsRead('thread-1');
-        }),
-      ).resolves.not.toThrow();
+      await expect(result.current.markAsRead('thread-1')).rejects.toThrow('Failed');
     });
   });
 

@@ -56,7 +56,7 @@ See [Tauri Prerequisites](https://v2.tauri.app/start/prerequisites/) for details
 ```bash
 git clone https://github.com/kouiso/github-notify.git
 cd github-notify
-pnpm install
+pnpm install --frozen-lockfile
 ```
 
 ### 3. Set up GitHub OAuth App
@@ -115,13 +115,20 @@ pnpm tauri build          # Build desktop app for distribution
 
 | Item | Path |
 |------|------|
-| Logs | `~/Library/Logs/github-notify/` (macOS) |
+| Logs (macOS) | `~/Library/Logs/github-notify/` |
+| Logs (Windows) | `%LOCALAPPDATA%\github-notify\logs\` |
+| Logs (Linux) | `~/.local/share/github-notify/logs/` |
 | Settings | Managed by `tauri-plugin-store` in app data directory |
 | Token | OS Keychain (preferred) or `store.bin` in app data directory |
 
 ## Architecture
 
 See [docs/architecture.md](docs/architecture.md) for the full system diagram and data flow.
+
+## Roadmap
+
+i18n is intentionally out of scope for v0.x — target audience is Japanese-speaking developers.
+Will be added in v0.2 if demand.
 
 ## License
 

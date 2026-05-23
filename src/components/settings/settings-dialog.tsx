@@ -1,3 +1,4 @@
+import { getVersion } from '@tauri-apps/api/app';
 import { useEffect, useRef, useState } from 'react';
 import { Button, Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui';
 import { useSettings, useTheme } from '@/hooks';
@@ -57,12 +58,13 @@ function SettingsDialogContent({
   initialTab,
   knownRepos = [],
 }: SettingsDialogProps) {
-  const { settings, updateSettings } = useSettings();
+  const { settings, saveError, updateSettings } = useSettings();
   const { theme, setTheme } = useTheme();
   const [activeTab, setActiveTab] = useState<TabId>('filters');
   const [editingFilter, setEditingFilter] = useState<CustomFilter | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [keychainAvailable, setKeychainAvailable] = useState<boolean | null>(null);
+  const [appVersion, setAppVersion] = useState('dev');
 
   const prevOpenRef = useRef(false);
   useEffect(() => {
@@ -89,6 +91,14 @@ function SettingsDialogContent({
         .catch(() => setKeychainAvailable(null));
     }
   }, [open, activeTab]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    getVersion()
+      .then(setAppVersion)
+      .catch(() => setAppVersion('dev'));
+  }, [open]);
 
   const handleLogout = () => {
     onLogout();
@@ -159,6 +169,17 @@ function SettingsDialogContent({
         <DialogHeader>
           <DialogTitle>設定</DialogTitle>
         </DialogHeader>
+
+        {saveError && (
+          <div
+            role="alert"
+            aria-live="assertive"
+            aria-atomic="true"
+            className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-[0.8125rem] text-destructive"
+          >
+            {saveError}
+          </div>
+        )}
 
         <div className="flex gap-1 border-b">
           {TABS.map((tab) => (
@@ -327,7 +348,7 @@ function SettingsDialogContent({
               <div className="space-y-2 pt-4 border-t">
                 <h3 className="text-[0.9375rem] font-semibold">このアプリについて</h3>
                 <div className="text-[0.9375rem] text-muted-foreground space-y-1">
-                  <p>GitHub Notify v0.1.0</p>
+                  <p>GitHub Notify v{appVersion}</p>
                   <p>GitHub通知を管理するデスクトップアプリ</p>
                 </div>
               </div>

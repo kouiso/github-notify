@@ -26,6 +26,44 @@ pub struct GitHubClient {
 }
 
 impl GitHubClient {
+    fn log_rest_error(response: &reqwest::Response) {
+        let status = response.status();
+        match status {
+            reqwest::StatusCode::UNAUTHORIZED => {
+                log::error!("github auth 401 — token likely expired or revoked");
+            }
+            reqwest::StatusCode::FORBIDDEN => {
+                let remaining = response
+                    .headers()
+                    .get("x-ratelimit-remaining")
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("unknown");
+                let reset = response
+                    .headers()
+                    .get("x-ratelimit-reset")
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("unknown");
+                log::error!(
+                    "github 403 — rate limit. remaining={} reset={}",
+                    remaining,
+                    reset
+                );
+            }
+            reqwest::StatusCode::TOO_MANY_REQUESTS => {
+                let retry_after = response
+                    .headers()
+                    .get("retry-after")
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("unknown");
+                log::error!(
+                    "github 429 — secondary rate limit. retry-after={}",
+                    retry_after
+                );
+            }
+            _ => {}
+        }
+    }
+
     /// AppStateが保持する共有Clientを受け取るコンストラクタ。
     /// Clientの再生成を避け、接続プールを再利用する。
     pub fn with_shared_client(client: Client, token: String) -> Self {
@@ -119,6 +157,7 @@ impl GitHubClient {
                 valid: false,
                 login: None,
                 avatar_url: None,
+                poll_interval: None,
             });
         }
 
@@ -129,6 +168,7 @@ impl GitHubClient {
                 valid: false,
                 login: None,
                 avatar_url: None,
+                poll_interval: None,
             });
         }
 
@@ -143,6 +183,7 @@ impl GitHubClient {
             valid: login.is_some(),
             login,
             avatar_url,
+            poll_interval: None,
         })
     }
 
@@ -294,6 +335,7 @@ impl GitHubClient {
         }
 
         if !response.status().is_success() {
+            Self::log_rest_error(&response);
             let error_text = response.text().await.unwrap_or_default();
             return Err(AppError::GitHubApi(format!(
                 "Failed to fetch notifications: {}",
@@ -349,6 +391,7 @@ impl GitHubClient {
                 .await?;
 
             if !resp.status().is_success() {
+                Self::log_rest_error(&resp);
                 break;
             }
 

@@ -1,8 +1,9 @@
-import { open } from '@tauri-apps/plugin-shell';
 import type React from 'react';
 import { useState } from 'react';
 import { Spinner } from '@/components/ui';
 import { cn } from '@/lib/utils/cn';
+import { logger } from '@/lib/utils/logger';
+import { openExternalUrl } from '@/lib/utils/open-url';
 import type { NotificationItem } from '@/types';
 import { GearIcon, IssueIcon, PRIcon } from './dashboard-icons';
 
@@ -183,7 +184,14 @@ export const SearchItemList = ({
 
   const handleClick = async (item: NotificationItem) => {
     if (item.url) {
-      await open(item.url);
+      try {
+        await openExternalUrl(item.url);
+      } catch (error) {
+        logger.error('外部URLを開けませんでした', error, {
+          component: 'DashboardSection',
+          action: 'openSearchItem',
+        });
+      }
     }
   };
 

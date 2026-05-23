@@ -22,7 +22,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' https://api.github.com https://github.com; img-src 'self' data: https://avatars.githubusercontent.com; style-src 'self' 'unsafe-inline'"
+      "csp": "default-src 'self'; connect-src 'self' https://api.github.com https://github.com; img-src 'self' data: https://avatars.githubusercontent.com; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
     }
   },
   "bundle": {
@@ -37,11 +37,5 @@
     ],
     "resources": ["resources/sounds/*"],
     "createUpdaterArtifacts": false
-  },
-  "plugins": {
-    "updater": {
-      "pubkey": "",
-      "endpoints": ["https://github.com/kouiso/github-notify/releases/latest/download/latest.json"]
-    }
   }
 }

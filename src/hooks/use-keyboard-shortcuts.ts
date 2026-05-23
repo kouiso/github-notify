@@ -1,12 +1,13 @@
-import { open } from '@tauri-apps/plugin-shell';
 import { useCallback, useEffect } from 'react';
+import { logger } from '@/lib/utils/logger';
+import { openExternalUrl } from '@/lib/utils/open-url';
 import type { InboxItem } from '@/types';
 
 interface UseKeyboardShortcutsOptions {
   items: InboxItem[];
   selectedIndex: number;
   setSelectedIndex: (index: number) => void;
-  onMarkAsRead: (threadId: string) => void;
+  onMarkAsRead: (threadId: string) => Promise<void>;
 }
 
 function isInputElement(target: EventTarget | null): boolean {
@@ -35,10 +36,22 @@ export function useKeyboardShortcuts({
     if (selectedIndex >= 0 && selectedIndex < items.length) {
       const item = items[selectedIndex];
       if (item.url) {
-        await open(item.url);
+        try {
+          await openExternalUrl(item.url);
+        } catch (error) {
+          logger.error('外部URLを開けませんでした', error, {
+            component: 'useKeyboardShortcuts',
+            action: 'openSelectedItem',
+          });
+        }
       }
       if (item.unread) {
-        onMarkAsRead(item.id);
+        Promise.resolve(onMarkAsRead(item.id)).catch((error) => {
+          logger.error('既読化に失敗しました', error, {
+            component: 'useKeyboardShortcuts',
+            action: 'markOpenedItemRead',
+          });
+        });
       }
     }
   }, [selectedIndex, items, onMarkAsRead]);
@@ -47,7 +60,12 @@ export function useKeyboardShortcuts({
     if (selectedIndex >= 0 && selectedIndex < items.length) {
       const item = items[selectedIndex];
       if (item.unread) {
-        onMarkAsRead(item.id);
+        Promise.resolve(onMarkAsRead(item.id)).catch((error) => {
+          logger.error('既読化に失敗しました', error, {
+            component: 'useKeyboardShortcuts',
+            action: 'markSelectedItemRead',
+          });
+        });
       }
     }
   }, [selectedIndex, items, onMarkAsRead]);

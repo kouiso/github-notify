@@ -298,7 +298,7 @@ describe('useSettings / SettingsProvider', () => {
       ).resolves.not.toThrow();
     });
 
-    it('saveAppSettings がエラーを投げても settings は更新済みのまま', async () => {
+    it('saveAppSettings がエラーを投げたら settings をロールバックして saveError をセットする', async () => {
       mockSaveAppSettings.mockRejectedValue(new Error('save error'));
 
       const { result } = renderHook(() => useSettings(), {
@@ -311,8 +311,8 @@ describe('useSettings / SettingsProvider', () => {
         await result.current.updateSettings({ theme: 'dark' });
       });
 
-      // 保存失敗でも state の更新は反映される
-      expect(result.current.settings.theme).toBe('dark');
+      expect(result.current.settings.theme).toBe(migrationCompleteSettings.theme);
+      expect(result.current.saveError).toBe('保存に失敗しました - 再試行してください');
     });
   });
 
@@ -346,6 +346,7 @@ describe('useSettings / SettingsProvider', () => {
 
       expect(result.current).toHaveProperty('settings');
       expect(result.current).toHaveProperty('isLoading');
+      expect(result.current).toHaveProperty('saveError');
       expect(typeof result.current.updateSettings).toBe('function');
     });
   });

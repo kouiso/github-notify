@@ -1,9 +1,10 @@
-import { open } from '@tauri-apps/plugin-shell';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Spinner } from '@/components/ui';
 import { useSettings } from '@/hooks';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { matchesFilter } from '@/lib/filters/match-filter';
+import { logger } from '@/lib/utils/logger';
+import { openExternalUrl } from '@/lib/utils/open-url';
 import type { InboxItem, NotificationItem } from '@/types';
 import type { CustomFilter, NotificationReason } from '@/types/settings';
 import { EmptyState } from './inbox-empty-state';
@@ -16,7 +17,7 @@ interface InboxListProps {
   isLoading: boolean;
   error: string | null;
   lastUpdated: Date | null;
-  onMarkAsRead: (threadId: string) => void;
+  onMarkAsRead: (threadId: string) => Promise<void>;
   onRefresh: () => void;
   selectedIndex: number;
   setSelectedIndex: (index: number) => void;
@@ -90,6 +91,7 @@ export function InboxList({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [reasonFilter, setReasonFilter] = useState<NotificationReason | null>(null);
+  const [batchStatus, setBatchStatus] = useState<string | null>(null);
   const selectedRef = useRef<HTMLDivElement>(null);
 
   const sidebarFilter: CustomFilter | null = selectedFilterId
@@ -201,16 +203,37 @@ export function InboxList({
 
   const handleClick = async (item: InboxItem) => {
     if (item.url) {
-      await open(item.url);
+      try {
+        await openExternalUrl(item.url);
+      } catch (error) {
+        logger.error('外部URLを開けませんでした', error, {
+          component: 'InboxList',
+          action: 'openInboxItem',
+        });
+      }
     }
     if (item.unread) {
-      onMarkAsRead(item.id);
+      try {
+        await onMarkAsRead(item.id);
+      } catch (error) {
+        logger.error('既読化に失敗しました', error, {
+          component: 'InboxList',
+          action: 'markInboxItemRead',
+        });
+      }
     }
   };
 
   const handleSearchItemClick = async (item: NotificationItem) => {
     if (item.url) {
-      await open(item.url);
+      try {
+        await openExternalUrl(item.url);
+      } catch (error) {
+        logger.error('外部URLを開けませんでした', error, {
+          component: 'InboxList',
+          action: 'openSearchItem',
+        });
+      }
     }
   };
 
@@ -235,10 +258,19 @@ export function InboxList({
     }
   };
 
-  const handleMarkSelectedAsDone = () => {
-    for (const id of selectedIds) {
-      onMarkAsRead(id);
+  const handleMarkSelectedAsDone = async () => {
+    const ids = [...selectedIds];
+    const results = await Promise.allSettled(ids.map((id) => onMarkAsRead(id)));
+    const failedIds = ids.filter((_, index) => results[index].status === 'rejected');
+    const successCount = results.length - failedIds.length;
+
+    if (failedIds.length > 0) {
+      setBatchStatus(`${successCount}件成功 / ${failedIds.length}件失敗`);
+      setSelectedIds(new Set(failedIds));
+      return;
     }
+
+    setBatchStatus(null);
     setSelectedIds(new Set());
   };
 
@@ -293,6 +325,14 @@ export function InboxList({
         </span>
         {lastUpdated && <span>{formatTime(lastUpdated)}</span>}
       </div>
+      {batchStatus && (
+        <div
+          role="status"
+          className="mx-4 mb-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-[0.8125rem] text-destructive"
+        >
+          {batchStatus}
+        </div>
+      )}
 
       <InboxListContent
         isSearchMode={isSearchMode}
@@ -362,7 +402,7 @@ function InboxListContent({
   onSearchItemClick: (item: NotificationItem) => void;
   onInboxItemClick: (item: InboxItem, index: number) => void;
   onCheckboxChange: (id: string, checked: boolean) => void;
-  onMarkAsRead: (id: string) => void;
+  onMarkAsRead: (id: string) => Promise<void>;
 }) {
   if (error) {
     return (

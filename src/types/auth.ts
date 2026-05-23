@@ -10,4 +10,5 @@ export interface TokenVerification {
   valid: boolean;
   login?: string | null;
   avatarUrl?: string | null;
+  pollInterval?: number;
 }

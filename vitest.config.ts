@@ -34,6 +34,8 @@ export default defineConfig({
         'src/**/index.ts',
         'src/main.tsx',
       ],
+      // Branch coverage stays at the permanent 80% target. Follow-up #31 tracks
+      // deeper settings-dialog and use-inbox coverage hardening without lowering it.
       thresholds: {
         lines: 80,
         functions: 80,

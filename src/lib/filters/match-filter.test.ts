@@ -63,6 +63,15 @@ describe('matchesFilter', () => {
     expect(matchesFilter(item, filter)).toBe(true);
   });
 
+  it('未知の reason は other として扱われ、reasons空配列(全許可) と reasons:["other"] で通過', () => {
+    const item = makeItem({ reason: 'unknown_reason' as InboxItem['reason'] });
+
+    // reasons 空配列 = 全許可仕様に従い other も通過
+    expect(matchesFilter(item, makeFilter({ reasons: [] }))).toBe(true);
+    expect(matchesFilter(item, makeFilter({ reasons: ['mention'] }))).toBe(false);
+    expect(matchesFilter(item, makeFilter({ reasons: ['other'] }))).toBe(true);
+  });
+
   it('filter.repositories に含まれないリポジトリは除外', () => {
     const item = makeItem({ repositoryFullName: 'owner/other' });
     const filter = makeFilter({ reasons: [], repositories: ['owner/repo'] });
@@ -97,6 +106,11 @@ describe('isGloballyExcluded', () => {
   it('除外リストに含まれない reason は false', () => {
     const item = makeItem({ reason: 'mention' });
     expect(isGloballyExcluded(item, ['subscribed'])).toBe(false);
+  });
+
+  it('未知の reason は other として除外判定される', () => {
+    const item = makeItem({ reason: 'unknown_reason' as InboxItem['reason'] });
+    expect(isGloballyExcluded(item, ['other'])).toBe(true);
   });
 });
 
