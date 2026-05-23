@@ -1,9 +1,19 @@
 import { cn } from '@/lib/utils/cn';
 
-export function ToggleSwitch({ enabled, onToggle }: { enabled: boolean; onToggle: () => void }) {
+export function ToggleSwitch({
+  enabled,
+  onToggle,
+  ariaLabel,
+}: {
+  enabled: boolean;
+  onToggle: () => void;
+  ariaLabel: string;
+}) {
   return (
     <button
       type="button"
+      aria-label={ariaLabel}
+      aria-pressed={enabled}
       onClick={onToggle}
       className={cn(
         'w-10 h-[1.375rem] rounded-full transition-colors relative flex-shrink-0',

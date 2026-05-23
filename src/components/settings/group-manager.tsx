@@ -41,7 +41,7 @@ export function GroupManager({ groups, knownRepos, onSave }: GroupManagerProps) 
   };
 
   const handleSave = () => {
-    if (!editingGroup || !editingGroup.name.trim()) return;
+    if (!editingGroup?.name.trim()) return;
     const exists = groups.some((g) => g.id === editingGroup.id);
     const updated = exists
       ? groups.map((g) => (g.id === editingGroup.id ? editingGroup : g))
@@ -126,6 +126,7 @@ export function GroupManager({ groups, knownRepos, onSave }: GroupManagerProps) 
             <span className="text-sm">デスクトップ通知</span>
             <ToggleSwitch
               enabled={editingGroup.enableDesktopNotification ?? false}
+              ariaLabel="グループのデスクトップ通知を切り替え"
               onToggle={() =>
                 setEditingGroup({
                   ...editingGroup,
@@ -166,6 +167,7 @@ export function GroupManager({ groups, knownRepos, onSave }: GroupManagerProps) 
                 <span className="text-sm">通知音</span>
                 <ToggleSwitch
                   enabled={editingGroup.enableSound ?? false}
+                  ariaLabel="グループの通知音を切り替え"
                   onToggle={() =>
                     setEditingGroup({ ...editingGroup, enableSound: !editingGroup.enableSound })
                   }

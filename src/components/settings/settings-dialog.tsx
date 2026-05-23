@@ -155,6 +155,10 @@ function SettingsDialogContent({
     await updateSettings({ desktopNotifications: !settings.desktopNotifications });
   };
 
+  const handleErrorReportingToggle = async () => {
+    await updateSettings({ errorReportingEnabled: !(settings.errorReportingEnabled ?? false) });
+  };
+
   const clearEditing = () => {
     setEditingFilter(null);
     setIsCreating(false);
@@ -220,6 +224,7 @@ function SettingsDialogContent({
                 <ToggleSwitch
                   enabled={settings.desktopNotifications}
                   onToggle={handleDesktopNotificationsToggle}
+                  ariaLabel="デスクトップ通知を切り替え"
                 />
               </div>
 
@@ -230,7 +235,11 @@ function SettingsDialogContent({
                     新着通知時にサウンドを再生
                   </p>
                 </div>
-                <ToggleSwitch enabled={settings.soundEnabled} onToggle={handleSoundToggle} />
+                <ToggleSwitch
+                  enabled={settings.soundEnabled}
+                  onToggle={handleSoundToggle}
+                  ariaLabel="通知音を切り替え"
+                />
               </div>
 
               <GlobalExcludeReasonsSection
@@ -357,6 +366,21 @@ function SettingsDialogContent({
 
           {activeTab === 'account' && (
             <div className="space-y-4">
+              <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                <div>
+                  <p className="font-semibold text-[0.9375rem]">エラー診断を送信</p>
+                  <p className="text-[0.8125rem] text-muted-foreground leading-relaxed">
+                    クラッシュと実行時エラーのみを送信します。GitHub
+                    トークンや通知本文は送信しません。
+                  </p>
+                </div>
+                <ToggleSwitch
+                  enabled={settings.errorReportingEnabled ?? false}
+                  onToggle={handleErrorReportingToggle}
+                  ariaLabel="エラー診断を送信"
+                />
+              </div>
+
               {keychainAvailable === false && (
                 <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
                   <p className="text-[0.8125rem] font-medium text-destructive">

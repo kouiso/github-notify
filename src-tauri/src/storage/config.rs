@@ -119,6 +119,8 @@ pub struct AppSettings {
     pub repository_groups: Vec<RepositoryGroup>,
     #[serde(default = "default_global_exclude_reasons")]
     pub global_exclude_reasons: Vec<String>,
+    #[serde(default)]
+    pub error_reporting_enabled: bool,
 }
 
 fn default_true() -> bool {
@@ -147,6 +149,7 @@ impl Default for AppSettings {
             onboarding_completed: false,
             repository_groups: vec![],
             global_exclude_reasons: default_global_exclude_reasons(),
+            error_reporting_enabled: false,
         }
     }
 }

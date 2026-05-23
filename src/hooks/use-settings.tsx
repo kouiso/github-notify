@@ -1,6 +1,6 @@
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { getAppSettings, saveAppSettings } from '@/lib/tauri/commands';
-import { logger } from '@/lib/utils/logger';
+import { configureRemoteErrorReporting, logger } from '@/lib/utils/logger';
 import { type AppSettings, DEFAULT_SETTINGS, migrateDefaultFilters } from '@/types';
 import { SettingsContext } from './settings-context';
 
@@ -8,6 +8,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [isLoading, setIsLoading] = useState(true);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    configureRemoteErrorReporting({ enabled: settings.errorReportingEnabled ?? false });
+  }, [settings.errorReportingEnabled]);
 
   useEffect(() => {
     // Tauri環境外ではスキップ（ブラウザプレビュー対応）
