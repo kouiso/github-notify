@@ -5,9 +5,9 @@ const rustFiles = process.argv.slice(2).filter((file) => file.endsWith('.rs'));
 const riskyWords = /(token|Authorization|Bearer)/i;
 const interpolation = /\{[^\n}]*\}/;
 const namedInterpolation =
-  /\{[^}\n]*(token|github_token|access_token|bearer|authorization|err|error|e)[^}\n]*\}/i;
+  /\{\s*(?:[a-zA-Z_][a-zA-Z0-9_]*(?:token|secret|credential|authorization|bearer)[a-zA-Z0-9_]*|err|error)\s*(?::[^}\n]*)?\}/i;
 const sensitiveArgument =
-  /,\s*&?[a-zA-Z_][a-zA-Z0-9_]*(token|secret|credential|authorization|bearer|err|error|e)\b/i;
+  /,\s*&?(?:[a-zA-Z_][a-zA-Z0-9_]*(?:token|secret|credential|authorization|bearer)[a-zA-Z0-9_]*|err|error)\b/i;
 const riskyMacroStart = /(format!|println!|log::(?:trace|debug|info|warn|error)!)\s*\(/;
 
 function isRiskyLine(line) {
