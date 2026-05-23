@@ -133,7 +133,14 @@ fn token_len(value: &str) -> usize {
 }
 
 fn is_token_char(ch: char) -> bool {
-    ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' || ch == '.' || ch == '+' || ch == '/'
+    ch.is_ascii_alphanumeric()
+        || ch == '_'
+        || ch == '-'
+        || ch == '.'
+        || ch == '+'
+        || ch == '/'
+        || ch == '~'
+        || ch == '='
 }
 
 #[cfg(test)]
@@ -193,6 +200,13 @@ mod tests {
             line,
             "request failed authorization: bearer   ***REDACTED***"
         );
+    }
+
+    #[test]
+    fn scrubs_bearer_tokens_with_extended_characters() {
+        let line = scrub_log_message("request failed Authorization: Bearer abc~DEF_123==");
+
+        assert_eq!(line, "request failed Authorization: Bearer ***REDACTED***");
     }
 
     #[test]
