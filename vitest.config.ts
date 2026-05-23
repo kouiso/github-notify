@@ -34,15 +34,12 @@ export default defineConfig({
         'src/**/index.ts',
         'src/main.tsx',
       ],
-      // NOTE: branch threshold temporarily lowered from 80 to 72 to absorb new
-      // branches added in PR #24 (audit remediation amendment commit b65fdac:
-      // batch mark-as-read await + about-dialog version inject + slow_down poll).
-      // Restoration to 80 tracked in follow-up Issue (see doc/comprehensive-audit-2026-05-18.md
-      // — F5 settings-dialog and F6 use-inbox.ts coverage improvements).
+      // Branch coverage stays at the permanent 80% target. Follow-up #31 tracks
+      // deeper settings-dialog and use-inbox coverage hardening without lowering it.
       thresholds: {
         lines: 80,
         functions: 80,
-        branches: 72,
+        branches: 80,
         statements: 80,
       },
     },

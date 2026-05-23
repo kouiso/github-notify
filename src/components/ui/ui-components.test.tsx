@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -268,6 +268,79 @@ describe('Dialog', () => {
       );
       const el = screen.getByText('見出し');
       expect(el.tagName).toBe('H2');
+    });
+
+    it('DialogTrigger asChild で子要素クリックから開ける', async () => {
+      const user = userEvent.setup();
+      render(
+        <Dialog>
+          <DialogTrigger asChild>
+            <button type="button">カスタムで開く</button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogTitle>asChild内容</DialogTitle>
+          </DialogContent>
+        </Dialog>,
+      );
+
+      await user.click(screen.getByRole('button', { name: 'カスタムで開く' }));
+      expect(screen.getByText('asChild内容')).toBeInTheDocument();
+    });
+
+    it('Escape とオーバーレイクリックで onOpenChange(false) が呼ばれる', () => {
+      const onOpenChange = vi.fn();
+      render(
+        <Dialog open={true} onOpenChange={onOpenChange}>
+          <DialogContent>
+            <DialogTitle>閉じる対象</DialogTitle>
+          </DialogContent>
+        </Dialog>,
+      );
+
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(onOpenChange).toHaveBeenCalledWith(false);
+
+      const overlay = document.querySelector('[role="presentation"]');
+      expect(overlay).not.toBeNull();
+      fireEvent.click(overlay!);
+      expect(onOpenChange).toHaveBeenCalledWith(false);
+    });
+
+    it('Tab と Shift+Tab でフォーカスをダイアログ内に循環させる', () => {
+      render(
+        <Dialog open={true} onOpenChange={vi.fn()}>
+          <DialogContent>
+            <DialogTitle>フォーカス</DialogTitle>
+            <button type="button">最初</button>
+            <button type="button">最後</button>
+          </DialogContent>
+        </Dialog>,
+      );
+
+      const first = screen.getByRole('button', { name: '最初' });
+      const last = screen.getByRole('button', { name: '最後' });
+      expect(first).toHaveFocus();
+
+      last.focus();
+      fireEvent.keyDown(document, { key: 'Tab' });
+      expect(first).toHaveFocus();
+
+      fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+      expect(last).toHaveFocus();
+    });
+
+    it('フォーカス可能要素がない場合はコンテナにフォーカスする', () => {
+      render(
+        <Dialog open={true} onOpenChange={vi.fn()}>
+          <DialogContent>
+            <DialogTitle>フォーカスなし</DialogTitle>
+          </DialogContent>
+        </Dialog>,
+      );
+
+      expect(screen.getByRole('dialog')).toHaveFocus();
+      fireEvent.keyDown(document, { key: 'Tab' });
+      expect(screen.getByRole('dialog')).toHaveFocus();
     });
   });
 

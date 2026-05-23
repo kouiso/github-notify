@@ -16,8 +16,9 @@ github-notify releases are driven by Git tags and the Tauri release workflow.
 ```bash
 git checkout main
 git pull --ff-only origin main
-git tag v0.1.2
-git push origin v0.1.2
+# Replace v0.x.x with the target release version.
+git tag v0.x.x
+git push origin v0.x.x
 ```
 
 The tag triggers the `tauri-action` workflow in GitHub Actions.

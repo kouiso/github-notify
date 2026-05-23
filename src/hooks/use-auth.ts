@@ -74,12 +74,15 @@ export function useAuth() {
   useEffect(() => {
     if (!state.deviceFlow || !state.isPolling) return;
 
+    const deviceCode = state.deviceFlow.deviceCode;
     let pollInterval = state.deviceFlow.interval || 5;
     let timeoutId: NodeJS.Timeout;
+    let stopped = false;
 
     const poll = async () => {
       try {
-        const result = await commands.pollDeviceFlow(state.deviceFlow!.deviceCode, pollInterval);
+        const result = await commands.pollDeviceFlow(deviceCode, pollInterval);
+        if (stopped) return;
 
         if (result.valid && result.login) {
           setState((prev) => ({
@@ -106,8 +109,11 @@ export function useAuth() {
           }));
         }
 
-        timeoutId = setTimeout(poll, pollInterval * 1000);
+        if (!stopped) {
+          timeoutId = setTimeout(poll, pollInterval * 1000);
+        }
       } catch (err) {
+        if (stopped) return;
         setState((prev) => ({
           ...prev,
           isPolling: false,
@@ -119,6 +125,7 @@ export function useAuth() {
     timeoutId = setTimeout(poll, pollInterval * 1000);
 
     return () => {
+      stopped = true;
       if (timeoutId) clearTimeout(timeoutId);
     };
   }, [state.deviceFlow, state.isPolling]);

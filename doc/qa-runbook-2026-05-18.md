@@ -15,7 +15,7 @@
 | pnpm | `pnpm@9.x` (via mise/corepack) | auto |
 | Rust toolchain | stable, target matching host | `rustup show` |
 | OS | macOS arm64 verified; Linux/Win via release artifacts only | host check `uname -a` |
-| GitHub token | personal access token w/ `repo`, `notifications`, `read:org` scopes | 1Password vault `RITMO` item "github-notify QA token" — retrieve via `op item get` (see `~/.claude/rules/credential-lookup-1password-first.md`) |
+| GitHub token | personal access token w/ `repo`, `notifications`, `read:org` scopes | 1Password CLI: `op signin`, then `op item get "github-notify QA token" --vault RITMO --fields credential --reveal`; configure an equivalent secret source if this vault/item is unavailable |
 | Test fixture | none required for unit/lint tier; OAuth runbook needs real token | — |
 
 **Token storage during run**: Never log the token. Use `PW=$(op item get ... --reveal)` shell-var pattern. Verify `echo ${#PW}` returns >40 chars.
@@ -38,7 +38,7 @@ pnpm install --frozen-lockfile
 pnpm run typecheck                                     # tsc -b --noEmit
 pnpm run lint                                          # biome check
 pnpm run test                                          # vitest run (expect 439+ PASS)
-pnpm run test:coverage 2>&1 | tail -10                 # branch ≥72% per current threshold
+pnpm run test:coverage 2>&1 | tail -10                 # branch ≥80% per current threshold
 pnpm run build                                         # vite build
 cd src-tauri && cargo fmt --check && cargo clippy -- -D warnings && cargo check && cargo test
 cd ..

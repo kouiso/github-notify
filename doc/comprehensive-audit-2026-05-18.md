@@ -157,25 +157,25 @@ Accepted. My agent scores were charity. Codex's lower scores are the honest asse
 - A9. Add Tauri command round-trip test for `onboardingCompleted` (mock store, save + load)
 
 ### Follow-up Issues (deferred to separate PRs)
-| # | Title | Severity |
-|---|---|---|
-| F1 | OAuth token scrubbing at logger boundary | CRITICAL |
-| F2 | Multi-window concurrent write protection (Mutex / split store) | HIGH |
-| F3 | Schema migration dispatcher with tests | HIGH |
-| F4 | Reactive settings (route via context, subscribe in useInbox) | HIGH |
-| F5 | search-view `markAllAsRead` wire or delete | MED |
-| F6 | Sentry / remote observability | HIGH |
-| F7 | axe-core e2e Playwright suite | HIGH |
-| F8 | Real screen-reader (VoiceOver + NVDA) verification session | HIGH |
-| F9 | settings-dialog test coverage 60→85% | MED |
-| F10 | use-inbox.ts branch coverage 52→80% | MED |
-| F11 | CSP `unsafe-inline` removal (CSS refactor) | MED |
-| F12 | Adaptive backoff + ETag on assignee fetch | MED |
-| F13 | Scheduled CI `cargo audit` + dependabot Rust config | MED |
-| F14 | f11 e2e scenario or descope decision | LOW |
-| F15 | Promote or delete v0.1.0 Draft release | LOW |
-| F16 | Recruit co-maintainer post-v1.0 (bus factor) | strategic |
-| F17 | macOS / Windows code-signing + notarization | HIGH (deploy) |
+| # | Title | Severity | GitHub Issue |
+|---|---|---|---|
+| F1 | OAuth token scrubbing at logger boundary | CRITICAL | `#25` |
+| F2 | Multi-window concurrent write protection (Mutex / split store) | HIGH | `#26` |
+| F3 | Schema migration dispatcher with tests | HIGH | not opened |
+| F4 | Reactive settings (route via context, subscribe in useInbox) | HIGH | not opened |
+| F5 | search-view `markAllAsRead` wire or delete | MED | not opened |
+| F6 | Sentry / remote observability | HIGH | `#27` |
+| F7 | axe-core e2e Playwright suite | HIGH | `#28` |
+| F8 | Real screen-reader (VoiceOver + NVDA) verification session | HIGH | `#28` |
+| F9 | settings-dialog test coverage 60→85% | MED | `#31` |
+| F10 | use-inbox.ts branch coverage 52→80% | MED | `#31` |
+| F11 | CSP `unsafe-inline` removal (CSS refactor) | MED | not opened |
+| F12 | Adaptive backoff + ETag on assignee fetch | MED | not opened |
+| F13 | Scheduled CI `cargo audit` + dependabot Rust config | MED | not opened |
+| F14 | f11 e2e scenario or descope decision | LOW | `#30` |
+| F15 | Promote or delete v0.1.0 Draft release | LOW | not opened |
+| F16 | Recruit co-maintainer post-v1.0 (bus factor) | strategic | not opened |
+| F17 | macOS / Windows code-signing + notarization | HIGH (deploy) | `#29` |
 
 ---
 

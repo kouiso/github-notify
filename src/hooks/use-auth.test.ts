@@ -301,6 +301,78 @@ describe('useAuth', () => {
       await waitFor(() => expect(result.current.isAuthenticated).toBe(true));
       expect(mockPollDeviceFlow).toHaveBeenLastCalledWith(mockDeviceFlow.deviceCode, 10);
     });
+
+    it('キャンセル後に進行中のポーリング結果で状態更新や再スケジュールをしない', async () => {
+      let resolvePoll!: (value: TokenVerification) => void;
+      mockStartDeviceFlow.mockResolvedValue(mockDeviceFlow);
+      mockPollDeviceFlow.mockReturnValue(
+        new Promise<TokenVerification>((resolve) => {
+          resolvePoll = resolve;
+        }),
+      );
+
+      const { result } = renderHook(() => useAuth());
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      await act(async () => {
+        await result.current.startDeviceFlow();
+      });
+
+      await act(async () => {
+        vi.advanceTimersByTime(mockDeviceFlow.interval * 1000);
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(mockPollDeviceFlow).toHaveBeenCalledTimes(1);
+
+      act(() => {
+        result.current.cancelDeviceFlow();
+      });
+
+      await act(async () => {
+        resolvePoll({ valid: false, pollInterval: 10 });
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      expect(result.current.deviceFlow).toBeNull();
+      expect(result.current.isPolling).toBe(false);
+
+      await act(async () => {
+        vi.advanceTimersByTime(10_000);
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(mockPollDeviceFlow).toHaveBeenCalledTimes(1);
+    });
+
+    it('アンマウント後にポーリングエラーで状態更新しない', async () => {
+      let rejectPoll!: (reason: Error) => void;
+      mockStartDeviceFlow.mockResolvedValue(mockDeviceFlow);
+      mockPollDeviceFlow.mockReturnValue(
+        new Promise<TokenVerification>((_, reject) => {
+          rejectPoll = reject;
+        }),
+      );
+
+      const { result, unmount } = renderHook(() => useAuth());
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      await act(async () => {
+        await result.current.startDeviceFlow();
+      });
+
+      await act(async () => {
+        vi.advanceTimersByTime(mockDeviceFlow.interval * 1000);
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      unmount();
+
+      await act(async () => {
+        rejectPoll(new Error('late failure'));
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      expect(mockPollDeviceFlow).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('loginWithToken', () => {
