@@ -14,6 +14,7 @@ vi.mock('@/lib/tauri/commands', () => ({
 }));
 
 vi.mock('@/lib/utils/logger', () => ({
+  configureRemoteErrorReporting: vi.fn(),
   logger: {
     error: vi.fn(),
     info: vi.fn(),

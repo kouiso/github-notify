@@ -91,6 +91,8 @@ export interface AppSettings {
   repositoryGroups?: RepositoryGroup[];
   /** 全ビューから一括除外するreasons（Slack連携の subscribed 等） */
   globalExcludeReasons?: NotificationReason[];
+  /** 明示的に許可された場合だけリモートエラー診断を送信する */
+  errorReportingEnabled?: boolean;
 }
 
 // 初回ユーザー向けのデフォルトビュー定義
@@ -284,4 +286,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
   activeFilterId: 'dashboard',
   repositoryGroups: [],
   globalExcludeReasons: DEFAULT_GLOBAL_EXCLUDE_REASONS,
+  errorReportingEnabled: false,
 };

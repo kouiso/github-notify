@@ -126,6 +126,7 @@ const AppSettingsSchema = v.object({
   onboardingCompleted: v.optional(v.boolean()),
   repositoryGroups: v.optional(v.array(RepositoryGroupSchema), []),
   globalExcludeReasons: v.optional(v.array(NotificationReasonSchema), ['subscribed']),
+  errorReportingEnabled: v.optional(v.boolean(), false),
 });
 
 export {

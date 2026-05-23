@@ -210,6 +210,7 @@ export function IssueStatusRulesEditor({
             />
             <ToggleSwitch
               enabled={rule.enabled}
+              ariaLabel="組織別レビュー対象ルールを切り替え"
               onToggle={() => handleUpdateRule(index, { enabled: !rule.enabled })}
             />
             <button

@@ -81,10 +81,7 @@ describe('ToggleSwitch（設定ダイアログ内）', () => {
   it('デスクトップ通知のトグルをクリックするとupdateSettingsが呼ばれる', () => {
     renderSettingsDialog({ desktopNotifications: true });
 
-    const toggleButtons = screen.getAllByRole('button');
-    const desktopToggle = toggleButtons.find((btn) => btn.className.includes('rounded-full'));
-    expect(desktopToggle).toBeDefined();
-    fireEvent.click(desktopToggle!);
+    fireEvent.click(screen.getByRole('button', { name: 'デスクトップ通知を切り替え' }));
 
     expect(mockUpdateSettings).toHaveBeenCalledWith({ desktopNotifications: false });
   });
@@ -92,13 +89,19 @@ describe('ToggleSwitch（設定ダイアログ内）', () => {
   it('通知音のトグルをクリックするとsoundEnabledが切り替わる', () => {
     renderSettingsDialog({ soundEnabled: true });
 
-    const toggleButtons = screen
-      .getAllByRole('button')
-      .filter((btn) => btn.className.includes('rounded-full'));
-    expect(toggleButtons.length).toBeGreaterThanOrEqual(2);
-    fireEvent.click(toggleButtons[1]);
+    fireEvent.click(screen.getByRole('button', { name: '通知音を切り替え' }));
 
     expect(mockUpdateSettings).toHaveBeenCalledWith({ soundEnabled: false });
+  });
+
+  it('アカウントタブのエラー診断トグルは明示的なopt-in設定を保存する', () => {
+    renderSettingsDialog({ errorReportingEnabled: false });
+    fireEvent.click(screen.getByText('アカウント'));
+
+    expect(screen.getByText('エラー診断を送信')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'エラー診断を送信' }));
+
+    expect(mockUpdateSettings).toHaveBeenCalledWith({ errorReportingEnabled: true });
   });
 });
 
