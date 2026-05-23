@@ -2,9 +2,12 @@
 import { readFileSync } from 'node:fs';
 
 const rustFiles = process.argv.slice(2).filter((file) => file.endsWith('.rs'));
-const riskyWords = /\b(token|Authorization|Bearer)\b/i;
-const tokenArgument = /,\s*&?token\b|,\s*&?err\b|,\s*&?e\b/;
+const riskyWords = /(token|Authorization|Bearer)/i;
 const interpolation = /\{[^\n}]*\}/;
+const namedInterpolation =
+  /\{[^}\n]*(token|github_token|access_token|bearer|authorization|err|error|e)[^}\n]*\}/i;
+const sensitiveArgument =
+  /,\s*&?[a-zA-Z_][a-zA-Z0-9_]*(token|secret|credential|authorization|bearer|err|error|e)\b/i;
 
 function isRiskyLine(line) {
   if (!riskyWords.test(line)) return false;
@@ -15,7 +18,11 @@ function isRiskyLine(line) {
     /println!\s*\(/.test(line) ||
     /log::(?:trace|debug|info|warn|error)!\s*\(/.test(line);
 
-  return usesRiskyMacro && interpolation.test(line) && tokenArgument.test(line);
+  return (
+    usesRiskyMacro &&
+    interpolation.test(line) &&
+    (sensitiveArgument.test(line) || namedInterpolation.test(line))
+  );
 }
 
 const violations = [];

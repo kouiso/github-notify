@@ -21,9 +21,9 @@ pub fn remember_token(token: &str) {
 }
 
 pub fn scrub_log_message(message: &str) -> String {
-    let mut scrubbed = redact_active_token(message);
-    scrubbed = redact_bearer_tokens(&scrubbed);
-    redact_github_tokens(&scrubbed)
+    let scrubbed = redact_github_tokens(message);
+    let scrubbed = redact_bearer_tokens(&scrubbed);
+    redact_active_token(&scrubbed)
 }
 
 fn redact_active_token(message: &str) -> String {
@@ -110,7 +110,7 @@ fn token_len(value: &str) -> usize {
 }
 
 fn is_token_char(ch: char) -> bool {
-    ch.is_ascii_alphanumeric() || ch == '_' || ch == '-'
+    ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' || ch == '.' || ch == '+' || ch == '/'
 }
 
 #[cfg(test)]
@@ -156,9 +156,20 @@ mod tests {
 
     #[test]
     fn scrubs_bearer_tokens() {
-        let line = scrub_log_message("request failed Authorization: Bearer abcDEF_123");
+        let line =
+            scrub_log_message("request failed Authorization: Bearer abcDEF_123.eyJ0eXAi+/sig");
 
         assert_eq!(line, "request failed Authorization: Bearer ***REDACTED***");
+    }
+
+    #[test]
+    fn github_token_prefix_is_preserved_for_active_token() {
+        let token = "ghp_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
+        remember_token(token);
+
+        let line = scrub_log_message(&["auth failed for ", token].concat());
+
+        assert_eq!(line, "auth failed for ghp_***REDACTED***");
     }
 
     #[test]

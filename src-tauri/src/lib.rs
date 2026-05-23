@@ -27,10 +27,12 @@ pub fn run() {
                         .format(|out, message, record| {
                             let scrubbed = log_sanitizer::scrub_log_message(&message.to_string());
                             out.finish(format_args!(
-                                "{}[{}][{}] {}",
+                                "{}[{}][{}] {}:{} {}",
                                 chrono::Utc::now().format("%Y-%m-%d_%H:%M:%S"),
                                 record.target(),
                                 record.level(),
+                                record.file().unwrap_or("unknown"),
+                                record.line().unwrap_or(0),
                                 scrubbed
                             ));
                         })
