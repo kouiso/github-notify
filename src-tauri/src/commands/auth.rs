@@ -5,6 +5,7 @@ use crate::background::AppState;
 use crate::error::AppError;
 use crate::github::client::GitHubClient;
 use crate::github::types::TokenVerification;
+use crate::log_sanitizer;
 use crate::storage;
 
 /// Device flow response returned to frontend
@@ -154,7 +155,9 @@ pub async fn verify_github_token(
 /// Clear the stored GitHub token
 #[tauri::command]
 pub fn clear_github_token(app: AppHandle) -> Result<(), AppError> {
-    storage::clear_token(&app)
+    storage::clear_token(&app)?;
+    log_sanitizer::clear_remembered_token();
+    Ok(())
 }
 
 #[cfg(test)]

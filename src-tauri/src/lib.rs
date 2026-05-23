@@ -3,6 +3,7 @@ mod background;
 mod commands;
 mod error;
 mod github;
+mod log_sanitizer;
 mod storage;
 
 use background::AppState;
@@ -23,6 +24,18 @@ pub fn run() {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()
                         .level(log::LevelFilter::Info)
+                        .format(|out, message, record| {
+                            let scrubbed = log_sanitizer::scrub_log_message(&message.to_string());
+                            out.finish(format_args!(
+                                "{}[{}][{}] {}:{} {}",
+                                chrono::Utc::now().format("%Y-%m-%d_%H:%M:%S"),
+                                record.target(),
+                                record.level(),
+                                record.file().unwrap_or("unknown"),
+                                record.line().unwrap_or(0),
+                                scrubbed
+                            ));
+                        })
                         .build(),
                 )?;
 
