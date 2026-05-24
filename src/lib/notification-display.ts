@@ -1,5 +1,8 @@
 export const REASON_COLORS: Record<string, { text: string; bg: string }> = {
-  review_requested: { text: 'text-[var(--color-gh-pr)]', bg: 'bg-[var(--color-gh-review-bg)]' },
+  review_requested: {
+    text: 'text-[var(--color-gh-review)]',
+    bg: 'bg-[var(--color-gh-review-bg)]',
+  },
   mention: { text: 'text-[var(--color-gh-mention)]', bg: 'bg-[var(--color-gh-mention-bg)]' },
   team_mention: { text: 'text-[var(--color-gh-mention)]', bg: 'bg-[var(--color-gh-mention-bg)]' },
   assign: { text: 'text-[var(--color-gh-assign)]', bg: 'bg-[var(--color-gh-assign-bg)]' },

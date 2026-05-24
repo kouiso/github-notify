@@ -34,10 +34,14 @@ const formatViolations = (label: string, violations: AxeViolation[]) =>
 
 const dismissOnboarding = async (page: Page) => {
   const startButton = page.getByRole('button', { name: 'はじめる' });
-  if (await startButton.isVisible({ timeout: 5_000 })) {
-    await startButton.click();
-    await expect(page.getByRole('dialog')).toBeHidden();
+  try {
+    await expect(startButton).toBeVisible({ timeout: 5_000 });
+  } catch {
+    return;
   }
+
+  await startButton.click();
+  await expect(page.getByRole('dialog')).toBeHidden();
 };
 
 test.describe('F7: axe-core e2e a11y', () => {
@@ -67,11 +71,11 @@ test.describe('F7: axe-core e2e a11y', () => {
   test('settings dialog tabs have no serious or critical axe violations', async ({ page }) => {
     await page.goto('/');
     await dismissOnboarding(page);
-    await page.getByRole('button', { name: 'e2e-user' }).click();
+    await page.getByRole('button', { name: 'e2e-user', exact: true }).click();
     await expect(page.getByRole('dialog', { name: '設定' })).toBeVisible();
 
     for (const tabName of ['プロジェクト', 'フィルター', '外観', 'アカウント']) {
-      await page.getByRole('button', { name: tabName, exact: true }).click();
+      await page.getByRole('button', { name: tabName, exact: true }).click({ force: true });
       await scan(page, `settings dialog: ${tabName}`);
     }
   });
