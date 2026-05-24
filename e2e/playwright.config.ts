@@ -1,5 +1,8 @@
 import { defineConfig } from '@playwright/test';
 
+const baseURL = process.env.TAURI_E2E_URL ?? 'http://127.0.0.1:5175';
+const usesExternalServer = Boolean(process.env.TAURI_E2E_URL);
+
 /**
  * Tauri E2E テスト用 Playwright 設定
  *
@@ -15,10 +18,20 @@ export default defineConfig({
   timeout: 30_000,
   retries: 1,
   use: {
-    baseURL: process.env.TAURI_E2E_URL ?? 'http://127.0.0.1:5175',
+    baseURL,
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
   },
+  webServer: usesExternalServer
+    ? undefined
+    : {
+        command: 'pnpm exec vite --host 127.0.0.1 --port 5175',
+        url: baseURL,
+        reuseExistingServer: false,
+        env: {
+          VITE_E2E_AUTHENTICATED: process.env.VITE_E2E_AUTHENTICATED ?? '',
+        },
+      },
   projects: [
     {
       name: 'tauri-webview',

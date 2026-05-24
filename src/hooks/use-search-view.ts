@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
+import { E2E_SEARCH_ITEMS, isE2eAuthenticated } from '@/lib/e2e-fixtures';
 import * as commands from '@/lib/tauri/commands';
 import { logger } from '@/lib/utils/logger';
 import type { NotificationItem } from '@/types';
@@ -25,6 +26,16 @@ export function useSearchView() {
     lastQueryRef.current = query;
     lastRulesRef.current = issueStatusRules;
     setState((prev) => ({ ...prev, isLoading: true, error: null }));
+    if (isE2eAuthenticated()) {
+      setState({
+        items: E2E_SEARCH_ITEMS,
+        isLoading: false,
+        error: null,
+        lastUpdated: new Date('2026-05-24T19:20:00Z'),
+      });
+      return;
+    }
+
     try {
       const items = await commands.fetchNotifications(query, issueStatusRules);
       // 後発のクエリで上書きされた場合は古い結果を反映しない
@@ -55,6 +66,14 @@ export function useSearchView() {
 
   const markAsRead = useCallback(async (itemId: string) => {
     try {
+      if (isE2eAuthenticated()) {
+        setState((prev) => ({
+          ...prev,
+          items: prev.items.map((item) => (item.id === itemId ? { ...item, isRead: true } : item)),
+        }));
+        return;
+      }
+
       await commands.markAsRead(itemId);
       setState((prev) => ({
         ...prev,
@@ -67,6 +86,14 @@ export function useSearchView() {
 
   const markAllAsRead = useCallback(async () => {
     try {
+      if (isE2eAuthenticated()) {
+        setState((prev) => ({
+          ...prev,
+          items: prev.items.map((item) => ({ ...item, isRead: true })),
+        }));
+        return;
+      }
+
       const itemIds = state.items.map((item) => item.id);
       await commands.markAllAsRead(itemIds);
       setState((prev) => ({

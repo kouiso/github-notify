@@ -46,6 +46,7 @@ export function InboxListHeader({
           checked={isAllSelected}
           onChange={onSelectAll}
           className="flex-shrink-0"
+          aria-label="すべて選択"
           title="Select all"
         />
       )}

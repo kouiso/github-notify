@@ -1,4 +1,4 @@
-import { Dialog, DialogContent } from '@/components/ui';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui';
 import { useSettings } from '@/hooks';
 
 interface OnboardingDialogProps {
@@ -19,7 +19,7 @@ export function OnboardingDialog({ open, onComplete }: OnboardingDialogProps) {
       <DialogContent className="max-w-lg">
         <div className="space-y-5 py-2">
           <div className="text-center space-y-1">
-            <h2 className="text-xl font-bold">GitHub Notify へようこそ</h2>
+            <DialogTitle className="text-xl font-bold">GitHub Notify へようこそ</DialogTitle>
             <p className="text-sm text-muted-foreground">
               GitHub の通知をデスクトップで管理するアプリです
             </p>

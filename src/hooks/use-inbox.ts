@@ -1,5 +1,6 @@
 import { listen } from '@tauri-apps/api/event';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { E2E_INBOX_ITEMS, isE2eAuthenticated } from '@/lib/e2e-fixtures';
 import * as commands from '@/lib/tauri/commands';
 import { logger } from '@/lib/utils/logger';
 import type { InboxItem } from '@/types';
@@ -77,6 +78,13 @@ export function useInbox() {
     try {
       setIsLoading(true);
       setError(null);
+      if (isE2eAuthenticated()) {
+        setItems(E2E_INBOX_ITEMS.filter(filterItem));
+        setLastUpdated(new Date('2026-05-24T19:20:00Z'));
+        isFirstLoadRef.current = false;
+        return;
+      }
+
       const data = await commands.fetchInbox(false);
 
       if (!isMountedRef.current) return;
@@ -179,6 +187,13 @@ export function useInbox() {
 
   const markAsRead = useCallback(async (threadId: string) => {
     try {
+      if (isE2eAuthenticated()) {
+        setItems((prev) =>
+          prev.map((item) => (item.id === threadId ? { ...item, unread: false } : item)),
+        );
+        return;
+      }
+
       await commands.markInboxRead(threadId);
       setItems((prev) =>
         prev.map((item) => (item.id === threadId ? { ...item, unread: false } : item)),
@@ -191,6 +206,11 @@ export function useInbox() {
 
   const markAllAsRead = useCallback(async () => {
     try {
+      if (isE2eAuthenticated()) {
+        setItems((prev) => prev.map((item) => ({ ...item, unread: false })));
+        return;
+      }
+
       await commands.markAllInboxRead();
       setItems((prev) => prev.map((item) => ({ ...item, unread: false })));
     } catch (err) {

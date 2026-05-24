@@ -1,5 +1,6 @@
 import { open } from '@tauri-apps/plugin-shell';
 import { useCallback, useEffect, useState } from 'react';
+import { E2E_USER, isE2eAuthenticated } from '@/lib/e2e-fixtures';
 import * as commands from '@/lib/tauri/commands';
 import { logger } from '@/lib/utils/logger';
 import type { DeviceFlowInfo } from '@/types';
@@ -27,15 +28,25 @@ const extractErrorMessage = (err: unknown, fallback: string): string => {
 
 export function useAuth() {
   const [state, setState] = useState<AuthState>({
-    isAuthenticated: false,
-    isLoading: true,
-    user: null,
+    isAuthenticated: isE2eAuthenticated(),
+    isLoading: !isE2eAuthenticated(),
+    user: isE2eAuthenticated() ? E2E_USER : null,
     deviceFlow: null,
     isPolling: false,
     error: null,
   });
 
   const verifyToken = useCallback(async () => {
+    if (isE2eAuthenticated()) {
+      setState((prev) => ({
+        ...prev,
+        isLoading: false,
+        isAuthenticated: true,
+        user: E2E_USER,
+      }));
+      return;
+    }
+
     if (!isTauriEnv()) {
       setState((prev) => ({ ...prev, isLoading: false }));
       return;
