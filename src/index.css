@@ -14,7 +14,7 @@
   --color-secondary: hsl(240 5% 96%);
   --color-secondary-foreground: hsl(0 0% 9%);
   --color-muted: hsl(240 5% 96%);
-  --color-muted-foreground: hsl(0 0% 45%);
+  --color-muted-foreground: hsl(0 0% 35%);
   --color-accent: hsl(240 5% 94%);
   --color-accent-foreground: hsl(0 0% 9%);
   --color-destructive: hsl(0 72% 51%);
@@ -32,16 +32,16 @@
   --color-gh-pr-bg: hsl(137 40% 94%);
   --color-gh-issue: #8250df;
   --color-gh-issue-bg: hsl(264 50% 94%);
-  --color-gh-review: #bf8700;
+  --color-gh-review: #7a4f00;
   --color-gh-review-bg: hsl(40 60% 93%);
-  --color-gh-mention: #0969da;
-  --color-gh-mention-bg: hsl(212 80% 94%);
-  --color-gh-assign: #8250df;
+  --color-gh-mention: #0550ae;
+  --color-gh-mention-bg: hsl(212 80% 97%);
+  --color-gh-assign: #6639ba;
   --color-gh-assign-bg: hsl(264 50% 94%);
-  --color-gh-ci: #656d76;
+  --color-gh-ci: #3f4650;
   --color-gh-ci-bg: hsl(210 10% 94%);
   --color-gh-done: #2da44e;
-  --color-gh-fail: #cf222e;
+  --color-gh-fail: #a40e26;
 }
 
 /* Dark theme colors — Linear-inspired near-black */
@@ -57,7 +57,7 @@
   --color-secondary: hsl(228 10% 15%);
   --color-secondary-foreground: hsl(0 0% 93%);
   --color-muted: hsl(228 10% 14%);
-  --color-muted-foreground: hsl(0 0% 55%);
+  --color-muted-foreground: hsl(0 0% 72%);
   --color-accent: hsl(228 10% 16%);
   --color-accent-foreground: hsl(0 0% 93%);
   --color-destructive: hsl(0 62% 40%);

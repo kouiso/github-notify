@@ -27,7 +27,7 @@ export function EmptyState({ isSearchMode, filter, searchQuery, onSetFilter }: E
   return (
     <div className="flex flex-col items-center justify-center h-full text-center px-8">
       <p className="text-base text-muted-foreground">{title}</p>
-      <p className="text-sm text-muted-foreground/60 mt-1 max-w-xs">{description}</p>
+      <p className="text-sm text-muted-foreground mt-1 max-w-xs">{description}</p>
       {!isSearchMode && filter === 'unread' && (
         <button
           type="button"
