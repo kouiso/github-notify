@@ -35,6 +35,11 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "macOS": {
+      "hardenedRuntime": true,
+      "signingIdentity": null,
+      "entitlements": null
+    },
     "resources": ["resources/sounds/*"],
     "createUpdaterArtifacts": false
   }
