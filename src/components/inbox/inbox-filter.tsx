@@ -46,6 +46,7 @@ export function InboxListHeader({
           checked={isAllSelected}
           onChange={onSelectAll}
           className="flex-shrink-0"
+          aria-label="すべて選択"
           title="Select all"
         />
       )}
@@ -142,7 +143,7 @@ export function ReasonTabs({ reasons, activeReason, onSelect, counts }: ReasonTa
           >
             {REASON_LABELS[reason]}
             {count > 0 && (
-              <span className="text-xs text-muted-foreground/70 tabular-nums">{count}</span>
+              <span className="text-xs text-muted-foreground tabular-nums">{count}</span>
             )}
           </button>
         );

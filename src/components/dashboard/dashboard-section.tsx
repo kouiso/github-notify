@@ -156,7 +156,7 @@ export const DashboardSection = ({
           )}
           {isLoading && <Spinner size="sm" />}
         </div>
-        <p className="text-xs text-muted-foreground/70 mt-0.5 ml-[1.375rem]">{subtitle}</p>
+        <p className="text-xs text-muted-foreground mt-0.5 ml-[1.375rem]">{subtitle}</p>
       </div>
 
       <div>
@@ -210,7 +210,7 @@ export const SearchItemList = ({
         <div className="w-full flex flex-col">
           <p
             className={cn(
-              'w-full text-[0.6875rem] text-muted-foreground/70 text-center',
+              'w-full text-[0.6875rem] text-muted-foreground text-center',
               expanded ? 'px-4 pt-2' : 'sr-only',
             )}
             aria-live="polite"
@@ -311,10 +311,10 @@ const SearchRow = ({
         <span className="flex items-center gap-2 mt-0.5 flex-wrap">
           <span className="text-[0.8125rem] text-muted-foreground">
             {item.repository.owner.login}/{item.repository.name}
-            <span className="text-muted-foreground/50">#{item.number}</span>
+            <span className="text-muted-foreground">#{item.number}</span>
           </span>
           {item.author && (
-            <span className="text-[0.8125rem] text-muted-foreground/70 flex-shrink-0">
+            <span className="text-[0.8125rem] text-muted-foreground flex-shrink-0">
               @{item.author.login}
             </span>
           )}
@@ -322,7 +322,7 @@ const SearchRow = ({
             <LabelChip key={label.name} name={label.name} color={label.color} />
           ))}
           {item.labels.length > 3 && (
-            <span className="text-xs text-muted-foreground/50">+{item.labels.length - 3}</span>
+            <span className="text-xs text-muted-foreground">+{item.labels.length - 3}</span>
           )}
         </span>
       </span>
@@ -350,8 +350,8 @@ const LabelChip = ({ name, color }: { name: string; color: string }) => {
       className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.6875rem] font-medium leading-none flex-shrink-0 max-w-[8rem] truncate"
       style={{
         backgroundColor: `${hex}20`,
-        color: hex,
-        border: `1px solid ${hex}40`,
+        color: 'var(--color-foreground)',
+        border: `1px solid ${hex}66`,
       }}
     >
       {name}

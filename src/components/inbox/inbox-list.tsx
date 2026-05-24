@@ -358,7 +358,7 @@ export function InboxList({
       />
 
       {!isSearchMode && (
-        <div className="px-4 py-1.5 border-t border-border/50 text-[0.8125rem] text-muted-foreground/60">
+        <div className="px-4 py-1.5 border-t border-border/50 text-[0.8125rem] text-muted-foreground">
           <kbd className="px-1 py-0.5 bg-accent rounded text-xs font-mono">e</kbd>
           <span className="ml-1.5">to mark done</span>
         </div>

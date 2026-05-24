@@ -25,7 +25,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        check-type: [lint, typecheck, test, build]
+        check-type: [lint, typecheck, test, build, a11y-e2e]
 
     steps:
       - name: Checkout repository
@@ -62,6 +62,16 @@ jobs:
       - name: Test
         if: matrix.check-type == 'test'
         run: pnpm vitest run --coverage
+
+      - name: Install Playwright Chromium
+        if: matrix.check-type == 'a11y-e2e'
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Axe accessibility E2E
+        if: matrix.check-type == 'a11y-e2e'
+        env:
+          VITE_E2E_AUTHENTICATED: 'true'
+        run: pnpm exec playwright test -c e2e/playwright.config.ts a11y.spec.ts
 
       - name: Build
         if: matrix.check-type == 'build'

@@ -184,7 +184,7 @@ export const SearchRow = memo(({ item, onClick }: SearchRowProps) => {
             {item.repository.owner.login}/{item.repository.name}
           </span>
           {item.author && (
-            <span className="text-[0.8125rem] text-muted-foreground/70 flex-shrink-0">
+            <span className="text-[0.8125rem] text-muted-foreground flex-shrink-0">
               by @{item.author.login}
             </span>
           )}

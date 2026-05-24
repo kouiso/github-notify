@@ -1,12 +1,15 @@
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
+import { E2E_SETTINGS, isE2eAuthenticated } from '@/lib/e2e-fixtures';
 import { getAppSettings, saveAppSettings } from '@/lib/tauri/commands';
 import { configureRemoteErrorReporting, logger } from '@/lib/utils/logger';
 import { type AppSettings, DEFAULT_SETTINGS, migrateDefaultFilters } from '@/types';
 import { SettingsContext } from './settings-context';
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
-  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
-  const [isLoading, setIsLoading] = useState(true);
+  const [settings, setSettings] = useState<AppSettings>(
+    isE2eAuthenticated() ? E2E_SETTINGS : DEFAULT_SETTINGS,
+  );
+  const [isLoading, setIsLoading] = useState(!isE2eAuthenticated());
   const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -14,6 +17,11 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   }, [settings.errorReportingEnabled]);
 
   useEffect(() => {
+    if (isE2eAuthenticated()) {
+      setIsLoading(false);
+      return;
+    }
+
     // Tauri環境外ではスキップ（ブラウザプレビュー対応）
     if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) {
       setIsLoading(false);
