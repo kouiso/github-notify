@@ -43,3 +43,6 @@ login-screen.png
 
 # Serena toolkit cache
 .serena/
+
+# Claude scheduler runtime lock
+.claude/scheduled_tasks.lock
