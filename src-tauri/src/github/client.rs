@@ -603,19 +603,19 @@ mod tests {
         Mock::given(method("GET"))
             .and(path("/notifications"))
             .and(query_param("per_page", "100"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .insert_header("link", format!("<{}>; rel=\"next\"", next_url))
-                    .set_body_json(json!([notification_json("1")])),
-            )
+            .and(query_param("page", "2"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!([notification_json("2")])))
             .mount(&server)
             .await;
 
         Mock::given(method("GET"))
             .and(path("/notifications"))
             .and(query_param("per_page", "100"))
-            .and(query_param("page", "2"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!([notification_json("2")])))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("link", format!("<{}>; rel=\"next\"", next_url))
+                    .set_body_json(json!([notification_json("1")])),
+            )
             .mount(&server)
             .await;
 
@@ -640,21 +640,21 @@ mod tests {
         Mock::given(method("GET"))
             .and(path("/notifications"))
             .and(query_param("per_page", "100"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .insert_header("link", format!("<{}>; rel=\"next\"", next_url))
-                    .set_body_json(json!([notification_json("1")])),
-            )
+            .and(query_param("page", "2"))
+            .respond_with(ResponseTemplate::new(503).set_body_json(json!({
+                "message": "service unavailable"
+            })))
             .mount(&server)
             .await;
 
         Mock::given(method("GET"))
             .and(path("/notifications"))
             .and(query_param("per_page", "100"))
-            .and(query_param("page", "2"))
-            .respond_with(ResponseTemplate::new(503).set_body_json(json!({
-                "message": "service unavailable"
-            })))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("link", format!("<{}>; rel=\"next\"", next_url))
+                    .set_body_json(json!([notification_json("1")])),
+            )
             .mount(&server)
             .await;
 
