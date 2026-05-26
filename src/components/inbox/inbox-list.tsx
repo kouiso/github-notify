@@ -263,11 +263,11 @@ export function InboxList({
     const results = await Promise.allSettled(ids.map((id) => onMarkAsRead(id)));
     const failedIds = ids.filter((_, index) => results[index].status === 'rejected');
     const successCount = results.length - failedIds.length;
-    const remainingCount = filteredItems.filter((item) => item.unread).length - successCount;
+    const remainingCount = failedIds.length;
 
     if (failedIds.length > 0) {
       setBatchStatus(
-        `${successCount}件成功 / ${failedIds.length}件失敗（未処理 ${Math.max(remainingCount, 0)}件）`,
+        `${successCount}件成功 / ${failedIds.length}件失敗（未処理 ${remainingCount}件）`,
       );
       setSelectedIds(new Set(failedIds));
       return;

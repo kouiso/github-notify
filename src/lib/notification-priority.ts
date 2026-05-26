@@ -3,7 +3,7 @@ import type { InboxItem } from '@/types';
 export type NotificationPriorityKind = 'review' | 'ci' | 'bot_comment' | 'human_comment' | null;
 
 const BOT_NAME_PATTERN =
-  /\b(coderabbit|gemini|dependabot|renovate|github-actions|deepsource|snyk|codeql|devin|bot)\b/i;
+  /(?:\b(coderabbit|gemini|dependabot|renovate|github-actions|deepsource|snyk|codeql|devin)\b|\[bot\]\b|\b[\w.-]+[-.]bot\b)/i;
 
 export function classifyNotificationPriority(item: InboxItem): NotificationPriorityKind {
   if (item.reason === 'review_requested') return 'review';

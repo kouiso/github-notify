@@ -37,6 +37,12 @@ describe('classifyNotificationPriority', () => {
         title: 'Dependabot commented on dependency update',
       }),
     ).toBe('bot_comment');
+    expect(
+      classifyNotificationPriority({
+        ...baseItem,
+        title: 'release-helper-bot commented on deployment status',
+      }),
+    ).toBe('bot_comment');
   });
 
   it('keeps ordinary comments as human comments', () => {
@@ -54,5 +60,15 @@ describe('classifyNotificationPriority', () => {
         repositoryFullName: 'robot-platform/repo',
       }),
     ).toBe('human_comment');
+    expect(
+      classifyNotificationPriority({
+        ...baseItem,
+        title: 'alice mentioned a bot policy in review',
+      }),
+    ).toBe('human_comment');
+  });
+
+  it('returns null for reasons without a priority lane', () => {
+    expect(classifyNotificationPriority({ ...baseItem, reason: 'mention' })).toBeNull();
   });
 });

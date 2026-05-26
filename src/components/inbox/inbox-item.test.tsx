@@ -118,8 +118,8 @@ describe('InboxRow', () => {
     expect(screen.getByText('アサイン')).toBeInTheDocument();
   });
 
-  it('review、CI、bot、人間コメントの補助ラベルを表示する', () => {
-    const { rerender } = render(
+  it('review requested 通知の補助ラベルを表示する', () => {
+    render(
       <InboxRow
         item={{ ...baseInboxItem, reason: 'review_requested' }}
         isSelected={false}
@@ -130,8 +130,10 @@ describe('InboxRow', () => {
       />,
     );
     expect(screen.getByText('Review')).toBeInTheDocument();
+  });
 
-    rerender(
+  it('CI activity 通知の補助ラベルを表示する', () => {
+    render(
       <InboxRow
         item={{ ...baseInboxItem, reason: 'ci_activity' }}
         isSelected={false}
@@ -142,8 +144,10 @@ describe('InboxRow', () => {
       />,
     );
     expect(screen.getByText('CI alert')).toBeInTheDocument();
+  });
 
-    rerender(
+  it('bot コメント通知の補助ラベルを表示する', () => {
+    render(
       <InboxRow
         item={{
           ...baseInboxItem,
@@ -158,8 +162,10 @@ describe('InboxRow', () => {
       />,
     );
     expect(screen.getByText('Bot')).toBeInTheDocument();
+  });
 
-    rerender(
+  it('人間コメント通知の補助ラベルを表示する', () => {
+    render(
       <InboxRow
         item={{ ...baseInboxItem, reason: 'comment', title: 'alice commented on this issue' }}
         isSelected={false}
