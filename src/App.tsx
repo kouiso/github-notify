@@ -208,6 +208,7 @@ export default function App() {
                 setSelectedIndex={inbox.setSelectedIndex}
                 selectedFilterId={selectedFilterId}
                 activeRepositories={activeRepositories}
+                ingressDiagnostics={inbox.ingressDiagnostics}
               />
             )}
           </Suspense>
