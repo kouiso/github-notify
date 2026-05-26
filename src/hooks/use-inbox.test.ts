@@ -209,6 +209,7 @@ describe('useInbox', () => {
 
       await waitFor(() => expect(result.current.error).toBe('Network error'));
       expect(result.current.isLoading).toBe(false);
+      expect(result.current.ingressDiagnostics.cause).toBe('communication_failure');
     });
 
     it('Error 以外のエラーでフォールバックメッセージが使われる', async () => {
@@ -216,6 +217,28 @@ describe('useInbox', () => {
       const { result } = renderHook(() => useInbox());
 
       await waitFor(() => expect(result.current.error).toBe('Failed to fetch inbox'));
+    });
+
+    it('フィルタ後に0件でも取得件数を保持して入口診断できる', async () => {
+      const hiddenItem = createMockItem({ id: 'comment-only', reason: 'comment' });
+      mockFetchInbox.mockResolvedValue([hiddenItem]);
+
+      const { result } = renderHook(() => useInbox());
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      expect(result.current.rawItemCount).toBe(1);
+      expect(result.current.items).toEqual([]);
+      expect(result.current.ingressDiagnostics.cause).toBe('filtered_empty');
+    });
+
+    it('GitHubが0件を返した場合は本当に空として診断する', async () => {
+      mockFetchInbox.mockResolvedValue([]);
+
+      const { result } = renderHook(() => useInbox());
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      expect(result.current.rawItemCount).toBe(0);
+      expect(result.current.ingressDiagnostics.cause).toBe('true_empty');
     });
   });
 
@@ -342,6 +365,8 @@ describe('useInbox', () => {
       expect(result.current).toHaveProperty('error');
       expect(result.current).toHaveProperty('lastUpdated');
       expect(result.current).toHaveProperty('unreadCount');
+      expect(result.current).toHaveProperty('rawItemCount');
+      expect(result.current).toHaveProperty('ingressDiagnostics');
       expect(result.current).toHaveProperty('selectedIndex');
       expect(typeof result.current.markAsRead).toBe('function');
       expect(typeof result.current.markAllAsRead).toBe('function');

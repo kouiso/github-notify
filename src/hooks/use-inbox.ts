@@ -1,6 +1,7 @@
 import { listen } from '@tauri-apps/api/event';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { E2E_INBOX_ITEMS, isE2eAuthenticated } from '@/lib/e2e-fixtures';
+import { classifyNotificationIngress } from '@/lib/notification-ingress-diagnostics';
 import * as commands from '@/lib/tauri/commands';
 import { logger } from '@/lib/utils/logger';
 import type { InboxItem } from '@/types';
@@ -21,6 +22,7 @@ export function useInbox() {
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
+  const [rawItemCount, setRawItemCount] = useState(0);
 
   const previousIdsRef = useRef<Set<string>>(new Set());
   const isFirstLoadRef = useRef(true);
@@ -90,6 +92,7 @@ export function useInbox() {
       if (!isMountedRef.current) return;
 
       const filteredData = data.filter(filterItem);
+      setRawItemCount(data.length);
 
       const previousIds = previousIdsRef.current;
       const newUnreadItems = filteredData.filter(
@@ -133,6 +136,7 @@ export function useInbox() {
         const newItems = event.payload;
 
         const filteredItems = newItems.filter(filterItem);
+        setRawItemCount(newItems.length);
 
         const previousIds = previousIdsRef.current;
         const newUnreadItems = filteredItems.filter(
@@ -223,6 +227,13 @@ export function useInbox() {
   }, [fetchItems]);
 
   const unreadCount = items.filter((item) => item.unread).length;
+  const ingressDiagnostics = classifyNotificationIngress({
+    rawCount: rawItemCount,
+    visibleCount: items.length,
+    isLoading,
+    error,
+    lastUpdated,
+  });
 
   useEffect(() => {
     if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
@@ -241,6 +252,8 @@ export function useInbox() {
     markAllAsRead,
     refresh,
     unreadCount,
+    rawItemCount,
+    ingressDiagnostics,
     selectedIndex,
     setSelectedIndex,
   };

@@ -3,6 +3,7 @@ import { Spinner } from '@/components/ui';
 import { useSettings } from '@/hooks';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { matchesFilter } from '@/lib/filters/match-filter';
+import type { NotificationIngressDiagnostics } from '@/lib/notification-ingress-diagnostics';
 import { logger } from '@/lib/utils/logger';
 import { openExternalUrl } from '@/lib/utils/open-url';
 import type { InboxItem, NotificationItem } from '@/types';
@@ -25,6 +26,7 @@ interface InboxListProps {
   isSearchMode?: boolean;
   searchItems?: NotificationItem[];
   activeRepositories?: string[] | null;
+  ingressDiagnostics?: NotificationIngressDiagnostics;
 }
 
 function applySidebarFilterLogic(
@@ -85,6 +87,7 @@ export function InboxList({
   isSearchMode = false,
   searchItems,
   activeRepositories = null,
+  ingressDiagnostics,
 }: InboxListProps) {
   const { settings } = useSettings();
   const [filter, setFilter] = useState<FilterType>('unread');
@@ -333,6 +336,19 @@ export function InboxList({
           {batchStatus}
         </div>
       )}
+      {!isSearchMode &&
+        ingressDiagnostics &&
+        ['token_or_scope', 'communication_failure', 'true_empty', 'filtered_empty'].includes(
+          ingressDiagnostics.cause,
+        ) && (
+          <div
+            role="status"
+            className="mx-4 mb-2 rounded-md border border-border/70 bg-accent/30 px-3 py-2 text-[0.8125rem] text-muted-foreground"
+          >
+            <span className="font-medium text-foreground">{ingressDiagnostics.title}</span>
+            <span className="ml-2">{ingressDiagnostics.detail}</span>
+          </div>
+        )}
 
       <InboxListContent
         isSearchMode={isSearchMode}

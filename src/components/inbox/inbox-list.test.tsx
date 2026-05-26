@@ -141,4 +141,31 @@ describe('InboxList', () => {
     );
     expect(screen.getByText('0 results')).toBeInTheDocument();
   });
+
+  it('通知入口診断でフィルタに隠れた通知を表示する', () => {
+    render(
+      <InboxList
+        items={[]}
+        isLoading={false}
+        error={null}
+        lastUpdated={new Date('2026-05-25T00:00:00Z')}
+        onMarkAsRead={vi.fn()}
+        onRefresh={vi.fn()}
+        selectedIndex={0}
+        setSelectedIndex={vi.fn()}
+        selectedFilterId={null}
+        ingressDiagnostics={{
+          cause: 'filtered_empty',
+          title: 'Notifications are hidden by filters',
+          detail:
+            '2 GitHub notification(s) were fetched, but the current filters hide all of them.',
+          rawCount: 2,
+          visibleCount: 0,
+        }}
+      />,
+    );
+
+    expect(screen.getByText('Notifications are hidden by filters')).toBeInTheDocument();
+    expect(screen.getByText(/2 GitHub notification/)).toBeInTheDocument();
+  });
 });
