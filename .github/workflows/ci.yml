@@ -24,7 +24,9 @@ jobs:
     if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
 
       - name: Require notification evidence in PR body
         env:
@@ -42,7 +44,9 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
 
       - name: Setup mise (node + pnpm)
         uses: jdx/mise-action@v2
@@ -96,7 +100,9 @@ jobs:
     if: github.event.pull_request.draft == false
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
 
       - name: Setup mise (node + pnpm)
         uses: jdx/mise-action@v2
@@ -120,7 +126,9 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
 
       - name: Install git-crypt
         run: sudo apt-get update && sudo apt-get install -y git-crypt
@@ -183,7 +191,9 @@ jobs:
     if: github.event.pull_request.draft == false
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
 
       - name: Install cargo-audit
         run: cargo install cargo-audit
