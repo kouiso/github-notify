@@ -263,7 +263,7 @@ export function InboxList({
     const results = await Promise.allSettled(ids.map((id) => onMarkAsRead(id)));
     const failedIds = ids.filter((_, index) => results[index].status === 'rejected');
     const successCount = results.length - failedIds.length;
-    const remainingCount = filteredItems.length - successCount;
+    const remainingCount = filteredItems.filter((item) => item.unread).length - successCount;
 
     if (failedIds.length > 0) {
       setBatchStatus(

@@ -9,7 +9,7 @@ export function classifyNotificationPriority(item: InboxItem): NotificationPrior
   if (item.reason === 'review_requested') return 'review';
   if (item.reason === 'ci_activity') return 'ci';
   if (item.reason === 'comment') {
-    const text = `${item.title} ${item.ownerLogin}`.toLowerCase();
+    const text = item.title.toLowerCase();
     return BOT_NAME_PATTERN.test(text) ? 'bot_comment' : 'human_comment';
   }
   return null;

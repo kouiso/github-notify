@@ -46,5 +46,13 @@ describe('classifyNotificationPriority', () => {
         title: 'alice commented on notification triage',
       }),
     ).toBe('human_comment');
+    expect(
+      classifyNotificationPriority({
+        ...baseItem,
+        title: 'alice commented on notification triage',
+        ownerLogin: 'robot-platform',
+        repositoryFullName: 'robot-platform/repo',
+      }),
+    ).toBe('human_comment');
   });
 });
