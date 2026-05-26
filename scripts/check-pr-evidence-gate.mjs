@@ -1,6 +1,18 @@
 #!/usr/bin/env node
 
-const PLACEHOLDER_PATTERN = /\b(tbd|todo|n\/a|none|未定|なし|後で|あとで|未実施)\b/i;
+const ENGLISH_PLACEHOLDER_PATTERN = /\b(tbd|todo|n\/a|none)\b/i;
+const JAPANESE_PLACEHOLDER_PATTERN = /^(?:未定|なし|後で|あとで|未実施)$/;
+const TEMPLATE_PROMPT_PATTERNS = [
+  /^How this change moves github-notify toward zero missed GitHub notifications, review requests, mentions, or CI results:$/i,
+  /^Expected:$/i,
+  /^Actual:$/i,
+  /^Filters\/search\/groups:$/i,
+  /^Empty\/error\/polling states:$/i,
+  /^Bot\/human\/CI\/review separation:$/i,
+  /^Commands, logs, screenshots, or PR status evidence:$/i,
+  /^Bot comments:$/i,
+  /^CI:$/i,
+];
 
 const REQUIRED_SECTIONS = [
   {
@@ -103,7 +115,15 @@ function isPlaceholderOnly(section) {
     )
     .filter(Boolean);
 
-  return meaningful.length === 0 || meaningful.every((line) => PLACEHOLDER_PATTERN.test(line));
+  return meaningful.length === 0 || meaningful.every(isPlaceholderLine);
+}
+
+function isPlaceholderLine(line) {
+  return (
+    ENGLISH_PLACEHOLDER_PATTERN.test(line) ||
+    JAPANESE_PLACEHOLDER_PATTERN.test(line) ||
+    TEMPLATE_PROMPT_PATTERNS.some((pattern) => pattern.test(line))
+  );
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
