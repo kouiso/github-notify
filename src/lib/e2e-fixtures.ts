@@ -48,6 +48,32 @@ export const E2E_INBOX_ITEMS: InboxItem[] = [
     ownerLogin: 'kouiso',
     ownerAvatar: '',
   },
+  {
+    id: 'e2e-ci-activity',
+    title: 'CI failed on main branch',
+    url: 'https://github.com/kouiso/github-notify/actions/runs/123456789',
+    reason: 'ci_activity',
+    unread: true,
+    updatedAt: '2026-05-24T19:00:00Z',
+    itemType: 'PullRequest',
+    repositoryName: 'github-notify',
+    repositoryFullName: 'kouiso/github-notify',
+    ownerLogin: 'kouiso',
+    ownerAvatar: '',
+  },
+  {
+    id: 'e2e-bot-comment',
+    title: 'CodeRabbit review comment on pull request',
+    url: 'https://github.com/kouiso/github-notify/pull/102#discussion_r1',
+    reason: 'comment',
+    unread: true,
+    updatedAt: '2026-05-24T18:50:00Z',
+    itemType: 'PullRequest',
+    repositoryName: 'github-notify',
+    repositoryFullName: 'kouiso/github-notify',
+    ownerLogin: 'kouiso',
+    ownerAvatar: '',
+  },
 ];
 
 export const E2E_SEARCH_ITEMS: NotificationItem[] = [

@@ -95,7 +95,7 @@ describe('InboxList', () => {
     fireEvent.click(screen.getByLabelText('失敗する通知 を選択'));
     fireEvent.click(screen.getByRole('button', { name: 'Done' }));
 
-    expect(await screen.findByRole('status')).toHaveTextContent('1件成功 / 1件失敗');
+    expect(await screen.findByRole('status')).toHaveTextContent('1件成功 / 1件失敗（未処理 1件）');
     await waitFor(() => expect(screen.getByLabelText('成功する通知 を選択')).not.toBeChecked());
     expect(screen.getByLabelText('失敗する通知 を選択')).toBeChecked();
   });

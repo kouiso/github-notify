@@ -1,4 +1,8 @@
 import { forwardRef, memo } from 'react';
+import {
+  classifyNotificationPriority,
+  NOTIFICATION_PRIORITY_LABELS,
+} from '@/lib/notification-priority';
 import { cn } from '@/lib/utils/cn';
 import type { InboxItem, NotificationItem } from '@/types';
 import { REASON_LABELS } from '@/types/settings';
@@ -55,6 +59,7 @@ export const InboxRow = memo(
       const isPR = item.itemType === 'PullRequest';
       const isIssue = item.itemType === 'Issue';
       const reasonLabel = REASON_LABELS[item.reason] || item.reason;
+      const priorityKind = classifyNotificationPriority(item);
       const colors = REASON_COLORS[item.reason] || {
         text: 'text-muted-foreground',
         bg: 'bg-accent',
@@ -120,6 +125,18 @@ export const InboxRow = memo(
               >
                 {reasonLabel}
               </span>
+              {priorityKind && (
+                <span
+                  className={cn(
+                    'inline-flex px-1.5 py-0.5 rounded text-xs font-medium flex-shrink-0',
+                    priorityKind === 'bot_comment'
+                      ? 'text-muted-foreground bg-accent/70'
+                      : 'text-foreground bg-accent',
+                  )}
+                >
+                  {NOTIFICATION_PRIORITY_LABELS[priorityKind]}
+                </span>
+              )}
             </span>
           </button>
 
