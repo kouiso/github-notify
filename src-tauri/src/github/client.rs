@@ -15,6 +15,8 @@ const GITHUB_API_BASE: &str = "https://api.github.com";
 const GITHUB_GRAPHQL_API: &str = "https://api.github.com/graphql";
 const GITHUB_DEVICE_CODE_URL: &str = "https://github.com/login/device/code";
 const GITHUB_ACCESS_TOKEN_URL: &str = "https://github.com/login/oauth/access_token";
+const NOTIFICATIONS_PER_PAGE: usize = 100;
+const MAX_NOTIFICATION_PAGES: usize = 50;
 
 use super::secrets::GITHUB_CLIENT_ID;
 
@@ -299,23 +301,27 @@ impl GitHubClient {
     }
 
     /// Fetch inbox notifications with ETag support for conditional requests.
-    /// Paginates through all pages (up to MAX_PAGES) to get the full notification list.
+    /// Paginates through all pages (up to MAX_NOTIFICATION_PAGES) to get the full notification list.
     pub async fn fetch_inbox_with_etag(
         &self,
         all: bool,
         etag: Option<&str>,
     ) -> Result<InboxResponse, AppError> {
-        const MAX_PAGES: usize = 10; // Safety limit: 10 pages × 50 = 500 notifications max
-
         let token = self
             .token
             .as_ref()
             .ok_or_else(|| AppError::Auth("No token set".to_string()))?;
 
         let base_url = if all {
-            format!("{}/notifications?all=true&per_page=50", self.base_url)
+            format!(
+                "{}/notifications?all=true&per_page={}",
+                self.base_url, NOTIFICATIONS_PER_PAGE
+            )
         } else {
-            format!("{}/notifications?per_page=50", self.base_url)
+            format!(
+                "{}/notifications?per_page={}",
+                self.base_url, NOTIFICATIONS_PER_PAGE
+            )
         };
 
         // First page request (with ETag for conditional caching)
@@ -378,9 +384,12 @@ impl GitHubClient {
 
         while let Some(url) = current_next {
             page += 1;
-            if page > MAX_PAGES {
-                log::warn!("Reached max pagination limit ({} pages)", MAX_PAGES);
-                break;
+            if page > MAX_NOTIFICATION_PAGES {
+                return Err(AppError::GitHubApi(format!(
+                    "Notification pagination exceeded {} pages ({} items). Refusing to return a partial inbox.",
+                    MAX_NOTIFICATION_PAGES,
+                    MAX_NOTIFICATION_PAGES * NOTIFICATIONS_PER_PAGE
+                )));
             }
 
             log::debug!("Fetching notification page {} ...", page);
@@ -396,7 +405,12 @@ impl GitHubClient {
 
             if !resp.status().is_success() {
                 Self::log_rest_error(&resp);
-                break;
+                let status = resp.status();
+                let error_text = resp.text().await.unwrap_or_default();
+                return Err(AppError::GitHubApi(format!(
+                    "Failed to fetch notifications page {}: {} - {}",
+                    page, status, error_text
+                )));
             }
 
             current_next = parse_next_link(resp.headers());
@@ -550,4 +564,115 @@ fn parse_next_link(headers: &reqwest::header::HeaderMap) -> Option<String> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use wiremock::matchers::{method, path, query_param};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn notification_json(id: &str) -> serde_json::Value {
+        json!({
+            "id": id,
+            "unread": true,
+            "reason": "mention",
+            "updated_at": "2026-05-26T00:00:00Z",
+            "subject": {
+                "title": format!("通知 {}", id),
+                "url": "https://api.github.com/repos/owner/repo/issues/1",
+                "type": "Issue"
+            },
+            "repository": {
+                "name": "repo",
+                "full_name": "owner/repo",
+                "owner": {
+                    "login": "owner",
+                    "avatar_url": "https://github.com/owner.png"
+                }
+            }
+        })
+    }
+
+    #[tokio::test]
+    async fn fetch_inbox_uses_hundred_items_per_page_and_reads_next_page() {
+        let server = MockServer::start().await;
+        let next_url = format!("{}/notifications?per_page=100&page=2", server.uri());
+
+        Mock::given(method("GET"))
+            .and(path("/notifications"))
+            .and(query_param("per_page", "100"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("link", format!("<{}>; rel=\"next\"", next_url))
+                    .set_body_json(json!([notification_json("1")])),
+            )
+            .mount(&server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/notifications"))
+            .and(query_param("per_page", "100"))
+            .and(query_param("page", "2"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!([notification_json("2")])))
+            .mount(&server)
+            .await;
+
+        let client = GitHubClient::with_base_url(
+            reqwest::Client::new(),
+            "test-token".to_string(),
+            server.uri(),
+        );
+
+        let response = client.fetch_inbox_with_etag(false, None).await.unwrap();
+
+        assert_eq!(response.items.len(), 2);
+        assert_eq!(response.items[0].id, "1");
+        assert_eq!(response.items[1].id, "2");
+    }
+
+    #[tokio::test]
+    async fn fetch_inbox_returns_error_when_later_page_fails() {
+        let server = MockServer::start().await;
+        let next_url = format!("{}/notifications?per_page=100&page=2", server.uri());
+
+        Mock::given(method("GET"))
+            .and(path("/notifications"))
+            .and(query_param("per_page", "100"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("link", format!("<{}>; rel=\"next\"", next_url))
+                    .set_body_json(json!([notification_json("1")])),
+            )
+            .mount(&server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/notifications"))
+            .and(query_param("per_page", "100"))
+            .and(query_param("page", "2"))
+            .respond_with(ResponseTemplate::new(503).set_body_json(json!({
+                "message": "service unavailable"
+            })))
+            .mount(&server)
+            .await;
+
+        let client = GitHubClient::with_base_url(
+            reqwest::Client::new(),
+            "test-token".to_string(),
+            server.uri(),
+        );
+
+        let err = client
+            .fetch_inbox_with_etag(false, None)
+            .await
+            .expect_err("途中ページの失敗を部分成功にしてはいけない");
+
+        assert!(
+            err.to_string().contains("page 2"),
+            "ページ番号付きで失敗を返すべき: {}",
+            err
+        );
+    }
 }
