@@ -95,9 +95,96 @@ describe('InboxList', () => {
     fireEvent.click(screen.getByLabelText('失敗する通知 を選択'));
     fireEvent.click(screen.getByRole('button', { name: 'Done' }));
 
-    expect(await screen.findByRole('status')).toHaveTextContent('1件成功 / 1件失敗');
+    expect(await screen.findByRole('status')).toHaveTextContent('1件成功 / 1件失敗（未処理 1件）');
     await waitFor(() => expect(screen.getByLabelText('成功する通知 を選択')).not.toBeChecked());
     expect(screen.getByLabelText('失敗する通知 を選択')).toBeChecked();
+  });
+
+  it('一部の項目だけ選択した失敗では失敗した選択項目だけを未処理に数える', async () => {
+    const onMarkAsRead = vi.fn((id: string) =>
+      id === 'thread-2' ? Promise.reject(new Error('mark failed')) : Promise.resolve(),
+    );
+    const threeItems: InboxItem[] = [
+      ...items,
+      {
+        id: 'thread-3',
+        title: '選択されない通知',
+        url: null,
+        reason: 'mention',
+        unread: true,
+        updatedAt: new Date().toISOString(),
+        itemType: 'Issue',
+        repositoryName: 'repo',
+        repositoryFullName: 'owner/repo',
+        ownerLogin: 'owner',
+        ownerAvatar: '',
+      },
+    ];
+
+    render(
+      <InboxList
+        items={threeItems}
+        isLoading={false}
+        error={null}
+        lastUpdated={null}
+        onMarkAsRead={onMarkAsRead}
+        onRefresh={vi.fn()}
+        selectedIndex={0}
+        setSelectedIndex={vi.fn()}
+        selectedFilterId={null}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText('成功する通知 を選択'));
+    fireEvent.click(screen.getByLabelText('失敗する通知 を選択'));
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent('1件成功 / 1件失敗（未処理 1件）');
+    expect(screen.getByLabelText('失敗する通知 を選択')).toBeChecked();
+    expect(screen.getByLabelText('選択されない通知 を選択')).not.toBeChecked();
+  });
+
+  it('全件表示の一部失敗では既読行を未処理残件に含めない', async () => {
+    const onMarkAsRead = vi.fn((id: string) =>
+      id === 'thread-2' ? Promise.reject(new Error('mark failed')) : Promise.resolve(),
+    );
+    const mixedItems: InboxItem[] = [
+      ...items,
+      {
+        id: 'thread-3',
+        title: '既読の通知',
+        url: null,
+        reason: 'mention',
+        unread: false,
+        updatedAt: new Date().toISOString(),
+        itemType: 'Issue',
+        repositoryName: 'repo',
+        repositoryFullName: 'owner/repo',
+        ownerLogin: 'owner',
+        ownerAvatar: '',
+      },
+    ];
+
+    render(
+      <InboxList
+        items={mixedItems}
+        isLoading={false}
+        error={null}
+        lastUpdated={null}
+        onMarkAsRead={onMarkAsRead}
+        onRefresh={vi.fn()}
+        selectedIndex={0}
+        setSelectedIndex={vi.fn()}
+        selectedFilterId={null}
+      />,
+    );
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'すべて' })[0]);
+    fireEvent.click(screen.getByLabelText('成功する通知 を選択'));
+    fireEvent.click(screen.getByLabelText('失敗する通知 を選択'));
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent('1件成功 / 1件失敗（未処理 1件）');
   });
 
   it('エラー、ローディング、空状態、検索モードの主要分岐を表示する', () => {

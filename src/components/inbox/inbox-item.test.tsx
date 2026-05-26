@@ -117,6 +117,66 @@ describe('InboxRow', () => {
 
     expect(screen.getByText('アサイン')).toBeInTheDocument();
   });
+
+  it('review requested 通知の補助ラベルを表示する', () => {
+    render(
+      <InboxRow
+        item={{ ...baseInboxItem, reason: 'review_requested' }}
+        isSelected={false}
+        isChecked={false}
+        onCheckChange={vi.fn()}
+        onClick={vi.fn()}
+        onMarkAsDone={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('Review')).toBeInTheDocument();
+  });
+
+  it('CI activity 通知の補助ラベルを表示する', () => {
+    render(
+      <InboxRow
+        item={{ ...baseInboxItem, reason: 'ci_activity' }}
+        isSelected={false}
+        isChecked={false}
+        onCheckChange={vi.fn()}
+        onClick={vi.fn()}
+        onMarkAsDone={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('CI alert')).toBeInTheDocument();
+  });
+
+  it('bot コメント通知の補助ラベルを表示する', () => {
+    render(
+      <InboxRow
+        item={{
+          ...baseInboxItem,
+          reason: 'comment',
+          title: 'CodeRabbit reviewed this pull request',
+        }}
+        isSelected={false}
+        isChecked={false}
+        onCheckChange={vi.fn()}
+        onClick={vi.fn()}
+        onMarkAsDone={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('Bot')).toBeInTheDocument();
+  });
+
+  it('人間コメント通知の補助ラベルを表示する', () => {
+    render(
+      <InboxRow
+        item={{ ...baseInboxItem, reason: 'comment', title: 'alice commented on this issue' }}
+        isSelected={false}
+        isChecked={false}
+        onCheckChange={vi.fn()}
+        onClick={vi.fn()}
+        onMarkAsDone={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('Human')).toBeInTheDocument();
+  });
 });
 
 describe('SearchRow', () => {
