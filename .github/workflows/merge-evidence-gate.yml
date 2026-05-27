@@ -3,7 +3,6 @@ name: Merge evidence gate
 on:
   pull_request:
     types: [opened, reopened, synchronize, ready_for_review, edited]
-  workflow_dispatch:
 
 permissions:
   contents: read
