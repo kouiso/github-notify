@@ -2,7 +2,7 @@ name: CI
 
 on:
   pull_request:
-    types: [opened, reopened, synchronize, ready_for_review, edited]
+    types: [opened, reopened, synchronize, ready_for_review]
   push:
     branches: [main]
   workflow_dispatch:
@@ -18,35 +18,10 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  merge-evidence-gate:
-    name: Merge evidence gate
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-        with:
-          persist-credentials: false
-
-      - name: Require notification evidence in PR body
-        env:
-          PR_BODY: ${{ github.event.pull_request.body }}
-        run: node scripts/check-pr-evidence-gate.mjs
-
   frontend:
     name: Frontend ${{ matrix.check-type }}
     runs-on: ubuntu-latest
-    if: >-
-      github.event_name != 'pull_request' ||
-      (
-        github.event.pull_request.draft == false &&
-        (
-          github.event.action != 'edited' ||
-          github.event.changes.body == null ||
-          github.event.changes.base != null ||
-          github.event.changes.title != null
-        )
-      )
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     strategy:
       fail-fast: false
       matrix:
@@ -107,17 +82,7 @@ jobs:
   audit-frontend:
     name: Frontend audit
     runs-on: ubuntu-latest
-    if: >-
-      github.event_name != 'pull_request' ||
-      (
-        github.event.pull_request.draft == false &&
-        (
-          github.event.action != 'edited' ||
-          github.event.changes.body == null ||
-          github.event.changes.base != null ||
-          github.event.changes.title != null
-        )
-      )
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -138,17 +103,7 @@ jobs:
   rust:
     name: Rust ${{ matrix.check-type }}
     runs-on: ubuntu-latest
-    if: >-
-      github.event_name != 'pull_request' ||
-      (
-        github.event.pull_request.draft == false &&
-        (
-          github.event.action != 'edited' ||
-          github.event.changes.body == null ||
-          github.event.changes.base != null ||
-          github.event.changes.title != null
-        )
-      )
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     strategy:
       fail-fast: false
       matrix:
@@ -218,17 +173,7 @@ jobs:
   audit-rust:
     name: Rust audit
     runs-on: ubuntu-latest
-    if: >-
-      github.event_name != 'pull_request' ||
-      (
-        github.event.pull_request.draft == false &&
-        (
-          github.event.action != 'edited' ||
-          github.event.changes.body == null ||
-          github.event.changes.base != null ||
-          github.event.changes.title != null
-        )
-      )
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
