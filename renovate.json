@@ -1,0 +1,18 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "timezone": "Asia/Tokyo",
+  "schedule": ["before 9am on the first day of the month"],
+  "prConcurrentLimit": 5,
+  "packageRules": [
+    {
+      "matchManagers": ["npm", "cargo"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "軽微な依存更新"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "自動確認の部品更新"
+    }
+  ]
+}
