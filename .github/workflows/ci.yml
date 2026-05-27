@@ -36,7 +36,7 @@ jobs:
   frontend:
     name: Frontend ${{ matrix.check-type }}
     runs-on: ubuntu-latest
-    if: github.event.pull_request.draft == false
+    if: github.event_name != 'pull_request' || (github.event.pull_request.draft == false && github.event.action != 'edited')
     strategy:
       fail-fast: false
       matrix:
@@ -97,7 +97,7 @@ jobs:
   audit-frontend:
     name: Frontend audit
     runs-on: ubuntu-latest
-    if: github.event.pull_request.draft == false
+    if: github.event_name != 'pull_request' || (github.event.pull_request.draft == false && github.event.action != 'edited')
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -118,7 +118,7 @@ jobs:
   rust:
     name: Rust ${{ matrix.check-type }}
     runs-on: ubuntu-latest
-    if: github.event.pull_request.draft == false
+    if: github.event_name != 'pull_request' || (github.event.pull_request.draft == false && github.event.action != 'edited')
     strategy:
       fail-fast: false
       matrix:
@@ -188,7 +188,7 @@ jobs:
   audit-rust:
     name: Rust audit
     runs-on: ubuntu-latest
-    if: github.event.pull_request.draft == false
+    if: github.event_name != 'pull_request' || (github.event.pull_request.draft == false && github.event.action != 'edited')
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
