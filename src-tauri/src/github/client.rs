@@ -598,12 +598,11 @@ mod tests {
     #[tokio::test]
     async fn fetch_inbox_uses_hundred_items_per_page_and_reads_next_page() {
         let server = MockServer::start().await;
-        let next_url = format!("{}/notifications?per_page=100&page=2", server.uri());
+        let next_url = format!("{}/notifications/page-2?per_page=100", server.uri());
 
         Mock::given(method("GET"))
-            .and(path("/notifications"))
+            .and(path("/notifications/page-2"))
             .and(query_param("per_page", "100"))
-            .and(query_param("page", "2"))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!([notification_json("2")])))
             .mount(&server)
             .await;
@@ -635,12 +634,11 @@ mod tests {
     #[tokio::test]
     async fn fetch_inbox_returns_error_when_later_page_fails() {
         let server = MockServer::start().await;
-        let next_url = format!("{}/notifications?per_page=100&page=2", server.uri());
+        let next_url = format!("{}/notifications/page-2?per_page=100", server.uri());
 
         Mock::given(method("GET"))
-            .and(path("/notifications"))
+            .and(path("/notifications/page-2"))
             .and(query_param("per_page", "100"))
-            .and(query_param("page", "2"))
             .respond_with(ResponseTemplate::new(503).set_body_json(json!({
                 "message": "service unavailable"
             })))
