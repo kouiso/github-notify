@@ -210,9 +210,9 @@ describe('InboxList', () => {
     expect(screen.getByText('0 notifications')).toBeInTheDocument();
 
     rerender(<InboxList {...baseProps} />);
-    expect(screen.getByText('No unread notifications')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'View all' }));
-    expect(screen.getByText('No notifications')).toBeInTheDocument();
+    expect(screen.getByText('未読の通知はありません')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '全件を見る' }));
+    expect(screen.getByText('通知はありません')).toBeInTheDocument();
 
     rerender(<InboxList {...baseProps} isSearchMode={true} searchItems={searchItems} />);
     expect(screen.getByText('1 results')).toBeInTheDocument();
