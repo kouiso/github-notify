@@ -46,3 +46,6 @@ login-screen.png
 
 # Claude scheduler runtime lock
 .claude/scheduled_tasks.lock
+
+# Playwright artifacts
+test-results/
