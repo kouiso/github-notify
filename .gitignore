@@ -40,6 +40,7 @@ coverage
 screenshots/
 login-screen.png
 .playwright-mcp/
+test-results/
 
 # Serena toolkit cache
 .serena/
