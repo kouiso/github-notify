@@ -1,3 +1,7 @@
+<!-- AUTO-GENERATED from AGENTS.md by scripts/sync-ai-rules.sh -->
+<!-- DO NOT HAND-EDIT — changes will be overwritten on next sync -->
+<!-- To update: edit AGENTS.md, then run: bash scripts/sync-ai-rules.sh -->
+
 # github-notify
 
 Desktop notification app for GitHub events. Built with Tauri (Rust + TypeScript/Vite).
