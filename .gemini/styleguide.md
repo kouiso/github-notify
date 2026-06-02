@@ -1,16 +1,54 @@
-# Gemini Code Assist スタイルガイド
+<!-- AUTO-GENERATED from AGENTS.md by scripts/sync-ai-rules.sh -->
+<!-- DO NOT HAND-EDIT — changes will be overwritten on next sync -->
+<!-- To update: edit AGENTS.md, then run: bash scripts/sync-ai-rules.sh -->
 
-## 基本方針
+# github-notify — Gemini Code Assist Style Guide
 
-### 言語
-- 日本語でレビューコメント・提案を記述する
-- コード内のコメントも日本語を推奨
+## Review Language
 
-### コードスタイル
-- 既存のコードスタイル・設計パターンに従う
-- プロジェクトのリンター・フォーマッター設定を尊重する
+- Write all review comments in **Japanese**
+- Internal thinking may be in English, but output must be Japanese
 
-### レビュー方針
-- バグ・セキュリティ問題を最優先で指摘
-- パフォーマンス改善の提案
-- 可読性・保守性の向上提案
+## PR Summary
+
+- Write PR summaries in a poetic, readable format (CodeRabbit style)
+
+---
+
+<!-- ===== AGENTS.md CONTENT (auto-synced) ===== -->
+
+# github-notify
+
+Desktop notification app for GitHub events. Built with Tauri (Rust + TypeScript/Vite).
+
+> ⚠️ `.gemini/styleguide.md` and `.github/copilot-instructions.md` are auto-generated from this file
+> by `scripts/sync-ai-rules.sh`. Do NOT edit them directly.
+
+## Tech Stack
+
+| Category | Technology |
+|---|---|
+| Framework | Tauri (Rust + TypeScript) |
+| Frontend | Vite + TypeScript |
+| Linter | Biome + ESLint |
+| Runtime | Node.js ≥25 (frontend) + Rust (backend) |
+
+## Commands
+
+```bash
+pnpm install             # Install dependencies
+pnpm dev                 # Start Tauri dev server
+pnpm build               # Build Tauri desktop app
+pnpm lint                # Biome + ESLint lint
+pnpm lint:fix            # Auto-fix lint issues
+cargo build              # Build Rust backend
+cargo test               # Run Rust tests
+```
+
+## Coding Rules
+
+- Comments: Japanese, explain *why* only (not what)
+- Commit messages: English, Conventional Commits (`feat:`, `fix:`, `chore:`, etc.)
+- No `any` types / No `@ts-ignore` / No `eslint-disable` (fix root cause)
+- `git reset --hard/--soft/--mixed` forbidden
+- `--no-verify` forbidden / `--force` forbidden (use `--force-with-lease` only)
