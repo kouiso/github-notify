@@ -18,16 +18,12 @@ jobs:
     name: License Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - name: Setup mise (node + pnpm)
+        uses: jdx/mise-action@v2
         with:
-          node-version: "25.6.1"
-          cache: "pnpm"
+          experimental: true
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -55,7 +51,7 @@ jobs:
 
       - name: Upload license report
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: license-report
           path: license-summary.txt

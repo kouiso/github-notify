@@ -166,7 +166,7 @@ jobs:
 
       - name: Build
         if: matrix.check-type == 'build'
-        run: cargo build --manifest-path src-tauri/Cargo.toml --release
+        run: cargo build --manifest-path src-tauri/Cargo.toml
 
   audit-rust:
     name: Rust audit
@@ -179,7 +179,9 @@ jobs:
           persist-credentials: false
 
       - name: Install cargo-audit
-        run: cargo install cargo-audit
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
 
       - name: Audit Rust dependencies
         run: cargo audit --file src-tauri/Cargo.lock
