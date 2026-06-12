@@ -135,6 +135,7 @@ export function useInbox() {
     const setupListener = async () => {
       const unlisten = await listen<InboxItem[]>('inbox-updated', (event) => {
         setIsTruncated(false);
+        setError(null);
         const newItems = event.payload;
 
         const filteredItems = newItems.filter(filterItem);
@@ -162,6 +163,7 @@ export function useInbox() {
       });
 
       const unlistenError = await listen<string>('inbox-error', (event) => {
+        setIsLoading(false);
         setError(event.payload);
       });
 
