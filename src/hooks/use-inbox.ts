@@ -16,9 +16,9 @@ import {
   useSendDesktopNotification,
 } from './use-inbox-notification';
 
-export function useInbox() {
+export function useInbox({ enabled = true }: { enabled?: boolean } = {}) {
   const [items, setItems] = useState<InboxItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
@@ -122,10 +122,10 @@ export function useInbox() {
   }, [sendDesktopNotification, filterItem]);
 
   useEffect(() => {
-    if (settingsLoaded) {
+    if (settingsLoaded && enabled) {
       fetchItems();
     }
-  }, [settingsLoaded, fetchItems]);
+  }, [settingsLoaded, fetchItems, enabled]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) {

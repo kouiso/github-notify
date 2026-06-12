@@ -25,6 +25,7 @@ interface SettingsDialogProps {
   onOpenChange: (open: boolean) => void;
   user: { login: string; avatarUrl?: string | null } | null;
   onLogout: () => void;
+  onOpenConnect?: () => void;
   initialEditFilterId?: string | null;
   initialTab?: string | null;
   knownRepos?: string[];
@@ -38,6 +39,8 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'appearance', label: '外観' },
   { id: 'account', label: 'アカウント' },
 ];
+
+const isTabId = (value: string): value is TabId => TABS.some((tab) => tab.id === value);
 
 const THEME_OPTIONS: { value: Theme; label: string; icon: string }[] = [
   { value: 'light', label: 'ライト', icon: '☀️' },
@@ -54,6 +57,7 @@ function SettingsDialogContent({
   onOpenChange,
   user,
   onLogout,
+  onOpenConnect,
   initialEditFilterId,
   initialTab,
   knownRepos = [],
@@ -69,8 +73,8 @@ function SettingsDialogContent({
   const prevOpenRef = useRef(false);
   useEffect(() => {
     if (open && !prevOpenRef.current) {
-      if (initialTab && TABS.some((t) => t.id === initialTab)) {
-        setActiveTab(initialTab as TabId);
+      if (initialTab && isTabId(initialTab)) {
+        setActiveTab(initialTab);
       } else if (initialEditFilterId) {
         const target = settings.customFilters.find((f) => f.id === initialEditFilterId);
         if (target) {
@@ -392,22 +396,32 @@ function SettingsDialogContent({
                   </p>
                 </div>
               )}
-              {user && (
-                <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
-                  {user.avatarUrl ? (
-                    <img src={user.avatarUrl} alt={user.login} className="w-10 h-10 rounded-full" />
-                  ) : (
-                    <div className="w-10 h-10 rounded-full bg-accent" />
-                  )}
-                  <div>
-                    <p className="font-medium text-[0.9375rem]">{user.login}</p>
-                    <p className="text-[0.8125rem] text-muted-foreground">GitHub Account</p>
+              {user ? (
+                <>
+                  <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
+                    {user.avatarUrl ? (
+                      <img
+                        src={user.avatarUrl}
+                        alt={user.login}
+                        className="w-10 h-10 rounded-full"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-accent" />
+                    )}
+                    <div>
+                      <p className="font-medium text-[0.9375rem]">{user.login}</p>
+                      <p className="text-[0.8125rem] text-muted-foreground">GitHub Account</p>
+                    </div>
                   </div>
-                </div>
+                  <Button variant="destructive" onClick={handleLogout} className="w-full">
+                    ログアウト
+                  </Button>
+                </>
+              ) : (
+                <Button variant="outline" onClick={() => onOpenConnect?.()} className="w-full">
+                  GitHubに接続
+                </Button>
               )}
-              <Button variant="destructive" onClick={handleLogout} className="w-full">
-                ログアウト
-              </Button>
             </div>
           )}
         </div>

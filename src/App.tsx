@@ -1,6 +1,6 @@
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
-import { LoginScreen } from '@/components/auth/login-screen';
+import { ConnectGitHubPanel } from '@/components/auth/connect-github-panel';
 import { InboxList } from '@/components/inbox';
 import { Sidebar } from '@/components/layout/sidebar';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
@@ -28,7 +28,7 @@ const LazyFallback = () => (
 
 export default function App() {
   const auth = useAuth();
-  const inbox = useInbox();
+  const inbox = useInbox({ enabled: auth.isAuthenticated });
   const { settings, isLoading: settingsLoading } = useSettings();
   const searchView = useSearchView();
   const { fetch: fetchSearchView } = searchView;
@@ -41,7 +41,11 @@ export default function App() {
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
 
-  const showOnboarding = !settingsLoading && !settings.onboardingCompleted && !onboardingDismissed;
+  const showOnboarding =
+    auth.isAuthenticated &&
+    !settingsLoading &&
+    !settings.onboardingCompleted &&
+    !onboardingDismissed;
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -110,6 +114,8 @@ export default function App() {
   const userLogin = auth.user?.login;
 
   useEffect(() => {
+    if (!auth.isAuthenticated) return;
+
     if (selectedFilter && isSearchView(selectedFilter) && selectedFilter.searchQuery) {
       const resolved = userLogin
         ? selectedFilter.searchQuery.replace(/@me\b/g, userLogin)
@@ -120,27 +126,20 @@ export default function App() {
           : resolved;
       fetchSearchView(scopedQuery);
     }
-  }, [selectedFilterId, userLogin, selectedFilter, activeGroup, fetchSearchView]);
+  }, [
+    auth.isAuthenticated,
+    selectedFilterId,
+    userLogin,
+    selectedFilter,
+    activeGroup,
+    fetchSearchView,
+  ]);
 
   if (auth.isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
         <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
       </div>
-    );
-  }
-
-  if (!auth.isAuthenticated) {
-    return (
-      <LoginScreen
-        onStartDeviceFlow={auth.startDeviceFlow}
-        onLoginWithToken={auth.loginWithToken}
-        deviceFlow={auth.deviceFlow}
-        isLoading={auth.isLoading}
-        isPolling={auth.isPolling}
-        error={auth.error}
-        onCancelDeviceFlow={auth.cancelDeviceFlow}
-      />
     );
   }
 
@@ -170,7 +169,19 @@ export default function App() {
 
         <main className="flex-1 min-w-0">
           <Suspense fallback={<LazyFallback />}>
-            {isDashboard ? (
+            {!auth.isAuthenticated ? (
+              <div className="flex h-full items-center justify-center p-8">
+                <ConnectGitHubPanel
+                  onStartDeviceFlow={auth.startDeviceFlow}
+                  onLoginWithToken={auth.loginWithToken}
+                  deviceFlow={auth.deviceFlow}
+                  isLoading={auth.isLoading}
+                  isPolling={auth.isPolling}
+                  error={auth.error}
+                  onCancelDeviceFlow={auth.cancelDeviceFlow}
+                />
+              </div>
+            ) : isDashboard ? (
               <Dashboard
                 filters={settings.customFilters}
                 onRefresh={inbox.refresh}
@@ -229,6 +240,7 @@ export default function App() {
             initialEditFilterId={settingsInitialFilterId}
             initialTab={settingsInitialTab}
             knownRepos={knownRepos}
+            onOpenConnect={() => setSettingsOpen(false)}
           />
 
           <OnboardingDialog open={showOnboarding} onComplete={() => setOnboardingDismissed(true)} />
