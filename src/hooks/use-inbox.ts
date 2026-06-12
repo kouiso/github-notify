@@ -23,6 +23,7 @@ export function useInbox() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
   const [rawItemCount, setRawItemCount] = useState(0);
+  const [isTruncated, setIsTruncated] = useState(false);
 
   const previousIdsRef = useRef<Set<string>>(new Set());
   const isFirstLoadRef = useRef(true);
@@ -133,6 +134,7 @@ export function useInbox() {
 
     const setupListener = async () => {
       const unlisten = await listen<InboxItem[]>('inbox-updated', (event) => {
+        setIsTruncated(false);
         const newItems = event.payload;
 
         const filteredItems = newItems.filter(filterItem);
@@ -155,7 +157,19 @@ export function useInbox() {
         setIsLoading(false);
       });
 
-      return unlisten;
+      const unlistenTruncated = await listen<boolean>('inbox-truncated', () => {
+        setIsTruncated(true);
+      });
+
+      const unlistenError = await listen<string>('inbox-error', (event) => {
+        setError(event.payload);
+      });
+
+      return () => {
+        unlisten();
+        unlistenTruncated();
+        unlistenError();
+      };
     };
 
     const unlistenPromise = setupListener();
@@ -253,6 +267,7 @@ export function useInbox() {
     refresh,
     unreadCount,
     rawItemCount,
+    isTruncated,
     ingressDiagnostics,
     selectedIndex,
     setSelectedIndex,

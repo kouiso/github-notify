@@ -385,11 +385,16 @@ impl GitHubClient {
         while let Some(url) = current_next {
             page += 1;
             if page > MAX_NOTIFICATION_PAGES {
-                return Err(AppError::GitHubApi(format!(
-                    "Notification pagination exceeded {} pages ({} items). Refusing to return a partial inbox.",
+                log::warn!(
+                    "Notification pagination exceeded {} pages (~{} items). Returning partial inbox.",
                     MAX_NOTIFICATION_PAGES,
                     MAX_NOTIFICATION_PAGES * NOTIFICATIONS_PER_PAGE
-                )));
+                );
+                return Ok(InboxResponse::truncated_result(
+                    all_items,
+                    new_etag,
+                    poll_interval,
+                ));
             }
 
             log::debug!("Fetching notification page {} ...", page);
@@ -671,6 +676,61 @@ mod tests {
             err.to_string().contains("page 2"),
             "ページ番号付きで失敗を返すべき: {}",
             err
+        );
+    }
+
+    #[tokio::test]
+    async fn fetch_inbox_returns_truncated_when_page_limit_exceeded() {
+        let server = MockServer::start().await;
+
+        let page2_url = format!("{}/notifications/page-2?per_page=100", server.uri());
+        Mock::given(method("GET"))
+            .and(path("/notifications"))
+            .and(query_param("per_page", "100"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("link", format!("<{}>; rel=\"next\"", page2_url))
+                    .set_body_json(json!([notification_json("1")])),
+            )
+            .mount(&server)
+            .await;
+
+        for i in 2..=51usize {
+            let next_header = if i < 51 {
+                let next = format!("{}/notifications/page-{}?per_page=100", server.uri(), i + 1);
+                format!("<{}>; rel=\"next\"", next)
+            } else {
+                String::new()
+            };
+            let path_str = format!("/notifications/page-{}", i);
+            let mut resp = ResponseTemplate::new(200)
+                .set_body_json(json!([notification_json(&i.to_string())]));
+            if !next_header.is_empty() {
+                resp = resp.insert_header("link", next_header);
+            }
+            Mock::given(method("GET"))
+                .and(path(path_str))
+                .and(query_param("per_page", "100"))
+                .respond_with(resp)
+                .mount(&server)
+                .await;
+        }
+
+        let client = GitHubClient::with_base_url(
+            reqwest::Client::new(),
+            "test-token".to_string(),
+            server.uri(),
+        );
+
+        let response = client
+            .fetch_inbox_with_etag(false, None)
+            .await
+            .expect("上限超過時は Ok(truncated) を返すべき");
+
+        assert!(response.truncated, "truncated フラグが true であるべき");
+        assert!(
+            !response.items.is_empty(),
+            "上限到達時も収集済みアイテムを返すべき"
         );
     }
 }
