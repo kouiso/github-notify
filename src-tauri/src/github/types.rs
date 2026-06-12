@@ -385,6 +385,7 @@ pub struct InboxResponse {
     pub etag: Option<String>,
     pub poll_interval: u64,
     pub not_modified: bool,
+    pub truncated: bool,
 }
 
 impl InboxResponse {
@@ -394,6 +395,7 @@ impl InboxResponse {
             etag: None,
             poll_interval: 60,
             not_modified: true,
+            truncated: false,
         }
     }
 
@@ -403,6 +405,21 @@ impl InboxResponse {
             etag,
             poll_interval,
             not_modified: false,
+            truncated: false,
+        }
+    }
+
+    pub fn truncated_result(
+        items: Vec<InboxItem>,
+        etag: Option<String>,
+        poll_interval: u64,
+    ) -> Self {
+        Self {
+            items,
+            etag,
+            poll_interval,
+            not_modified: false,
+            truncated: true,
         }
     }
 }

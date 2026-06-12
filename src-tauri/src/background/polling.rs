@@ -91,6 +91,7 @@ impl PollingService {
                                         *last_etag.lock().await = Some(new_etag);
                                     }
 
+                                    let truncated = response.truncated;
                                     let mut items = response.items;
 
                                     // アサイン解除検知: GitHubはunassignを通知に出さないため、
@@ -108,10 +109,26 @@ impl PollingService {
                                     } else {
                                         log::info!("inbox-updatedを{}件で送信", items.len());
                                     }
+
+                                    if truncated {
+                                        log::warn!(
+                                            "通知件数が上限を超過しているため一部のみ表示（取得済み: {} 件）",
+                                            items.len()
+                                        );
+                                        if let Err(e) = app_handle.emit("inbox-truncated", true) {
+                                            log::error!(
+                                                "inbox-truncatedイベントの送信に失敗: {}",
+                                                e
+                                            );
+                                        }
+                                    }
                                 }
                             }
                             Err(e) => {
                                 log::error!("ポーリングエラー: {}", e);
+                                if let Err(emit_err) = app_handle.emit("inbox-error", e.to_string()) {
+                                    log::error!("inbox-errorイベントの送信に失敗: {}", emit_err);
+                                }
                             }
                         }
                     }
