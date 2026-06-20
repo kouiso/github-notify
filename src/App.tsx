@@ -40,6 +40,9 @@ export default function App() {
   const [selectedFilterId, setSelectedFilterId] = useState<string | null>('dashboard');
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
+  // 強制ログインゲートを廃止したため、未連携でもアプリ本体を使える。
+  // 連携パネルは閉じられるオーバーレイとして出し、設定からも再度開ける。
+  const [connectDismissed, setConnectDismissed] = useState(false);
 
   const showOnboarding =
     auth.isAuthenticated &&
@@ -148,7 +151,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <div className="flex h-screen bg-background">
+      <div className="relative flex h-screen bg-background">
         <aside className="w-56 flex-shrink-0">
           <Sidebar
             items={scopedItems}
@@ -169,19 +172,7 @@ export default function App() {
 
         <main className="flex-1 min-w-0">
           <Suspense fallback={<LazyFallback />}>
-            {!auth.isAuthenticated ? (
-              <div className="flex h-full items-center justify-center p-8">
-                <ConnectGitHubPanel
-                  onStartDeviceFlow={auth.startDeviceFlow}
-                  onLoginWithToken={auth.loginWithToken}
-                  deviceFlow={auth.deviceFlow}
-                  isLoading={auth.isLoading}
-                  isPolling={auth.isPolling}
-                  error={auth.error}
-                  onCancelDeviceFlow={auth.cancelDeviceFlow}
-                />
-              </div>
-            ) : isDashboard ? (
+            {isDashboard ? (
               <Dashboard
                 filters={settings.customFilters}
                 onRefresh={inbox.refresh}
@@ -225,6 +216,31 @@ export default function App() {
           </Suspense>
         </main>
 
+        {!auth.isAuthenticated && !connectDismissed ? (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 p-8 backdrop-blur-sm">
+            <div className="relative">
+              <button
+                type="button"
+                className="absolute -top-3 -right-3 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-muted text-muted-foreground shadow hover:bg-muted/80"
+                onClick={() => setConnectDismissed(true)}
+                title="閉じる"
+                aria-label="閉じる"
+              >
+                ×
+              </button>
+              <ConnectGitHubPanel
+                onStartDeviceFlow={auth.startDeviceFlow}
+                onLoginWithToken={auth.loginWithToken}
+                deviceFlow={auth.deviceFlow}
+                isLoading={auth.isLoading}
+                isPolling={auth.isPolling}
+                error={auth.error}
+                onCancelDeviceFlow={auth.cancelDeviceFlow}
+              />
+            </div>
+          </div>
+        ) : null}
+
         <Suspense fallback={null}>
           <SettingsDialog
             open={settingsOpen}
@@ -240,7 +256,10 @@ export default function App() {
             initialEditFilterId={settingsInitialFilterId}
             initialTab={settingsInitialTab}
             knownRepos={knownRepos}
-            onOpenConnect={() => setSettingsOpen(false)}
+            onOpenConnect={() => {
+              setSettingsOpen(false);
+              setConnectDismissed(false);
+            }}
           />
 
           <OnboardingDialog open={showOnboarding} onComplete={() => setOnboardingDismissed(true)} />
