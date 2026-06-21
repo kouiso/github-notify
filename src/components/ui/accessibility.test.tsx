@@ -1,11 +1,10 @@
-// @vitest-environment jsdom
 /**
  * アクセシビリティ自動チェック (axe-core)
  *
  * 判定基準: axe-core の critical / serious 違反が 0 件
  * §3.4 要件: axe-core 自動チェック critical/serious 0
  *
- * axe-core は jsdom 環境が必要なため @vitest-environment jsdom を指定
+ * axe-core は DOM 環境が必要なため Vitest の既定 happy-dom 環境で実行する
  */
 import { createRequire } from 'node:module';
 import { render } from '@testing-library/react';
@@ -22,7 +21,7 @@ import { Spinner } from './spinner';
 /**
  * axe-core で critical/serious 違反がないことを検証するヘルパー
  * axe-core はCJS IIFEが `this` をグローバルとして使用するため、Vite の ESM 変換をバイパスして
- * createRequire で直接 CJS としてロードする。jsdom 環境下では window が存在するため動作する。
+ * createRequire で直接 CJS としてロードする。happy-dom 環境下では window が存在するため動作する。
  */
 async function expectNoA11yViolations(container: HTMLElement) {
   const require = createRequire(import.meta.url);
