@@ -3,6 +3,7 @@ import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { ConnectGitHubPanel } from '@/components/auth/connect-github-panel';
 import { InboxList } from '@/components/inbox';
 import { Sidebar } from '@/components/layout/sidebar';
+import { Button, Dialog, DialogContent, DialogTitle } from '@/components/ui';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { useAuth, useInbox, useSearchView, useSettings, useTheme } from '@/hooks';
 import { isGloballyExcluded } from '@/lib/filters/match-filter';
@@ -40,12 +41,14 @@ export default function App() {
   const [selectedFilterId, setSelectedFilterId] = useState<string | null>('dashboard');
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
+  const [connectDialogDismissed, setConnectDialogDismissed] = useState(false);
 
   const showOnboarding =
     auth.isAuthenticated &&
     !settingsLoading &&
     !settings.onboardingCompleted &&
     !onboardingDismissed;
+  const showConnectDialog = !auth.isAuthenticated && !connectDialogDismissed;
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -169,19 +172,7 @@ export default function App() {
 
         <main className="flex-1 min-w-0">
           <Suspense fallback={<LazyFallback />}>
-            {!auth.isAuthenticated ? (
-              <div className="flex h-full items-center justify-center p-8">
-                <ConnectGitHubPanel
-                  onStartDeviceFlow={auth.startDeviceFlow}
-                  onLoginWithToken={auth.loginWithToken}
-                  deviceFlow={auth.deviceFlow}
-                  isLoading={auth.isLoading}
-                  isPolling={auth.isPolling}
-                  error={auth.error}
-                  onCancelDeviceFlow={auth.cancelDeviceFlow}
-                />
-              </div>
-            ) : isDashboard ? (
+            {isDashboard ? (
               <Dashboard
                 filters={settings.customFilters}
                 onRefresh={inbox.refresh}
@@ -240,8 +231,41 @@ export default function App() {
             initialEditFilterId={settingsInitialFilterId}
             initialTab={settingsInitialTab}
             knownRepos={knownRepos}
-            onOpenConnect={() => setSettingsOpen(false)}
+            onOpenConnect={() => {
+              setSettingsOpen(false);
+              setConnectDialogDismissed(false);
+            }}
           />
+
+          <Dialog
+            open={showConnectDialog}
+            onOpenChange={(open) => setConnectDialogDismissed(!open)}
+          >
+            <DialogContent className="w-auto border-0 bg-transparent p-0 shadow-none">
+              <div className="relative">
+                <DialogTitle className="sr-only">GitHubアカウントを連携</DialogTitle>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="接続画面を閉じる"
+                  className="absolute right-2 top-2 z-10 h-8 w-8"
+                  onClick={() => setConnectDialogDismissed(true)}
+                >
+                  ×
+                </Button>
+                <ConnectGitHubPanel
+                  onStartDeviceFlow={auth.startDeviceFlow}
+                  onLoginWithToken={auth.loginWithToken}
+                  deviceFlow={auth.deviceFlow}
+                  isLoading={auth.isLoading}
+                  isPolling={auth.isPolling}
+                  error={auth.error}
+                  onCancelDeviceFlow={auth.cancelDeviceFlow}
+                />
+              </div>
+            </DialogContent>
+          </Dialog>
 
           <OnboardingDialog open={showOnboarding} onComplete={() => setOnboardingDismissed(true)} />
         </Suspense>

@@ -6,11 +6,13 @@ import { expect, test } from '@playwright/test';
  * クリーンインストール → ログイン完了まで途切れなし
  */
 test.describe('F11: Onboarding', () => {
-  test('初回起動でログイン画面が表示される', async ({ page }) => {
+  test('初回起動でログインオーバーレイが表示される', async ({ page }) => {
     await page.goto('/');
-    // 未認証状態ではオンボーディング/ログイン画面が表示
-    const loginScreen = page.locator('text=/ログイン|Login|GitHub で始める|Get Started/i').first();
-    await expect(loginScreen).toBeVisible({ timeout: 10_000 });
+
+    const overlay = page.getByRole('dialog', { name: 'GitHubアカウントを連携' });
+    await expect(overlay).toBeVisible({ timeout: 10_000 });
+    await expect(overlay.getByRole('button', { name: '接続画面を閉じる' })).toBeVisible();
+    await expect(page.locator('main')).toBeVisible();
   });
 
   test('オンボーディングダイアログが表示される（初回）', async ({ page }) => {
