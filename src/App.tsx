@@ -239,7 +239,12 @@ export default function App() {
 
           <Dialog
             open={showConnectDialog}
-            onOpenChange={(open) => setConnectDialogDismissed(!open)}
+            onOpenChange={(open) => {
+              setConnectDialogDismissed(!open);
+              if (!open) {
+                auth.cancelDeviceFlow();
+              }
+            }}
           >
             <DialogContent className="w-auto border-0 bg-transparent p-0 shadow-none">
               <div className="relative">
@@ -250,7 +255,10 @@ export default function App() {
                   size="icon"
                   aria-label="接続画面を閉じる"
                   className="absolute right-2 top-2 z-10 h-8 w-8"
-                  onClick={() => setConnectDialogDismissed(true)}
+                  onClick={() => {
+                    auth.cancelDeviceFlow();
+                    setConnectDialogDismissed(true);
+                  }}
                 >
                   ×
                 </Button>
