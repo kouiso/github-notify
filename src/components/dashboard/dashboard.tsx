@@ -46,7 +46,7 @@ export const Dashboard = ({
         q += ` org:${selectedRepo}`;
       }
       if (activeGroup && activeGroup.repositories.length > 0) {
-        q += ' ' + activeGroup.repositories.map((r) => `repo:${r}`).join(' ');
+        q += ` ${activeGroup.repositories.map((r) => `repo:${r}`).join(' ')}`;
       }
       return q;
     },

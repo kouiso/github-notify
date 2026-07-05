@@ -65,21 +65,20 @@ function DialogPortal({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function DialogOverlay({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+function DialogOverlay({ className, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) {
   const { onOpenChange } = useDialogContext();
 
   return (
-    <div
-      role="presentation"
+    <button
+      type="button"
+      aria-label="ダイアログを閉じる"
       className={cn(
-        'fixed inset-0 z-50 bg-black/80',
+        'fixed inset-0 z-50 bg-black/80 border-0 p-0',
         'data-[state=open]:animate-in data-[state=closed]:animate-out',
         'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
         className,
       )}
-      // Only close when the overlay itself was clicked, not when a click on
-      // DialogContent bubbles up to here. Lets us drop the previous
-      // stopPropagation on DialogContent that was killing global listeners.
+      // ダイアログ内部のクリックで閉じるのを避けるため、オーバーレイ自身だけを対象にする。
       onClick={(e) => {
         if (e.target === e.currentTarget) onOpenChange(false);
       }}
@@ -92,8 +91,7 @@ const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]';
 
 const getTabbables = (root: HTMLElement): HTMLElement[] => {
-  // querySelectorAll catches elements that are *focusable in principle*; filter
-  // out anything explicitly removed from the tab order via tabindex="-1".
+  // 原則フォーカス可能な要素を集めたうえで、明示的にタブ順から外したものを除外する。
   return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
     (el) => el.tabIndex !== -1,
   );
@@ -110,18 +108,13 @@ function DialogContent({
   const { open, onOpenChange } = useDialogContext();
   const contentRef = React.useRef<HTMLDivElement>(null);
   const previousFocusRef = React.useRef<HTMLElement | null>(null);
-  // Mirror onOpenChange in a ref so the effect below only fires on `open`
-  // changes, not on every parent re-render that recreates the handler. Without
-  // this, the effect would re-run on every render, bouncing focus back to the
-  // trigger element and breaking interactive dialog flows.
+  // 親の再レンダーでフォーカスをトリガーへ戻さないため、開閉処理は ref 経由で参照する。
   const onOpenChangeRef = React.useRef(onOpenChange);
   React.useEffect(() => {
     onOpenChangeRef.current = onOpenChange;
   }, [onOpenChange]);
 
-  // Focus trap + window-level Escape: WCAG 2.4.3 (Focus Order) + 2.1.2
-  // (No Keyboard Trap). Without this, Tab escapes the modal and Escape
-  // never fires because the overlay isn't focusable.
+  // モーダル外へ Tab が抜けたり Escape が効かなくなったりしないよう、文書全体で制御する。
   React.useEffect(() => {
     if (!open) return;
     const previousFocus = (document.activeElement as HTMLElement | null) ?? null;
@@ -132,17 +125,14 @@ function DialogContent({
       if (tabbables.length > 0) {
         tabbables[0].focus();
       } else {
-        // Fallback: focus the container itself so SR/keyboard users aren't
-        // left interacting with elements outside the modal (gemini #5954).
+        // フォーカス可能な子がない場合でも、支援技術がモーダル外へ戻らないようにする。
         content.focus();
       }
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        // preventDefault to suppress browser defaults (e.g. cancelling
-        // long-running fetch), stopPropagation to keep nested dialogs from
-        // closing their parents (gemini #5959).
+        // ブラウザ既定動作と親ダイアログへの伝播を抑え、意図しない多重クローズを防ぐ。
         event.preventDefault();
         event.stopPropagation();
         onOpenChangeRef.current(false);
@@ -169,7 +159,7 @@ function DialogContent({
     document.addEventListener('keydown', handleKeyDown);
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
-      // Restore focus to whatever element opened the dialog.
+      // 操作の文脈を失わないよう、開いた要素へフォーカスを戻す。
       previousFocusRef.current?.focus?.();
     };
   }, [open]);
@@ -183,8 +173,7 @@ function DialogContent({
           role="dialog"
           aria-modal="true"
           aria-labelledby={titleId}
-          // tabIndex={-1} lets us programmatically focus the container as a
-          // fallback when there are no focusable descendants (gemini #5954).
+          // フォーカス可能な子がない場合の退避先として、コンテナ自身をフォーカス可能にする。
           tabIndex={-1}
           className={cn(
             'fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%]',
