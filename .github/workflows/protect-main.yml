@@ -1,7 +1,11 @@
 name: Protect main branch
 
 on:
-  pull_request:
+  # WHY: fork PR では pull_request の GITHUB_TOKEN が read-only になり
+  # gh api でのコメント投稿が 403 になる。この workflow は PR コードを
+  # checkout せず metadata も env 経由でしか使わないため、
+  # pull_request_target への切替が安全に write 権限を確保する。
+  pull_request_target:
     branches: [main]
     types: [opened, reopened, edited, synchronize]
 
