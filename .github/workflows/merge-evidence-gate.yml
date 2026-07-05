@@ -15,6 +15,7 @@ jobs:
   merge-evidence-gate:
     name: Merge evidence gate
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
     steps:
       - name: Checkout repository
