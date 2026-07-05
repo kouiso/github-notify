@@ -1,8 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { formatRelativeTime } from '@/lib/utils/format-relative-time';
 import type { InboxItem, NotificationItem } from '@/types';
 import type { NotificationReason } from '@/types/settings';
-import { formatRelativeTime, InboxRow, SearchRow } from './inbox-item';
+import { InboxRow, SearchRow } from './inbox-item';
 
 const baseInboxItem: InboxItem = {
   id: 'thread-1',
