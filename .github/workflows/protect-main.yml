@@ -1,0 +1,96 @@
+name: Protect main branch
+
+on:
+  # WHY: fork PR では pull_request の GITHUB_TOKEN が read-only になり
+  # gh api でのコメント投稿が 403 になる。この workflow は PR コードを
+  # checkout せず metadata も env 経由でしか使わないため、
+  # pull_request_target への切替が安全に write 権限を確保する。
+  pull_request_target:
+    branches: [main]
+    types: [opened, reopened, edited, synchronize]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  check-branch:
+    name: Check branch policy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Enforce merge policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ github.head_ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          # WHY: このリポジトリは develop/staging を持たず、fix/* や chore/* から
+          # main へ直接 PR する運用（直近40 merged PR の実測: fix/*=21, chore/*=5,
+          # dependabot/*=3, docs/*=2 ほか）。移植元の許可リストのままだと通常 PR が
+          # 全部弾かれるため、実態のブランチ規約に合わせて許可する。
+          case "$HEAD_REF" in
+            develop|staging|release/*|hotfix/*|feat/*|feature/*|fix/*|chore/*|docs/*|test/*|refactor/*|perf/*|ci/*|dependabot/*|bot/*|claude/*)
+              echo "Allowed: $HEAD_REF -> main"
+              exit 0
+              ;;
+          esac
+
+          marker="<!-- protect-main-bot -->"
+          body_file="${RUNNER_TEMP}/protect-main-comment.md"
+          comments_file="${RUNNER_TEMP}/protect-main-comments.json"
+
+          cat > "$body_file" <<'COMMENT'
+          <!-- protect-main-bot -->
+          ## :warning: mainブランチへの直接PRは禁止です
+
+          `main` へPRを出せるのは以下のブランチのみです：
+
+          - `feat/*` / `feature/*`（機能追加）
+          - `fix/*`（バグ修正）
+          - `chore/*` / `docs/*` / `test/*` / `refactor/*` / `perf/*` / `ci/*`
+          - `dependabot/*` / `bot/*` / `claude/*`（自動生成）
+          - `hotfix/*` / `release/*` / `staging` / `develop`
+
+          上記以外のブランチ名で作業した場合は、規約に合う名前の
+          ブランチを切り直してPRを出し直してください：
+
+          ```bash
+          git switch -c fix/your-topic && git push -u origin HEAD
+          gh pr edit PR_NUMBER_PLACEHOLDER --head fix/your-topic
+          ```
+          COMMENT
+          sed -i "s/PR_NUMBER_PLACEHOLDER/${PR_NUMBER}/g" "$body_file"
+
+          gh api "repos/${REPOSITORY}/issues/${PR_NUMBER}/comments?per_page=100" > "$comments_file"
+          comment_id="$(
+            jq -r --arg marker "$marker" '
+              map(select(.user.login == "github-actions[bot]" and (.body | contains($marker))))
+              | first
+              | .id // empty
+            ' "$comments_file"
+          )"
+
+          if [[ -n "$comment_id" ]]; then
+            gh api \
+              --method PATCH \
+              "repos/${REPOSITORY}/issues/comments/${comment_id}" \
+              --field "body=@${body_file}"
+          else
+            gh api \
+              --method POST \
+              "repos/${REPOSITORY}/issues/${PR_NUMBER}/comments" \
+              --field "body=@${body_file}"
+          fi
+
+          echo "Disallowed: $HEAD_REF -> main"
+          exit 1

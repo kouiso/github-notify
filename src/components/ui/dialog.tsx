@@ -78,7 +78,7 @@ function DialogOverlay({ className, ...props }: React.ButtonHTMLAttributes<HTMLB
         'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
         className,
       )}
-      // ダイアログ内部のクリックで閉じるのを避けるため、オーバーレイ自身だけを対象にする。
+      // DialogContent内のクリックで閉じると操作中の入力を失うため、背景クリックだけ閉じる。
       onClick={(e) => {
         if (e.target === e.currentTarget) onOpenChange(false);
       }}
@@ -91,7 +91,7 @@ const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]';
 
 const getTabbables = (root: HTMLElement): HTMLElement[] => {
-  // 原則フォーカス可能な要素を集めたうえで、明示的にタブ順から外したものを除外する。
+  // tabindex="-1"は意図的にフォーカス順から外すため、候補取得後に除外する。
   return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
     (el) => el.tabIndex !== -1,
   );
@@ -108,13 +108,13 @@ function DialogContent({
   const { open, onOpenChange } = useDialogContext();
   const contentRef = React.useRef<HTMLDivElement>(null);
   const previousFocusRef = React.useRef<HTMLElement | null>(null);
-  // 親の再レンダーでフォーカスをトリガーへ戻さないため、開閉処理は ref 経由で参照する。
+  // 親の再レンダーでフォーカス復元が繰り返されないよう、最新ハンドラだけrefで参照する。
   const onOpenChangeRef = React.useRef(onOpenChange);
   React.useEffect(() => {
     onOpenChangeRef.current = onOpenChange;
   }, [onOpenChange]);
 
-  // モーダル外へ Tab が抜けたり Escape が効かなくなったりしないよう、文書全体で制御する。
+  // モーダル外へTab移動できるとキーボード利用者が文脈を失うため、フォーカスを閉じ込める。
   React.useEffect(() => {
     if (!open) return;
     const previousFocus = (document.activeElement as HTMLElement | null) ?? null;
@@ -125,14 +125,14 @@ function DialogContent({
       if (tabbables.length > 0) {
         tabbables[0].focus();
       } else {
-        // フォーカス可能な子がない場合でも、支援技術がモーダル外へ戻らないようにする。
+        // フォーカス可能な子がない場合も、支援技術の文脈をモーダル内に留める。
         content.focus();
       }
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        // ブラウザ既定動作と親ダイアログへの伝播を抑え、意図しない多重クローズを防ぐ。
+        // ブラウザ既定動作や親ダイアログへの伝播を避け、対象モーダルだけ閉じる。
         event.preventDefault();
         event.stopPropagation();
         onOpenChangeRef.current(false);
@@ -159,7 +159,7 @@ function DialogContent({
     document.addEventListener('keydown', handleKeyDown);
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
-      // 操作の文脈を失わないよう、開いた要素へフォーカスを戻す。
+      // 閉じた後に操作開始地点へ戻し、キーボード利用者が迷わないようにする。
       previousFocusRef.current?.focus?.();
     };
   }, [open]);
@@ -173,7 +173,7 @@ function DialogContent({
           role="dialog"
           aria-modal="true"
           aria-labelledby={titleId}
-          // フォーカス可能な子がない場合の退避先として、コンテナ自身をフォーカス可能にする。
+          // 子にフォーカス先がない場合もモーダル自身へ退避できるようにする。
           tabIndex={-1}
           className={cn(
             'fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%]',
