@@ -55,16 +55,18 @@ jobs:
 
           `main` へPRを出せるのは以下のブランチのみです：
 
-          - `hotfix/*`（ホットフィックス）
-          - `release/*`（リリース）
-          - `staging`（ステージングからのリリース）
-          - `develop`（リリースPR）
-          - `chore/port-hygiene-workflows-20260705`（このポリシー導入PRのみ）
+          - `feat/*` / `feature/*`（機能追加）
+          - `fix/*`（バグ修正）
+          - `chore/*` / `docs/*` / `test/*` / `refactor/*` / `perf/*` / `ci/*`
+          - `dependabot/*` / `bot/*` / `claude/*`（自動生成）
+          - `hotfix/*` / `release/*` / `staging` / `develop`
 
-          上記以外のブランチからは `develop` に向けて変更してください：
+          上記以外のブランチ名で作業した場合は、規約に合う名前の
+          ブランチを切り直してPRを出し直してください：
 
           ```bash
-          gh pr edit PR_NUMBER_PLACEHOLDER --base develop
+          git switch -c fix/your-topic && git push -u origin HEAD
+          gh pr edit PR_NUMBER_PLACEHOLDER --head fix/your-topic
           ```
           COMMENT
           sed -i "s/PR_NUMBER_PLACEHOLDER/${PR_NUMBER}/g" "$body_file"
