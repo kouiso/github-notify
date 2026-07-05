@@ -34,8 +34,12 @@ jobs:
         run: |
           set -euo pipefail
 
+          # WHY: このリポジトリは develop/staging を持たず、fix/* や chore/* から
+          # main へ直接 PR する運用（直近40 merged PR の実測: fix/*=21, chore/*=5,
+          # dependabot/*=3, docs/*=2 ほか）。移植元の許可リストのままだと通常 PR が
+          # 全部弾かれるため、実態のブランチ規約に合わせて許可する。
           case "$HEAD_REF" in
-            develop|staging|release/*|hotfix/*|chore/port-hygiene-workflows-20260705)
+            develop|staging|release/*|hotfix/*|feat/*|feature/*|fix/*|chore/*|docs/*|test/*|refactor/*|perf/*|ci/*|dependabot/*|bot/*|claude/*)
               echo "Allowed: $HEAD_REF -> main"
               exit 0
               ;;
