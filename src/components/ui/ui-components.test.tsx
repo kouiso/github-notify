@@ -300,9 +300,8 @@ describe('Dialog', () => {
       fireEvent.keyDown(document, { key: 'Escape' });
       expect(onOpenChange).toHaveBeenCalledWith(false);
 
-      const overlay = document.querySelector('[role="presentation"]');
-      expect(overlay).not.toBeNull();
-      fireEvent.click(overlay!);
+      const overlay = screen.getByRole('button', { name: 'ダイアログを閉じる' });
+      fireEvent.click(overlay);
       expect(onOpenChange).toHaveBeenCalledWith(false);
     });
 

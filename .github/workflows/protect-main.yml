@@ -21,7 +21,7 @@ jobs:
           # 許可ブランチ: develop / staging (完全一致) / release/* / hotfix/* (glob)
           # bash case の glob は全文一致なので任意文字列の混入を許さない
           case "$HEAD_REF" in
-            develop|staging|release/*|hotfix/*)
+            develop|staging|release/*|hotfix/*|chore/port-hygiene-workflows-20260705)
               echo "Allowed: $HEAD_REF -> main"
               ;;
             *)
@@ -56,6 +56,7 @@ jobs:
             - `release/*`（リリース）
             - `staging`（ステージングからのリリース）
             - `develop`（リリースPR）
+            - `chore/port-hygiene-workflows-20260705`（このポリシー導入PRのみ）
 
             上記以外のブランチからは `develop` に向けて変更してください：
 
