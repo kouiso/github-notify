@@ -19,6 +19,7 @@ jobs:
   frontend:
     name: Frontend ${{ matrix.check-type }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     strategy:
       fail-fast: false
@@ -80,6 +81,7 @@ jobs:
   audit-frontend:
     name: Frontend audit
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     steps:
       - name: Checkout repository
@@ -101,6 +103,7 @@ jobs:
   rust:
     name: Rust ${{ matrix.check-type }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     strategy:
       fail-fast: false
@@ -147,8 +150,9 @@ jobs:
             libasound2-dev
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
         with:
+          toolchain: stable
           components: rustfmt, clippy
 
       - name: Cache Rust dependencies
@@ -175,6 +179,7 @@ jobs:
   audit-rust:
     name: Rust audit
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     steps:
       - name: Checkout repository
