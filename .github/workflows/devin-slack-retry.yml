@@ -1,5 +1,5 @@
-# Devin 起動リクエストの定期リトライ（薄型 caller）。
-# 実体は kouiso/ritmo-devin の reusable workflow（中央実装・MAX_TRIES=3）。
+# Devin 起動リクエストの定期リトライ。
+# リポ毎に同じ実装を抱えると修正が点在するため、正本は ritmo-devin の reusable 側に寄せる
 name: Devin Slack Retry
 
 on:
