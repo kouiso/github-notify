@@ -572,7 +572,7 @@ async function sweepIssue(github, context, core, cfg, issue, labels, removeTrigg
 
   if (marker?.status === 'triggered' && marker?.ts) {
     // 遅延する Devin 応答を回収する。URLなら done。失敗なら pending。
-    // どちらも無い無応答が続く場合は tries を進め、上限で failed にして止める(自動で再投稿しない)。
+    // 無応答は「起動済みで作業中」の可能性が高い。再投稿すると重複セッションを量産するので、上限で failed にして人に委ねる。
     const r = await slackReplies(cfg, marker.ts);
     if (!r.ok) {
       // スレッドが消えているなら pending へ降格して次回新スレッドで再投稿させる
