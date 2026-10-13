@@ -16,7 +16,13 @@ jobs:
     name: Merge evidence gate
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
+    # edited はタイトル・base の変更でも発火するが、このゲートが読むのは PR 本文だけ。
+    # 本文の修正で再判定できなくなると証跡を足しても赤いままになるので edited 自体は残し、
+    # 本文が変わっていない edited だけをここで除外する
+    if: >
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.draft == false &&
+      (github.event.action != 'edited' || github.event.changes.body != null)
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
