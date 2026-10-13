@@ -20,7 +20,8 @@ concurrency:
 jobs:
   retry-devin:
     name: Retry pending Devin triggers
-    runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
+    # 公開リポは GitHub-hosted が無料。変数経由にすると Blacksmith を指された時に有料かつ待ちっぱなしになるので固定する。
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Checkout
