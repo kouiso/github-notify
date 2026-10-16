@@ -2,19 +2,11 @@ version: "3"
 
 tasks:
   ci:fast:
-    env:
-      CI: "true"
+    dir: "{{.TASKFILE_DIR}}"
     cmds:
-      - |
-        if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then
-          npm ci
-        else
-          pnpm install --frozen-lockfile
-        fi
-      - npm run lint
-      - npm run build
-      - npm test
+      - bash scripts/ci.sh fast
 
   ci:
+    dir: "{{.TASKFILE_DIR}}"
     cmds:
-      - task: ci:fast
+      - bash scripts/ci.sh all
