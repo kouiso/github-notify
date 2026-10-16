@@ -54,29 +54,27 @@ jobs:
 
       - name: Lint (Biome + ESLint)
         if: matrix.check-type == 'lint'
-        run: pnpm run lint
+        run: bash scripts/ci.sh frontend-lint
 
       - name: Typecheck
         if: matrix.check-type == 'typecheck'
-        run: pnpm run typecheck
+        run: bash scripts/ci.sh frontend-typecheck
 
       - name: Test
         if: matrix.check-type == 'test'
-        run: pnpm vitest run --coverage
+        run: bash scripts/ci.sh frontend-test
 
       - name: Install Playwright Chromium
         if: matrix.check-type == 'a11y-e2e'
-        run: pnpm exec playwright install --with-deps chromium
+        run: bash scripts/ci.sh frontend-browser-setup
 
       - name: Axe accessibility E2E
         if: matrix.check-type == 'a11y-e2e'
-        env:
-          VITE_E2E_AUTHENTICATED: 'true'
-        run: pnpm exec playwright test -c e2e/playwright.config.ts a11y.spec.ts
+        run: bash scripts/ci.sh frontend-a11y-e2e
 
       - name: Build
         if: matrix.check-type == 'build'
-        run: pnpm run build
+        run: bash scripts/ci.sh frontend-build
 
   audit-frontend:
     name: Frontend audit
@@ -98,7 +96,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Audit production dependencies
-        run: pnpm audit --prod --audit-level=high
+        run: bash scripts/ci.sh audit-frontend
 
   rust:
     name: Rust ${{ matrix.check-type }}
@@ -162,19 +160,19 @@ jobs:
 
       - name: Check formatting
         if: matrix.check-type == 'fmt'
-        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+        run: bash scripts/ci.sh rust-fmt
 
       - name: Clippy
         if: matrix.check-type == 'clippy'
-        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+        run: bash scripts/ci.sh rust-clippy
 
       - name: Test
         if: matrix.check-type == 'test'
-        run: cargo test --manifest-path src-tauri/Cargo.toml
+        run: bash scripts/ci.sh rust-test
 
       - name: Build
         if: matrix.check-type == 'build'
-        run: cargo build --manifest-path src-tauri/Cargo.toml
+        run: bash scripts/ci.sh rust-build
 
   audit-rust:
     name: Rust audit
@@ -193,4 +191,4 @@ jobs:
           tool: cargo-audit
 
       - name: Audit Rust dependencies
-        run: cargo audit --file src-tauri/Cargo.lock
+        run: bash scripts/ci.sh audit-rust
