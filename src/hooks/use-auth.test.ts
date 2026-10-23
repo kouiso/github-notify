@@ -297,7 +297,7 @@ describe('useAuth', () => {
       });
 
       expect(returnValue).toBe(false);
-      expect(result.current.error).toBe('Invalid token');
+      expect(result.current.error).toBe('トークンが無効です');
     });
 
     it('saveGitHubToken がエラーを投げた場合、false が返され error がセットされる', async () => {

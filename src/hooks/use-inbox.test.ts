@@ -215,7 +215,7 @@ describe('useInbox', () => {
       mockFetchInbox.mockRejectedValue('unknown');
       const { result } = renderHook(() => useInbox());
 
-      await waitFor(() => expect(result.current.error).toBe('Failed to fetch inbox'));
+      await waitFor(() => expect(result.current.error).toBe('Inboxの取得に失敗しました'));
     });
   });
 

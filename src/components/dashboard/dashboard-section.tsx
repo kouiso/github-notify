@@ -210,13 +210,6 @@ export const SearchItemList = ({
   );
 };
 
-const handleKeyDown = (onClick: () => void) => (e: React.KeyboardEvent) => {
-  if (e.key === 'Enter' || e.key === ' ') {
-    e.preventDefault();
-    onClick();
-  }
-};
-
 const SearchRow = ({
   item,
   showReviewDecision,
@@ -234,16 +227,14 @@ const SearchRow = ({
   const visibleLabels = item.labels.slice(0, 3);
 
   return (
-    <div
+    <button
+      type="button"
       className={cn(
-        'flex items-center gap-3 px-4 py-2.5 hover:bg-accent/30 cursor-pointer transition-colors border-b border-border/20 last:border-b-0',
+        'flex w-full appearance-none items-center gap-3 bg-transparent px-4 py-2.5 text-left hover:bg-accent/30 cursor-pointer transition-colors border-b border-border/20 last:border-b-0',
         urgency === 'critical' && 'bg-destructive/[0.04]',
         urgency === 'warning' && 'bg-[var(--color-gh-review)]/[0.04]',
       )}
-      role="button"
-      tabIndex={0}
       onClick={onClick}
-      onKeyDown={handleKeyDown(onClick)}
     >
       {showUrgency && (
         <div className="w-1.5 flex-shrink-0">
@@ -320,7 +311,7 @@ const SearchRow = ({
       <span className="text-[0.8125rem] text-muted-foreground flex-shrink-0 tabular-nums">
         {formatRelativeTime(item.updatedAt)}
       </span>
-    </div>
+    </button>
   );
 };
 

@@ -9,6 +9,7 @@ import {
   Input,
   Spinner,
 } from '@/components/ui';
+import { getDemoModeHref, isBrowserPreviewEnvironment } from '@/lib/demo-data';
 import type { DeviceFlowInfo } from '@/types';
 
 interface LoginScreenProps {
@@ -33,6 +34,7 @@ export function LoginScreen({
   const [showTokenInput, setShowTokenInput] = useState(false);
   const [token, setToken] = useState('');
   const [copied, setCopied] = useState(false);
+  const showDemoPreview = isBrowserPreviewEnvironment();
 
   const handleCopyCode = useCallback(async (code: string) => {
     await navigator.clipboard.writeText(code);
@@ -158,6 +160,15 @@ export function LoginScreen({
           <Button variant="outline" className="w-full" onClick={() => setShowTokenInput(true)}>
             Personal Access Tokenでログイン
           </Button>
+
+          {showDemoPreview && (
+            <a
+              href={getDemoModeHref()}
+              className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-[0.9375rem] font-semibold transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              デモプレビューを開く
+            </a>
+          )}
         </CardContent>
       </Card>
     </div>

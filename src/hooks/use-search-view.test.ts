@@ -195,7 +195,7 @@ describe('useSearchView', () => {
         await result.current.fetch('is:open');
       });
 
-      expect(result.current.error).toBe('Failed to fetch search results');
+      expect(result.current.error).toBe('検索結果の取得に失敗しました');
     });
 
     it('エラー発生後に isLoading が false になること', async () => {

@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
+import { createDemoSearchItems, isDemoMode } from '@/lib/demo-data';
 import * as commands from '@/lib/tauri/commands';
 import { logger } from '@/lib/utils/logger';
 import type { NotificationItem } from '@/types';
@@ -26,6 +27,19 @@ export function useSearchView() {
     lastRulesRef.current = issueStatusRules;
     setState((prev) => ({ ...prev, isLoading: true, error: null }));
     try {
+      if (isDemoMode()) {
+        const items = createDemoSearchItems(query);
+        if (lastQueryRef.current === query) {
+          setState({
+            items,
+            isLoading: false,
+            error: null,
+            lastUpdated: new Date(),
+          });
+        }
+        return;
+      }
+
       const items = await commands.fetchNotifications(query, issueStatusRules);
       // 後発のクエリで上書きされた場合は古い結果を反映しない
       if (lastQueryRef.current === query) {
@@ -41,7 +55,7 @@ export function useSearchView() {
         setState((prev) => ({
           ...prev,
           isLoading: false,
-          error: err instanceof Error ? err.message : 'Failed to fetch search results',
+          error: err instanceof Error ? err.message : '検索結果の取得に失敗しました',
         }));
       }
     }
@@ -54,6 +68,14 @@ export function useSearchView() {
   }, [fetch]);
 
   const markAsRead = useCallback(async (itemId: string) => {
+    if (isDemoMode()) {
+      setState((prev) => ({
+        ...prev,
+        items: prev.items.map((item) => (item.id === itemId ? { ...item, isRead: true } : item)),
+      }));
+      return;
+    }
+
     try {
       await commands.markAsRead(itemId);
       setState((prev) => ({
@@ -66,6 +88,14 @@ export function useSearchView() {
   }, []);
 
   const markAllAsRead = useCallback(async () => {
+    if (isDemoMode()) {
+      setState((prev) => ({
+        ...prev,
+        items: prev.items.map((item) => ({ ...item, isRead: true })),
+      }));
+      return;
+    }
+
     try {
       const itemIds = state.items.map((item) => item.id);
       await commands.markAllAsRead(itemIds);

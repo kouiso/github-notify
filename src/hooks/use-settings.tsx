@@ -1,4 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
+import { DEMO_REPOSITORY_GROUPS, isDemoMode } from '@/lib/demo-data';
 import { getAppSettings, saveAppSettings } from '@/lib/tauri/commands';
 import { logger } from '@/lib/utils/logger';
 import { type AppSettings, DEFAULT_SETTINGS, migrateDefaultFilters } from '@/types';
@@ -11,6 +12,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // Tauri環境外ではスキップ（ブラウザプレビュー対応）
     if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) {
+      if (isDemoMode()) {
+        setSettings((prev) => ({ ...prev, repositoryGroups: DEMO_REPOSITORY_GROUPS }));
+      }
       setIsLoading(false);
       return;
     }

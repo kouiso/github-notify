@@ -26,7 +26,7 @@ A desktop application for managing GitHub notifications, built with React and Ta
 
 ### 1. Install prerequisites
 
-- [Rust](https://www.rust-lang.org/tools/install) >= 1.77.2
+- [Rust](https://www.rust-lang.org/tools/install) >= 1.88.0
 - [mise](https://mise.jdx.dev/) (manages Node.js + pnpm)
 
 <details>

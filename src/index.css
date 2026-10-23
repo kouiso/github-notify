@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import "tailwindcss" source("../src");
 
 /* Theme configuration for Tailwind CSS v4 */
 @theme {

@@ -41,7 +41,7 @@ export function GroupManager({ groups, knownRepos, onSave }: GroupManagerProps) 
   };
 
   const handleSave = () => {
-    if (!editingGroup || !editingGroup.name.trim()) return;
+    if (!editingGroup?.name.trim()) return;
     const exists = groups.some((g) => g.id === editingGroup.id);
     const updated = exists
       ? groups.map((g) => (g.id === editingGroup.id ? editingGroup : g))

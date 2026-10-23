@@ -1,5 +1,6 @@
 import { open } from '@tauri-apps/plugin-shell';
 import { useCallback, useEffect, useState } from 'react';
+import { isDemoMode } from '@/lib/demo-data';
 import * as commands from '@/lib/tauri/commands';
 import { logger } from '@/lib/utils/logger';
 import type { DeviceFlowInfo } from '@/types';
@@ -37,7 +38,13 @@ export function useAuth() {
 
   const verifyToken = useCallback(async () => {
     if (!isTauriEnv()) {
-      setState((prev) => ({ ...prev, isLoading: false }));
+      const demo = isDemoMode();
+      setState((prev) => ({
+        ...prev,
+        isLoading: false,
+        isAuthenticated: demo,
+        user: demo ? { login: 'demo-user', avatarUrl: null } : null,
+      }));
       return;
     }
 
@@ -61,7 +68,7 @@ export function useAuth() {
         isLoading: false,
         isAuthenticated: false,
         user: null,
-        error: extractErrorMessage(err, 'Failed to verify token'),
+        error: extractErrorMessage(err, 'トークンの検証に失敗しました'),
       }));
     }
   }, []);
@@ -101,7 +108,7 @@ export function useAuth() {
         setState((prev) => ({
           ...prev,
           isPolling: false,
-          error: extractErrorMessage(err, 'Authentication failed'),
+          error: extractErrorMessage(err, '認証に失敗しました'),
         }));
       }
     };
@@ -138,7 +145,7 @@ export function useAuth() {
       setState((prev) => ({
         ...prev,
         isLoading: false,
-        error: extractErrorMessage(err, 'Failed to start authentication'),
+        error: extractErrorMessage(err, '認証の開始に失敗しました'),
       }));
       throw err;
     }
@@ -178,7 +185,7 @@ export function useAuth() {
         setState((prev) => ({
           ...prev,
           isLoading: false,
-          error: 'Invalid token',
+          error: 'トークンが無効です',
         }));
         return false;
       }
@@ -186,7 +193,7 @@ export function useAuth() {
       setState((prev) => ({
         ...prev,
         isLoading: false,
-        error: extractErrorMessage(err, 'Failed to save token'),
+        error: extractErrorMessage(err, 'トークンの保存に失敗しました'),
       }));
       return false;
     }

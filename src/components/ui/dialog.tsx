@@ -65,14 +65,15 @@ function DialogPortal({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function DialogOverlay({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+function DialogOverlay({ className, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) {
   const { onOpenChange } = useDialogContext();
 
   return (
-    <div
-      role="presentation"
+    <button
+      type="button"
+      aria-label="閉じる"
       className={cn(
-        'fixed inset-0 z-50 bg-black/80',
+        'fixed inset-0 z-50 appearance-none border-0 bg-black/80 p-0',
         'data-[state=open]:animate-in data-[state=closed]:animate-out',
         'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
         className,

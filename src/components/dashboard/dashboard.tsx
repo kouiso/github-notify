@@ -19,6 +19,23 @@ const resolveQuery = (query: string, userLogin?: string): string => {
   return query.replace(/@me\b/g, userLogin);
 };
 
+const getRepositoryFullName = (item: { repository: { owner: { login: string }; name: string } }) =>
+  `${item.repository.owner.login}/${item.repository.name}`;
+
+const matchesDashboardScope = (
+  item: { repository: { owner: { login: string }; name: string } },
+  selectedRepo: string,
+  activeGroup?: RepositoryGroup,
+) => {
+  if (selectedRepo !== 'all' && item.repository.owner.login !== selectedRepo) {
+    return false;
+  }
+  if (activeGroup && activeGroup.repositories.length > 0) {
+    return activeGroup.repositories.includes(getRepositoryFullName(item));
+  }
+  return true;
+};
+
 export const Dashboard = ({
   filters,
   onRefresh,
@@ -45,7 +62,7 @@ export const Dashboard = ({
         q += ` org:${selectedRepo}`;
       }
       if (activeGroup && activeGroup.repositories.length > 0) {
-        q += ' ' + activeGroup.repositories.map((r) => `repo:${r}`).join(' ');
+        q += ` ${activeGroup.repositories.map((r) => `repo:${r}`).join(' ')}`;
       }
       return q;
     },
@@ -77,6 +94,18 @@ export const Dashboard = ({
     return [...knownOrgsRef.current].sort();
   }, [needsReviewView.items, myPrsView.items]);
 
+  const scopedNeedsReviewItems = useMemo(
+    () =>
+      needsReviewView.items.filter((item) =>
+        matchesDashboardScope(item, selectedRepo, activeGroup),
+      ),
+    [needsReviewView.items, selectedRepo, activeGroup],
+  );
+  const scopedMyPrItems = useMemo(
+    () => myPrsView.items.filter((item) => matchesDashboardScope(item, selectedRepo, activeGroup)),
+    [myPrsView.items, selectedRepo, activeGroup],
+  );
+
   useEffect(() => {
     if (!repoDropdownOpen) return;
     const handleClick = (e: MouseEvent) => {
@@ -100,13 +129,6 @@ export const Dashboard = ({
 
   const isAnyLoading = needsReviewView.isLoading || myPrsView.isLoading;
 
-  const handleDropdownKeyDown = (handler: () => void) => (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      handler();
-    }
-  };
-
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-5 py-3 border-b border-border/50">
@@ -129,44 +151,34 @@ export const Dashboard = ({
             </button>
             {repoDropdownOpen && (
               <div className="absolute top-full left-0 mt-1 min-w-[10rem] rounded-md border border-border bg-popover shadow-lg z-20 py-1">
-                <div
-                  role="button"
-                  tabIndex={0}
+                <button
+                  type="button"
                   onClick={() => {
                     setSelectedRepo('all');
                     setRepoDropdownOpen(false);
                   }}
-                  onKeyDown={handleDropdownKeyDown(() => {
-                    setSelectedRepo('all');
-                    setRepoDropdownOpen(false);
-                  })}
                   className={cn(
                     'w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors cursor-pointer',
                     selectedRepo === 'all' && 'font-medium text-primary',
                   )}
                 >
                   すべて
-                </div>
+                </button>
                 {repoOrgs.map((org) => (
-                  <div
+                  <button
                     key={org}
-                    role="button"
-                    tabIndex={0}
+                    type="button"
                     onClick={() => {
                       setSelectedRepo(org);
                       setRepoDropdownOpen(false);
                     }}
-                    onKeyDown={handleDropdownKeyDown(() => {
-                      setSelectedRepo(org);
-                      setRepoDropdownOpen(false);
-                    })}
                     className={cn(
                       'w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors cursor-pointer',
                       selectedRepo === org && 'font-medium text-primary',
                     )}
                   >
                     {org}
-                  </div>
+                  </button>
                 ))}
               </div>
             )}
@@ -189,14 +201,14 @@ export const Dashboard = ({
           <HeroSection
             title="レビューするPR"
             subtitle="あなたがレビュワーに指定されていて、まだレビューしていないPRです"
-            count={needsReviewView.items.length}
+            count={scopedNeedsReviewItems.length}
             isLoading={needsReviewView.isLoading}
             error={needsReviewView.error}
             icon={<EyeIcon className="w-4 h-4" />}
             onSettings={onOpenReviewSettings}
           >
-            {needsReviewView.items.length > 0 && (
-              <SearchItemList items={needsReviewView.items} showReviewDecision showUrgency />
+            {scopedNeedsReviewItems.length > 0 && (
+              <SearchItemList items={scopedNeedsReviewItems} showReviewDecision showUrgency />
             )}
           </HeroSection>
         )}
@@ -205,13 +217,13 @@ export const Dashboard = ({
           <DashboardSection
             title="自分のPR"
             subtitle="自分が作成したオープン中のPRと、そのレビュー状況です"
-            count={myPrsView.items.length}
+            count={scopedMyPrItems.length}
             isLoading={myPrsView.isLoading}
             error={myPrsView.error}
             icon={<PRIcon className="w-3.5 h-3.5" />}
           >
-            {myPrsView.items.length > 0 && (
-              <SearchItemList items={myPrsView.items} showReviewDecision />
+            {scopedMyPrItems.length > 0 && (
+              <SearchItemList items={scopedMyPrItems} showReviewDecision />
             )}
           </DashboardSection>
         )}

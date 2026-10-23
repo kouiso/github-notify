@@ -1,5 +1,6 @@
-import { forwardRef, type KeyboardEvent, memo } from 'react';
+import { forwardRef, memo } from 'react';
 import { cn } from '@/lib/utils/cn';
+import { formatRelativeTime } from '@/lib/utils/format-relative-time';
 import type { InboxItem, NotificationItem } from '@/types';
 import { REASON_LABELS } from '@/types/settings';
 import { CheckIcon, IssueIcon, NotificationIcon, PRIcon } from './inbox-icons';
@@ -16,26 +17,10 @@ const REASON_COLORS: Record<string, { text: string; bg: string }> = {
 };
 
 const REVIEW_DECISION_CONFIG: Record<string, { label: string; color: string }> = {
-  APPROVED: { label: 'Approved', color: 'text-[var(--color-gh-done)]' },
-  CHANGES_REQUESTED: { label: 'Changes', color: 'text-[var(--color-gh-fail)]' },
-  REVIEW_REQUIRED: { label: 'Pending', color: 'text-[var(--color-gh-review)]' },
+  APPROVED: { label: '承認済み', color: 'text-[var(--color-gh-done)]' },
+  CHANGES_REQUESTED: { label: '修正依頼', color: 'text-[var(--color-gh-fail)]' },
+  REVIEW_REQUIRED: { label: 'レビュー待ち', color: 'text-[var(--color-gh-review)]' },
 };
-
-export function formatRelativeTime(dateString: string): string {
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
-
-  if (diffMins < 1) return 'たった今';
-  if (diffMins < 60) return `${diffMins}分前`;
-  if (diffHours < 24) return `${diffHours}時間前`;
-  if (diffDays < 7) return `${diffDays}日前`;
-
-  return date.toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' });
-}
 
 interface InboxRowProps {
   item: InboxItem;
@@ -45,13 +30,6 @@ interface InboxRowProps {
   onClick: () => void;
   onMarkAsDone: () => void;
 }
-
-const handleDivKeyDown = (onClick: () => void) => (e: KeyboardEvent<HTMLDivElement>) => {
-  if (e.key === 'Enter' || e.key === ' ') {
-    e.preventDefault();
-    onClick();
-  }
-};
 
 export const InboxRow = memo(
   forwardRef<HTMLDivElement, InboxRowProps>(
@@ -97,12 +75,10 @@ export const InboxRow = memo(
             )}
           </div>
 
-          <div
-            className="flex-1 min-w-0"
-            role="button"
-            tabIndex={0}
+          <button
+            type="button"
+            className="min-w-0 flex-1 appearance-none bg-transparent p-0 text-left"
             onClick={onClick}
-            onKeyDown={handleDivKeyDown(onClick)}
           >
             <span
               className={cn(
@@ -126,7 +102,7 @@ export const InboxRow = memo(
                 {reasonLabel}
               </span>
             </div>
-          </div>
+          </button>
 
           <span className="text-[0.8125rem] text-muted-foreground flex-shrink-0 tabular-nums">
             {formatRelativeTime(item.updatedAt)}
@@ -162,12 +138,10 @@ export const SearchRow = memo(({ item, onClick }: SearchRowProps) => {
   const reviewConfig = item.reviewDecision ? REVIEW_DECISION_CONFIG[item.reviewDecision] : null;
 
   return (
-    <div
-      className="inbox-row flex items-center gap-3 px-4 py-3 transition-colors cursor-pointer border-b border-border/30 hover:bg-accent/30"
-      role="button"
-      tabIndex={0}
+    <button
+      type="button"
+      className="inbox-row flex w-full appearance-none items-center gap-3 bg-transparent px-4 py-3 text-left transition-colors cursor-pointer border-b border-border/30 hover:bg-accent/30"
       onClick={onClick}
-      onKeyDown={handleDivKeyDown(onClick)}
     >
       <div className="flex-shrink-0">
         {isPR ? (
@@ -184,7 +158,7 @@ export const SearchRow = memo(({ item, onClick }: SearchRowProps) => {
           </span>
           {item.isDraft && (
             <span className="text-xs text-muted-foreground bg-accent px-1.5 py-0.5 rounded flex-shrink-0">
-              Draft
+              下書き
             </span>
           )}
         </div>
@@ -194,7 +168,7 @@ export const SearchRow = memo(({ item, onClick }: SearchRowProps) => {
           </span>
           {item.author && (
             <span className="text-[0.8125rem] text-muted-foreground/70 flex-shrink-0">
-              by @{item.author.login}
+              @{item.author.login}
             </span>
           )}
           {reviewConfig && (
@@ -208,7 +182,7 @@ export const SearchRow = memo(({ item, onClick }: SearchRowProps) => {
       <span className="text-[0.8125rem] text-muted-foreground flex-shrink-0 tabular-nums">
         {formatRelativeTime(item.updatedAt)}
       </span>
-    </div>
+    </button>
   );
 });
 

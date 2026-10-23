@@ -1,25 +1,39 @@
+import type { ComponentType } from 'react';
 import { Input } from '@/components/ui';
 import { cn } from '@/lib/utils/cn';
 import type { NotificationReason } from '@/types/settings';
 import { REASON_LABELS } from '@/types/settings';
-import { RefreshIcon } from './inbox-icons';
+import { BoardIcon, FocusIcon, ListIcon, RefreshIcon } from './inbox-icons';
 
 export type FilterType = 'all' | 'unread' | string;
+export type InboxViewMode = 'list' | 'board' | 'focus';
 
 const DEFAULT_FILTERS: { value: FilterType; label: string }[] = [
   { value: 'all', label: 'すべて' },
   { value: 'unread', label: '未読' },
 ];
 
+const VIEW_MODES: {
+  value: InboxViewMode;
+  label: string;
+  icon: ComponentType<{ className?: string }>;
+}[] = [
+  { value: 'list', label: '一覧', icon: ListIcon },
+  { value: 'board', label: 'カンバン', icon: BoardIcon },
+  { value: 'focus', label: '集中', icon: FocusIcon },
+];
+
 interface InboxListHeaderProps {
   isAllSelected: boolean;
   hasSelection: boolean;
   filter: FilterType;
+  viewMode: InboxViewMode;
   searchQuery: string;
   isLoading: boolean;
   onSelectAll: () => void;
   onMarkSelectedAsDone: () => void;
   onFilterChange: (filter: FilterType) => void;
+  onViewModeChange: (mode: InboxViewMode) => void;
   onSearchChange: (query: string) => void;
   onRefresh: () => void;
   isSearchMode?: boolean;
@@ -29,11 +43,13 @@ export function InboxListHeader({
   isAllSelected,
   hasSelection,
   filter,
+  viewMode,
   searchQuery,
   isLoading,
   onSelectAll,
   onMarkSelectedAsDone,
   onFilterChange,
+  onViewModeChange,
   onSearchChange,
   onRefresh,
   isSearchMode = false,
@@ -46,7 +62,7 @@ export function InboxListHeader({
           checked={isAllSelected}
           onChange={onSelectAll}
           className="flex-shrink-0"
-          title="Select all"
+          title="すべて選択"
         />
       )}
       {!isSearchMode && hasSelection ? (
@@ -55,7 +71,7 @@ export function InboxListHeader({
           onClick={onMarkSelectedAsDone}
           className="px-2.5 py-1 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded-md transition-colors"
         >
-          Done
+          完了
         </button>
       ) : !isSearchMode ? (
         <div className="flex items-center gap-0.5">
@@ -77,10 +93,32 @@ export function InboxListHeader({
         </div>
       ) : null}
       <div className="flex-1" />
+      {!isSearchMode && (
+        <div className="flex items-center rounded-md bg-accent/50 p-0.5">
+          {VIEW_MODES.map(({ value, label, icon: Icon }) => (
+            <button
+              type="button"
+              key={value}
+              onClick={() => onViewModeChange(value)}
+              className={cn(
+                'flex h-7 min-w-7 items-center justify-center gap-1.5 rounded px-2 text-xs transition-colors',
+                viewMode === value
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+              title={label}
+              aria-label={label}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              <span className="hidden lg:inline">{label}</span>
+            </button>
+          ))}
+        </div>
+      )}
       <div className="max-w-52">
         <Input
           type="search"
-          placeholder="Search..."
+          placeholder="検索..."
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
           className="h-8 text-sm border-0 bg-accent/50 focus-visible:ring-1"

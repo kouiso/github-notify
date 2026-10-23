@@ -9,6 +9,7 @@ import { Sidebar } from './sidebar';
 // useSettings をモック
 const mockUpdateSettings = vi.fn().mockResolvedValue(undefined);
 let mockSettings: AppSettings;
+let mockIsDemoMode = false;
 
 vi.mock('@/hooks', () => ({
   useSettings: () => ({
@@ -24,6 +25,10 @@ vi.mock('@/hooks', () => ({
 
 vi.mock('@/lib/utils/logger', () => ({
   logger: { error: vi.fn() },
+}));
+
+vi.mock('@/lib/demo-data', () => ({
+  isDemoMode: () => mockIsDemoMode,
 }));
 
 // crypto.randomUUID モック
@@ -76,6 +81,7 @@ const defaultProps = {
 describe('Sidebar', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockIsDemoMode = false;
     mockSettings = { ...DEFAULT_SETTINGS, customFilters: [] };
   });
 
@@ -83,6 +89,17 @@ describe('Sidebar', () => {
     it('GitHub Notify タイトルを表示する', () => {
       render(<Sidebar {...defaultProps} />);
       expect(screen.getByText('GitHub Notify')).toBeInTheDocument();
+    });
+
+    it('通常表示では DEMO バッジを表示しない', () => {
+      render(<Sidebar {...defaultProps} />);
+      expect(screen.queryByText('DEMO')).not.toBeInTheDocument();
+    });
+
+    it('demo preview では DEMO バッジを表示する', () => {
+      mockIsDemoMode = true;
+      render(<Sidebar {...defaultProps} />);
+      expect(screen.getByText('DEMO')).toBeInTheDocument();
     });
 
     it('Dashboard エントリが表示される', () => {

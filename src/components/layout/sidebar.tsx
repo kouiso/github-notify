@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Button, Dialog, DialogContent, DialogHeader, DialogTitle, Input } from '@/components/ui';
 import { useSettings } from '@/hooks';
+import { isDemoMode } from '@/lib/demo-data';
 import { matchesFilter } from '@/lib/filters/match-filter';
 import { cn } from '@/lib/utils/cn';
 import type { InboxItem } from '@/types';
@@ -153,9 +154,16 @@ export function Sidebar({
   return (
     <div className="flex flex-col h-full bg-card border-r border-border/50">
       <div className="px-4 py-2.5" data-tauri-drag-region>
-        <h1 className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">
-          GitHub Notify
-        </h1>
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">
+            GitHub Notify
+          </h1>
+          {isDemoMode() && (
+            <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[0.625rem] font-semibold text-amber-700 dark:text-amber-300">
+              DEMO
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto scrollbar-thin">

@@ -1,5 +1,6 @@
 import { listen } from '@tauri-apps/api/event';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createDemoInboxItems, isDemoMode } from '@/lib/demo-data';
 import * as commands from '@/lib/tauri/commands';
 import { logger } from '@/lib/utils/logger';
 import type { InboxItem } from '@/types';
@@ -73,10 +74,24 @@ export function useInbox() {
     };
   }, []);
 
+  const loadPreviewItems = useCallback(() => {
+    const demoItems = isDemoMode() ? createDemoInboxItems().filter(filterItem) : [];
+    previousIdsRef.current = new Set(demoItems.map((item) => item.id));
+    isFirstLoadRef.current = false;
+    setItems(demoItems);
+    setLastUpdated(new Date());
+    setIsLoading(false);
+  }, [filterItem]);
+
   const fetchItems = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
+      if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) {
+        loadPreviewItems();
+        return;
+      }
+
       const data = await commands.fetchInbox(false);
 
       if (!isMountedRef.current) return;
@@ -101,13 +116,13 @@ export function useInbox() {
       setLastUpdated(new Date());
     } catch (err) {
       if (!isMountedRef.current) return;
-      setError(err instanceof Error ? err.message : 'Failed to fetch inbox');
+      setError(err instanceof Error ? err.message : 'Inboxの取得に失敗しました');
     } finally {
       if (isMountedRef.current) {
         setIsLoading(false);
       }
     }
-  }, [sendDesktopNotification, filterItem]);
+  }, [sendDesktopNotification, filterItem, loadPreviewItems]);
 
   useEffect(() => {
     if (settingsLoaded) {
@@ -178,6 +193,13 @@ export function useInbox() {
   }, [filterItem]);
 
   const markAsRead = useCallback(async (threadId: string) => {
+    if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) {
+      setItems((prev) =>
+        prev.map((item) => (item.id === threadId ? { ...item, unread: false } : item)),
+      );
+      return;
+    }
+
     try {
       await commands.markInboxRead(threadId);
       setItems((prev) =>
@@ -189,6 +211,11 @@ export function useInbox() {
   }, []);
 
   const markAllAsRead = useCallback(async () => {
+    if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) {
+      setItems((prev) => prev.map((item) => ({ ...item, unread: false })));
+      return;
+    }
+
     try {
       await commands.markAllInboxRead();
       setItems((prev) => prev.map((item) => ({ ...item, unread: false })));
