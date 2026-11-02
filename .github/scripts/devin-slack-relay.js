@@ -1,4 +1,3 @@
- 
 // Devin Slack 起動リレーの共通ロジック。
 // devin-slack-trigger.yml (issues:labeled) と devin-slack-retry.yml (schedule) の両方から呼ばれる。
 //
