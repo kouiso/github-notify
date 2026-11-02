@@ -1,4 +1,4 @@
-/* eslint-disable no-undef -- github-script execution environment provides process/fetch/module globals */
+ 
 // Devin Slack 起動リレーの共通ロジック。
 // devin-slack-trigger.yml (issues:labeled) と devin-slack-retry.yml (schedule) の両方から呼ばれる。
 //
@@ -171,7 +171,12 @@ async function ensureLabel(github, repo, name, color, description) {
     // 既存ラベルの説明が古いままだと表示が実態とずれる。説明に差がある時だけ合わせる(色は手で変えられても触らない)
     const cur = await github.rest.issues.getLabel({ owner: repo.owner, repo: repo.repo, name });
     if ((cur.data.description || '') !== (description || '')) {
-      await github.rest.issues.updateLabel({ owner: repo.owner, repo: repo.repo, name, description });
+      await github.rest.issues.updateLabel({
+        owner: repo.owner,
+        repo: repo.repo,
+        name,
+        description,
+      });
     }
   }
 }
