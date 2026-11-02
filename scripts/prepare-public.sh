@@ -82,6 +82,7 @@ echo "  - openspec/**"
 echo "  - .github/instructions/**"
 echo "  - src-tauri/src/github/secrets.rs"
 echo "  - CLAUDE.md"
+echo "  - AGENTS.private.md"
 echo ""
 read -p "履歴の書き換えを実行しますか？ (y/N): " confirm2
 if [[ "$confirm2" != "y" && "$confirm2" != "Y" ]]; then
@@ -94,6 +95,7 @@ fi
 git filter-repo --force \
   --invert-paths \
   --path 'CLAUDE.md' \
+  --path 'AGENTS.private.md' \
   --path-glob '.claude/**' \
   --path-glob 'prompt/**' \
   --path-glob 'openspec/**' \
@@ -108,7 +110,7 @@ echo "以下を手動で実行してください:"
 echo "  1. git-crypt init"
 echo "  2. git-crypt add-gpg-user <YOUR-GPG-KEY-ID>"
 echo "  3. 暗号化対象ファイルを再追加:"
-echo "     git add CLAUDE.md .claude/ prompt/ openspec/ .github/instructions/ src-tauri/src/github/secrets.rs"
+echo "     git add AGENTS.private.md .claude/ prompt/ openspec/ .github/instructions/ src-tauri/src/github/secrets.rs"
 echo "     git commit -m 'chore: re-add encrypted files after history cleanup'"
 echo "  4. リモートへ force push:"
 echo "     git push --force-with-lease origin main"

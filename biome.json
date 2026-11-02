@@ -13,7 +13,7 @@
       "!target",
       "!src-tauri/gen",
       "!.claude",
-      "!CLAUDE.md",
+      "!AGENTS.private.md",
       "!prompt",
       "!openspec",
       "!.github/instructions",
