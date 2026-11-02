@@ -4,9 +4,16 @@ on:
   pull_request:
     paths:
       - 'AGENTS.md'
+      - 'AGENTS.private.md'
+      - 'CLAUDE.md'
+      - '**/CLAUDE.md'
+      - '.gitattributes'
+      - 'biome.json'
       - '.gemini/styleguide.md'
       - '.github/copilot-instructions.md'
       - 'scripts/sync-ai-rules.sh'
+      - 'scripts/test-ai-rules.sh'
+      - '.github/workflows/sync-ai-rules.yml'
 
 permissions:
   contents: read
@@ -27,6 +34,7 @@ jobs:
 
       - name: Check bridge files are in sync
         run: |
+          bash scripts/test-ai-rules.sh
           bash scripts/sync-ai-rules.sh
           git diff --exit-code .gemini/styleguide.md .github/copilot-instructions.md || {
             echo "DRIFT DETECTED: bridge files are out of sync with AGENTS.md. Fix: run bash scripts/sync-ai-rules.sh and commit"

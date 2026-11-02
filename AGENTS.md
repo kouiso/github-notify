@@ -5,6 +5,18 @@ Desktop notification app for GitHub events. Built with Tauri (Rust + TypeScript/
 > ⚠️ `.gemini/styleguide.md` and `.github/copilot-instructions.md` are auto-generated from this file
 > by `scripts/sync-ai-rules.sh`. Do NOT edit them directly.
 
+## Repository Instructions
+
+- This file is the single entry point. Also read the repository-root `AGENTS.private.md`
+  and the instruction files it references before working on this repository.
+- `AGENTS.private.md` preserves the existing repository instructions under git-crypt.
+  Use the existing authorized key to read it; if it is still encrypted, report the
+  access limitation instead of treating those instructions as absent.
+- Keep its contents encrypted in Git. Do not copy them into public documentation,
+  generated bridge files, logs, or PR descriptions.
+- The current stack, commands, and GitHub Project workflow below take precedence
+  over older descriptions in the preserved instructions.
+
 ## Tech Stack
 
 | Category | Technology |
