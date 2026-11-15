@@ -4,7 +4,7 @@
   "repo": "kouiso/brain",
   "issue": 110,
   "branch": "main",
-  "commit": "0c884750a7074e520944d99b99ed4ebb733e6c0f",
+  "commit": "151e113574de1d18a3856ee77806fa1291649ccd",
   "files": [
     {
       "path": ".github/scripts/text-checks/examples/README.md",
@@ -64,7 +64,7 @@
     {
       "path": ".github/scripts/text-checks/format_check.py",
       "source": "script/checks/format_check.py",
-      "sha256": "72e268266c4800c5f96d11ac154b96a9090ced7aacd9b76d8f568b231292ddfc"
+      "sha256": "6ca5447a4ba055050120b5c94b3c25e6e8fdd0b9edbefd4040c2f4b2443edfca"
     },
     {
       "path": ".github/scripts/text-checks/public_text_check.py",

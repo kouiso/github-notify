@@ -106,9 +106,12 @@ def is_empty(body):
     body = re.sub(r"<!--.*?-->", "", body, flags=re.S)
     # チェックボックスの印（[ ]・[x]）は中身の有無に関係ないので外す。
     # 外さないとフォーム初期値の「- [ ]」だけの欄が記入済みに見える。
+    # 小見出し行も外す。小見出しは sections で親の欄の中身に入るので、
+    # 見出しだけで本文が無い欄が記入済みに見えるのを防ぐため。
     rest = [
         re.sub(r"^\[\s*[xX]?\]\s*", "", ln.strip().lstrip("-*• ")).strip()
         for ln in body.splitlines()
+        if not HEADING.match(ln)
     ]
     return all(r.lower() in EMPTY_WORDS for r in rest)
 
