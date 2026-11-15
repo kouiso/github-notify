@@ -93,6 +93,10 @@ jobs:
               const fmt = checks.runFormatCheck(body, kind === 'issue' ? 'issue' : 'pr');
               await upsert('format', checks.formatReport('format', fmt, config), fmt.ok);
               if (!fmt.ok) failures.push(`書き方チェック: ${fmt.problems.length}件不足`);
+            } else {
+              // 対象外でも upsert は通す。対象になる前の指摘コメントが残り続けるのを防ぐため
+              const skipped = `${config.marker}:format\n書き方チェック: 対象外（ボット・下書き・対象外ラベルのため検査していません）`;
+              await upsert('format', skipped, true);
             }
 
             if (failures.length > 0) core.setFailed(failures.join(' / '));

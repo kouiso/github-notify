@@ -22,7 +22,8 @@ function shouldSkipFormat({ kind, author, labels = [], draft = false }, config) 
   return false;
 }
 
-// secret の中身（1行1語、# で始まる行は注釈）を runner の一時ファイルに書き、そのパスを返す。未設定なら null。
+// 追加の禁止語はリポにもログにも置かないので、secret の中身だけを runner の一時ファイルに書いて
+// 本体へはパスで渡す（1行1語、# で始まる行は注釈）。未設定なら null。
 function writeExtraFile(raw, dir) {
   if (!raw?.trim()) return null;
   const file = path.join(dir, `public-text-extra-${process.pid}.txt`);

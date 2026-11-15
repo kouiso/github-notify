@@ -20,12 +20,23 @@ import os
 import re
 import sys
 
+TOKEN_PREFIXES = ["figd_", "ghp_", "gho_", "ghs_", "ghu_", "ghr_", "github_pat_", "sk-ant-", "sk-", "AKIA", "xoxb-", "xoxp-",
+                  "cog_", "glpat-", "AIza", "npm_"]
+# npm の標準の環境変数名（npm_config_cache など）は鍵ではないので止めない。
+NPM_ENV_NAME_EXCLUDE = r"(?!npm_(?:config_|package_|lifecycle_|node_|execpath))"
+TOKEN_PREFIX_PATTERN = (r"(?<![A-Za-z0-9_])" + NPM_ENV_NAME_EXCLUDE + r"(?:"
+                        + "|".join(re.escape(x) for x in TOKEN_PREFIXES)
+                        + r")(?!(?<=sk-)ant-(?![A-Za-z0-9_\-]))(?:[A-Za-z0-9_\-]{4,}|\.\.\.|…)")
+
 RULES = [
     ("秘密の名前(大文字_TOKEN等)", r"\b[A-Z0-9]+(?:_[A-Z0-9]+)*_(TOKEN|KEY|SECRET|PASSWORD|PASS|CREDENTIALS?)\b"),
     ("秘密の名前(サービスアカウント)", r"(?i)op_service_account"),
     ("秘密の値(key=/token=)", r"(?i)\b(key|token|secret|password)\s*="),
     ("秘密の値(ops_)", r"ops_"),
     ("秘密の値(よくある鍵の形)", r"\b(ghp_|gho_|github_pat_|sk-|xox[abp]-|AKIA)[A-Za-z0-9_\-]{6,}"),
+    # 鍵の種類の頭。頭の後ろに 4 字以上、または「...」「…」が続けば、途中で切った形でも止める（brain #281）。
+    # 頭だけの語（「figd_ の PAT」など）は止めない。前に英数字・_ が付く語（task-list の sk- など）も止めない。
+    ("秘密の値(鍵の頭＋短い断片/省略)", TOKEN_PREFIX_PATTERN),
     ("秘密の値(秘密の言葉のすぐ後ろの長い並び)",
      r"(?i)\b(token|key|secret|password|passwd|api[_\-]?key)[\"']?(\s*[:=：]\s*|\s+)[\"']?(?=[A-Za-z0-9_\-+/=.]*\d)[A-Za-z0-9_\-+/=.]{16,}"),
     ("秘密の値(ハッシュの名前)", r"(?i)sha-?256"),

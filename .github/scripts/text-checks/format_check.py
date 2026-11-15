@@ -40,7 +40,7 @@ PR_SECTIONS = [
 LINK = re.compile(r"(?i)\b(close[sd]?|fix(e[sd])?|resolve[sd]?|refs?)\s+([\w.\-]+/[\w.\-]+)?#\d+")
 ISSUE_URL = re.compile(r"https?://github\.com/[\w.\-]+/[\w.\-]+/issues/\d+", re.I)
 HASH_ISSUE = re.compile(r"(^|[^A-Za-z0-9_])#\d+\b")
-HEADING = re.compile(r"^\s{0,3}#{1,6}\s+(.*?)\s*#*\s*$")
+HEADING = re.compile(r"^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$")
 EMPTY_WORDS = {"", "-", "ー", "なし", "未記入", "tbd", "todo", "n/a"}
 WIDTH = str.maketrans({
     "（": "(", "）": ")", "［": "[", "］": "]", "｛": "{", "｝": "}",
@@ -54,18 +54,30 @@ class ConfigError(ValueError):
 
 
 def sections(text):
-    """見出しごとに本文を分ける。返り値は {見出しの文字: 中身}。"""
-    out, current, buf = {}, None, []
+    """見出しごとに本文を分ける。返り値は {見出しの文字: 中身}。
+
+    小見出し（# が今開いている欄より深い行）はその行ごと直前の欄の中身に入れる。
+    欄の中身を小見出し以下に書く形で、親の欄が空扱いになるのを防ぐため。
+    同じ名前の見出しが2回出たら中身をつなげる。片方が空でもう片方に書いた形で、
+    先に出た空欄だけが残るのを防ぐため。
+    """
+    out, current, depth, buf = {}, None, 0, []
     for line in text.splitlines():
         m = HEADING.match(line)
         if m:
-            if current is not None:
-                out.setdefault(current, "\n".join(buf))
-            current, buf = m.group(1).strip(), []
+            level = len(m.group(1))
+            if current is None or level <= depth:
+                if current is not None:
+                    body = "\n".join(buf)
+                    out[current] = (out[current] + "\n" + body).strip("\n") if current in out else body
+                current, depth, buf = m.group(2).strip(), level, []
+            else:
+                buf.append(line)
         elif current is not None:
             buf.append(line)
     if current is not None:
-        out.setdefault(current, "\n".join(buf))
+        body = "\n".join(buf)
+        out[current] = (out[current] + "\n" + body).strip("\n") if current in out else body
     return out
 
 
@@ -92,7 +104,12 @@ def heading_matches(title, names):
 
 def is_empty(body):
     body = re.sub(r"<!--.*?-->", "", body, flags=re.S)
-    rest = [ln.strip().lstrip("-*• ").strip() for ln in body.splitlines()]
+    # チェックボックスの印（[ ]・[x]）は中身の有無に関係ないので外す。
+    # 外さないとフォーム初期値の「- [ ]」だけの欄が記入済みに見える。
+    rest = [
+        re.sub(r"^\[\s*[xX]?\]\s*", "", ln.strip().lstrip("-*• ")).strip()
+        for ln in body.splitlines()
+    ]
     return all(r.lower() in EMPTY_WORDS for r in rest)
 
 
