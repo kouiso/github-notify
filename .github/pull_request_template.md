@@ -1,6 +1,15 @@
-## Summary
+## 概要 / Summary
 
 -
+
+## 変更内容 / Changes
+
+-
+
+## 関連 Issue / Related Issue
+
+- Refs #
+- Closes #
 
 ## Notification-loss Prevention Contribution
 
