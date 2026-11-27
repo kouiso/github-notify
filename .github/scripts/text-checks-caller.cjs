@@ -167,13 +167,24 @@ function groupHits(hits) {
   return [...byRule.values()];
 }
 
+// 直し方の案内。コメントは編集しても履歴に元の文字が残るので削除を勧める。
+// レビューは送信後に削除できないため、本文の編集と履歴の扱いを案内する。
+function ngAdvice(sourceUrl, commentType) {
+  const head =
+    '公開リポに書いてはいけない形の文字が見つかりました。当たった文字はここには書きません。';
+  if (!sourceUrl) return `${head}本文を直してください。`;
+  if (commentType === 'review')
+    return `${head}レビューは削除できないため、レビュー本文を編集して直してください。編集しても履歴には元の文字が残って見えます。履歴の削除が必要な場合は、リポジトリの管理者に連絡してください。`;
+  return `${head}コメントは編集しても履歴に残るため、直すのではなくコメントを削除して書き直してください。`;
+}
+
 // sourceUrl はコメントの検査のときだけ渡す。どのコメントの話かを示すための URL で、本文の一部は載せない。
-function formatReport(kind, result, config, key = kind, sourceUrl = null) {
+function formatReport(kind, result, config, key = kind, sourceUrl = null, commentType = null) {
   const marker = `${config.marker}:${key}`;
   const source = sourceUrl ? [`対象のコメント: ${sourceUrl}`] : [];
   if (kind === 'public') {
-    if (result.ok)
-      return [marker, ...source, '公開内容チェック: OK（当たった規則はありません）'].join('\n');
+    // OK の知らせは本文だけ。コメントは OK になったら知らせごと消すので、URL つきの OK は作らない。
+    if (result.ok) return `${marker}\n公開内容チェック: OK（当たった規則はありません）`;
     const rows = groupHits(result.hits).map(
       (g) => `- ${g.rule}: ${g.count}件、${g.lines.join('・')}行目`,
     );
@@ -181,9 +192,7 @@ function formatReport(kind, result, config, key = kind, sourceUrl = null) {
       marker,
       ...source,
       '公開内容チェック: 要確認',
-      sourceUrl
-        ? '公開リポに書いてはいけない形の文字が見つかりました。当たった文字はここには書きません。コメントは編集しても履歴に残るため、直すのではなくコメントを削除して書き直してください。'
-        : '公開リポに書いてはいけない形の文字が見つかりました。当たった文字はここには書きません。本文を直してください。',
+      ngAdvice(sourceUrl, commentType),
       ...rows,
     ].join('\n');
   }
@@ -196,11 +205,16 @@ function formatReport(kind, result, config, key = kind, sourceUrl = null) {
 }
 
 // 知らせのコメントを探す。作者と目印の鍵が完全に一致するものだけ。別の作者が同じ目印を書いても編集・削除しない。
-function findNotice(existing, config, key) {
+function findNotices(existing, config, key) {
   const marker = `${config.marker}:${key}`;
-  return existing.find(
-    (c) => c.user?.login === NOTICE_AUTHOR && (c.body || '').startsWith(`${marker}\n`),
-  );
+  return existing
+    .filter((c) => c.user?.login === NOTICE_AUTHOR && (c.body || '').startsWith(`${marker}\n`))
+    .sort((x, y) => x.id - y.id);
+}
+
+// 同時に走った実行が同じ知らせを2つ作ることがあるので、一番古い1つを本物として使い、残りは重複として消す。
+function findNotice(existing, config, key) {
+  return findNotices(existing, config, key)[0];
 }
 
 async function deleteNotice({ github, context, core, found }) {
@@ -216,9 +230,11 @@ async function deleteNotice({ github, context, core, found }) {
 }
 
 // 同じ目印の知らせがあれば更新、なければ「要確認」のときだけ新規に作る。
-async function upsertNotice({ github, context, core, existing, config, number }, key, text, ok) {
+async function upsertNotice(env, key, text, ok) {
+  const { github, context, core, existing, config, number } = env;
   const { owner, repo } = context.repo;
-  const found = findNotice(existing, config, key);
+  const [found, ...duplicates] = findNotices(existing, config, key);
+  for (const dup of duplicates) await deleteNotice({ ...env, found: dup });
   if (found) {
     if (found.body === text) return;
     await writeOrWarn(
@@ -233,22 +249,28 @@ async function upsertNotice({ github, context, core, existing, config, number },
   }
 }
 
+// そのコメントの知らせを、重複も含めてすべて消す。
+async function deleteAllNotices(env, key) {
+  for (const found of findNotices(env.existing, env.config, key))
+    await deleteNotice({ ...env, found });
+}
+
 // コメントは公開内容チェックだけ。編集履歴に元の文字が残るので、直ったときは知らせ自体を消して履歴を増やさない。
 async function checkComment(env, { body, comment }, deleted) {
   const key = commentKey(comment);
-  const found = findNotice(env.existing, env.config, key);
   // コメントが消えたら、そのコメントの知らせも消す。本文の検査はしない。
   if (deleted) {
-    if (found) await deleteNotice({ ...env, found });
+    await deleteAllNotices(env, key);
     env.core.info('コメントが削除されたので、検査せず知らせだけ整理しました。');
     return [];
   }
   const pub = runPublicCheck(body, { extraFile: env.extraFile });
   if (pub.ok) {
-    if (found) await deleteNotice({ ...env, found });
+    await deleteAllNotices(env, key);
     return [];
   }
-  await upsertNotice(env, key, formatReport('public', pub, env.config, key, comment.url), false);
+  const report = formatReport('public', pub, env.config, key, comment.url, comment.type);
+  await upsertNotice(env, key, report, false);
   return [publicFailure(pub)];
 }
 
@@ -491,6 +513,7 @@ module.exports = {
   RELAY_ARTIFACT,
   RELAY_FILE,
   findNotice,
+  findNotices,
   parseRelayPayload,
   unzipRelay,
   resolveRelayTarget,

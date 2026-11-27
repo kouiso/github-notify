@@ -355,10 +355,6 @@ describe('コメントの検査（ループ防止・鍵・知らせる文）', (
     // コメントは編集では履歴に残るので、直すのではなく削除を案内する
     expect(ng).toContain('コメントを削除して書き直してください');
     expect(ng).not.toContain('本文を直してください');
-    const ok = caller.formatReport('public', { ok: true, hits: [], notices: [] }, config, key, url);
-    expect(ok).toBe(
-      `${config.marker}:${key}\n対象のコメント: ${url}\n公開内容チェック: OK（当たった規則はありません）`,
-    );
     // 本文の知らせは今まで通り（URL の行が増えない）
     expect(
       caller.formatReport('public', { ok: true, hits: [], notices: [] }, config, 'public-body'),
@@ -370,6 +366,22 @@ describe('コメントの検査（ループ防止・鍵・知らせる文）', (
       'public-body',
     );
     expect(bodyNg).toContain('本文を直してください');
+  });
+
+  test('formatReport: レビューは削除できないので、本文の編集と履歴の扱いを案内する', () => {
+    const key = caller.commentKey({ id: 31, type: 'review' });
+    const ng = caller.formatReport(
+      'public',
+      caller.runPublicCheck(join('連絡先は someone', '@', 'example.com')),
+      config,
+      key,
+      'https://example.test/r/31',
+      'review',
+    );
+    expect(ng).toContain('レビュー本文を編集して直してください');
+    expect(ng).toContain('履歴には元の文字が残って見えます');
+    expect(ng).toContain('リポジトリの管理者に連絡してください');
+    expect(ng).not.toContain('コメントを削除して書き直してください');
   });
 
   test('作り物の秘密・メールを含むコメントは赤、ふつうの文は緑', () => {
@@ -581,6 +593,67 @@ describe('run: コメントの検査', () => {
   test('別の鍵（id が前方一致するだけ）の知らせは自分のものとして扱わない', async () => {
     const f = fakes({ comments: [noticeOf(5, 'public-comment-issue_comment-111')] });
     await exec(f, commentEvent('直しました', { action: 'edited' }));
+    expect(f.calls.delete).toHaveLength(0);
+  });
+});
+
+describe('run: 重複した知らせ', () => {
+  test('同じ鍵の知らせが複数あれば、一番古いものを更新し、残りを消す', async () => {
+    const f = fakes({
+      comments: [
+        noticeOf(30, 'public-comment-issue_comment-11', '重複2'),
+        noticeOf(10, 'public-comment-issue_comment-11', '古い'),
+        noticeOf(20, 'public-comment-issue_comment-11', '重複1'),
+      ],
+    });
+    await exec(f, commentEvent(email, { action: 'edited' }));
+    expect(f.calls.update.map((c) => c.comment_id)).toEqual([10]);
+    expect(f.calls.delete.map((c) => c.comment_id).sort()).toEqual([20, 30]);
+    expect(f.calls.create).toHaveLength(0);
+  });
+
+  test('本文の知らせの重複も、古い1つを残して消す', async () => {
+    const f = fakes({
+      comments: [
+        noticeOf(2, 'public-body', '公開内容チェック: 要確認'),
+        noticeOf(1, 'public-body', '古い'),
+      ],
+    });
+    await exec(f, issueEvent('ふつうの文'));
+    expect(f.calls.update.map((c) => c.comment_id)).toEqual([1]);
+    expect(f.calls.delete.map((c) => c.comment_id)).toEqual([2]);
+  });
+
+  test('OK や削除のときは、重複も含めてすべて消す', async () => {
+    const comments = [
+      noticeOf(1, 'public-comment-issue_comment-11'),
+      noticeOf(2, 'public-comment-issue_comment-11'),
+    ];
+    for (const action of ['edited', 'deleted']) {
+      const f = fakes({ comments });
+      await exec(f, commentEvent(action === 'deleted' ? email : '直しました', { action }));
+      expect(f.calls.delete.map((c) => c.comment_id).sort()).toEqual([1, 2]);
+    }
+  });
+
+  test('重複の削除が 404（別の実行が先に消した）でも失敗にしない', async () => {
+    const f = fakes({
+      comments: [noticeOf(1, 'public-body'), noticeOf(2, 'public-body')],
+      failWith: { delete: 404 },
+    });
+    await exec(f, issueEvent('ふつうの文'));
+    expect(f.logs.warning).toHaveLength(0);
+    expect(f.logs.failed).toHaveLength(0);
+  });
+
+  test('他の作者の同じ目印は重複として消さない', async () => {
+    const f = fakes({
+      comments: [
+        noticeOf(1, 'public-body'),
+        noticeOf(2, 'public-body', '偽', { login: 'mallory' }),
+      ],
+    });
+    await exec(f, issueEvent('ふつうの文'));
     expect(f.calls.delete).toHaveLength(0);
   });
 });
