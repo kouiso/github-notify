@@ -423,6 +423,13 @@ describe('コメントの検査（ループ防止・鍵・知らせる文）', (
         throw limited429;
       }, warn),
     ).rejects.toThrow('429');
+    // 429 はヘッダーが無くてもレート制限
+    const bare429 = Object.assign(new Error('Too Many Requests'), { status: 429 });
+    await expect(
+      caller.writeOrWarn(async () => {
+        throw bare429;
+      }, warn),
+    ).rejects.toThrow('Too Many Requests');
     // 残りがあるなら権限の 403 として警告にする
     const withRemaining = Object.assign(new Error('perm'), {
       status: 403,
@@ -448,10 +455,12 @@ describe('コメントの検査（ループ防止・鍵・知らせる文）', (
 describe('長い行と検査の時間切れ', () => {
   const token = join('gh', 'p_', 'EXAMPLEONLY0000');
   const direct = (text) => {
+    // runCli と同じく、親の環境の設定が本体の挙動を変えないよう外す
+    const { PUBLIC_TEXT_EXTRA_FILE: _extra, TEXT_CHECKS_CONFIG: _config, ...env } = process.env;
     const r = spawnSync(
       'python3',
       [path.join(caller.CHECKS_DIR, 'public_text_check.py'), '--json'],
-      { input: text, encoding: 'utf8' },
+      { input: text, encoding: 'utf8', env },
     );
     return JSON.parse(r.stdout);
   };
@@ -533,6 +542,18 @@ describe('時間切れ・出力・行番号の上限', () => {
     expect(caller.cliFailure('x.py', { status: null }).message).toContain('終了コード／原因: 不明');
   });
 
+  test('isRateLimited: 429 は常に制限、403 は制限の兆候があるときだけ', () => {
+    expect(caller.isRateLimited({ status: 429 })).toBe(true);
+    expect(caller.isRateLimited({ status: 403 })).toBe(false);
+    expect(
+      caller.isRateLimited({ status: 403, message: 'Resource not accessible by integration' }),
+    ).toBe(false);
+    expect(
+      caller.isRateLimited({ status: 403, response: { headers: { 'retry-after': '1' } } }),
+    ).toBe(true);
+    expect(caller.isRateLimited({ status: 403, message: 'secondary rate limit' })).toBe(true);
+  });
+
   test('コマンドを起動できないなどの異常は、要確認にせず投げる', () => {
     const saved = process.env.PATH;
     process.env.PATH = '/nonexistent';
@@ -609,8 +630,10 @@ function fakes({
   pulls = {},
   actions = {},
   live = [],
+  liveBodies = {},
   fetchFail = null,
   onCreate = () => undefined,
+  onDelete = () => undefined,
 } = {}) {
   const calls = {
     list: 0,
@@ -624,7 +647,8 @@ function fakes({
   const fetchOne = (type, id) => async () => {
     calls.fetched.push(`${type}:${id}`);
     if (fetchFail) throw fetchFail;
-    if (live.includes(`${type}:${id}`)) return { data: {} };
+    const key = `${type}:${id}`;
+    if (live.includes(key) || key in liveBodies) return { data: { body: liveBodies[key] } };
     throw Object.assign(new Error('Not Found'), { status: 404 });
   };
   const maybeFail = (name) => {
@@ -674,6 +698,7 @@ function fakes({
         deleteComment: async (p) => {
           maybeFail('delete');
           calls.delete.push(p);
+          onDelete(p);
         },
       },
       pulls: {
@@ -1062,21 +1087,31 @@ describe('中継（workflow_run）と総ざらい', () => {
       expect(created(f)).toEqual(['public-comment-review_comment-21']);
     });
 
-    test('番号が一致したら、同じ sha を head にする別の PR（base 違い）も一緒に見る', async () => {
+    test('番号が一致したら、ヒント無しのときと同じ判定で、同じ head の別の PR も一緒に見る', async () => {
+      const newer = { ...HEAD, sha: 'newer' };
+      const otherBranch = { sha: 'zzz', ref: 'other', repo: { full_name: 'forker/r' } };
       const f = relayFakes({
         prs: { 9: pr(9) },
         lists: {
-          pulls: [pr(9), pr(10), pr(11, { ...HEAD, sha: 'other' })],
+          pulls: [
+            pr(9),
+            pr(10, newer), // 同じブランチの開いた PR（sha は進んでいる）
+            pr(11, newer, 'closed'), // 閉じていて sha が違うものは取り違えうるので除く
+            pr(12, HEAD, 'closed'), // 閉じていても sha が完全に一致すれば見る
+            pr(13, otherBranch), // 別のブランチ
+          ],
           'reviews:10': [rv(101, email)],
           'reviews:11': [rv(111, email)],
+          'reviews:12': [rv(121, email)],
+          'reviews:13': [rv(131, email)],
         },
       });
       await go(f);
       const swept = f.calls.paginated
         .filter((c) => c.key === 'reviews')
         .map((c) => c.params.pull_number);
-      expect(swept).toEqual([9, 10]);
-      expect(created(f)).toEqual(['public-comment-review-101']);
+      expect(swept).toEqual([9, 10, 12]);
+      expect(created(f).sort()).toEqual(['public-comment-review-101', 'public-comment-review-121']);
       expect(f.calls.paginated.find((c) => c.key === 'pulls').params).toMatchObject({
         state: 'all',
         head: 'forker:feature',
@@ -1643,12 +1678,121 @@ describe('中継（workflow_run）と総ざらい', () => {
         extraFile: null,
         clock: ALIGNED_CLOCK,
       });
-      expect(created(f)).toEqual([
-        'public-comment-review_comment-44',
-        'public-comment-review_comment-42',
-        'public-comment-review_comment-43',
-        'public-comment-review-41',
-      ]);
+      // 先頭は最も新しい投稿。残りは毎時ずらした位置から回す
+      const expected = caller
+        .orderWithinPr([44, 42, 43, 41], ALIGNED_HOUR, 4)
+        .map((id) =>
+          id === 41 ? 'public-comment-review-41' : `public-comment-review_comment-${id}`,
+        );
+      expect(created(f)).toEqual(expected);
+      expect(created(f)[0]).toBe('public-comment-review_comment-44');
+    });
+
+    test('PR の中の並び: 先頭は最新のまま、残りは毎時ずれて、どの投稿も2番目に検査される時間がある', () => {
+      const items = [100, 99, 98, 97, 96];
+      const secondSeen = new Set();
+      for (let h = ALIGNED_HOUR; h < ALIGNED_HOUR + 60; h++) {
+        const order = caller.orderWithinPr(items, h, 4);
+        expect(order[0]).toBe(100);
+        expect([...order].sort((a, b) => b - a)).toEqual(items);
+        // 残りは元の順の回転（並びの前後関係は崩さない）
+        const rest = order.slice(1);
+        const start = items.indexOf(rest[0]);
+        expect(rest).toEqual(
+          [...items.slice(1), ...items.slice(1)].slice(start - 1, start - 1 + 4),
+        );
+        secondSeen.add(order[1]);
+      }
+      expect([...secondSeen].sort()).toEqual([96, 97, 98, 99]);
+      // 2件以下はそのまま
+      expect(caller.orderWithinPr([2, 1], ALIGNED_HOUR, 4)).toEqual([2, 1]);
+    });
+
+    describe('OK のときは、消す前に今の本文を取り直す', () => {
+      const run1 = (f) =>
+        caller.run({
+          github: f.github,
+          context: ctx('schedule', {}),
+          core: f.core,
+          config,
+          extraFile: null,
+          clock: ALIGNED_CLOCK,
+        });
+      const notice = noticeOf(70, 'public-comment-review_comment-21', '要確認');
+
+      test('取り直しても OK なら消す', async () => {
+        const f = fakes({
+          comments: [notice],
+          liveBodies: { 'review_comment:21': '直した' },
+          lists: { 'pulls:open': [pr(4)], 'reviewComments:4': [rc(21, '直した')] },
+        });
+        await run1(f);
+        expect(f.calls.fetched).toContain('review_comment:21');
+        expect(f.calls.delete.map((c) => c.comment_id)).toEqual([70]);
+      });
+
+      test('一覧のあとに編集されて NG になっていたら、消さずに知らせを更新して NG として返す', async () => {
+        const f = fakes({
+          comments: [notice],
+          liveBodies: { 'review_comment:21': email },
+          lists: { 'pulls:open': [pr(4)], 'reviewComments:4': [rc(21, '直した')] },
+        });
+        await run1(f);
+        expect(f.calls.delete).toHaveLength(0);
+        expect(f.calls.update.map((c) => c.comment_id)).toEqual([70]);
+        expect(f.calls.update[0].body).toContain('メールアドレス');
+        expect(f.logs.warning.some((m) => m.includes('PR #4'))).toBe(true);
+      });
+
+      test('取り直しが 404 なら、消えたものとして知らせを消す', async () => {
+        const f = fakes({
+          comments: [notice],
+          lists: { 'pulls:open': [pr(4)], 'reviewComments:4': [rc(21, '直した')] },
+        });
+        await run1(f);
+        expect(f.calls.delete.map((c) => c.comment_id)).toEqual([70]);
+      });
+
+      test('知らせが無ければ取り直さない', async () => {
+        const f = fakes({
+          lists: { 'pulls:open': [pr(4)], 'reviewComments:4': [rc(21, '直した')] },
+        });
+        await run1(f);
+        expect(f.calls.fetched).toHaveLength(0);
+      });
+
+      test('取り直しが 404 以外で失敗したら消さず、その PR を失敗にする', async () => {
+        const f = fakes({
+          comments: [notice],
+          fetchFail: Object.assign(new Error('boom'), { status: 500 }),
+          lists: { 'pulls:open': [pr(4)], 'reviewComments:4': [rc(21, '直した')] },
+        });
+        await run1(f);
+        expect(f.calls.delete).toHaveLength(0);
+        expect(f.logs.failed[0]).toContain('#4');
+      });
+    });
+
+    test('片づけの途中で時間切れになったら止めて、その PR を片づけ途中として報告する', async () => {
+      const { st, clock } = mk();
+      const f = fakes({
+        comments: { 4: [stale(70, 98), stale(71, 97), stale(72, 96)] },
+        lists: { pulls: [pr(4)] },
+        onDelete: () => {
+          st.t = DEAD;
+        },
+      });
+      await caller.run({
+        github: f.github,
+        context: ctx('schedule', {}),
+        core: f.core,
+        config,
+        extraFile: null,
+        clock,
+      });
+      expect(f.calls.delete.map((c) => c.comment_id)).toEqual([70]);
+      expect(f.logs.failed).toEqual(['時間切れのため未確認の PR: #4（片づけ途中）']);
+      expect(f.logs.warning.some((m) => m.includes('片づけが途中'))).toBe(true);
     });
 
     test('時間内に終わるなら、いつもどおり片づけまで行う', async () => {

@@ -87,7 +87,9 @@ function shouldSkipComment({ author }) {
 function isRateLimited(err) {
   const h = err?.response?.headers || {};
   // 二次レート制限はヘッダーが付かないことがあるので、メッセージでも見る。
+  // 429 はヘッダーの有無にかかわらずレート制限。403 は権限不足のこともあるので、制限の兆候があるときだけそうみなす。
   return (
+    err?.status === 429 ||
     h['retry-after'] !== undefined ||
     String(h['x-ratelimit-remaining']) === '0' ||
     /rate limit/i.test(err?.message || '')
@@ -101,7 +103,7 @@ async function writeOrWarn(write, warn) {
     await write();
     return true;
   } catch (err) {
-    if ((err?.status === 403 || err?.status === 429) && !isRateLimited(err)) {
+    if (err?.status === 403 && !isRateLimited(err)) {
       warn(
         `知らせのコメントの書き込みが ${err.status} で拒否されたため、作れませんでした（権限不足の可能性）。判定は有効です。`,
       );
@@ -371,7 +373,7 @@ async function deleteAllNotices(env, key) {
 }
 
 // コメントは公開内容チェックだけ。編集履歴に元の文字が残るので、直ったときは知らせ自体を消して履歴を増やさない。
-async function checkComment(env, { body, comment }, deleted) {
+async function checkComment(env, { body, comment }, deleted, { recheck = false } = {}) {
   const key = commentKey(comment);
   // コメントが消えたら、そのコメントの知らせも消す。本文の検査はしない。
   if (deleted) {
@@ -379,7 +381,18 @@ async function checkComment(env, { body, comment }, deleted) {
     env.core.info('コメントが削除されたので、検査せず知らせだけ整理しました。');
     return [];
   }
-  const pub = runPublicCheck(body, { extraFile: env.extraFile });
+  let pub = runPublicCheck(body, { extraFile: env.extraFile });
+  if (pub.ok && recheck && findNotices(env.existing, env.config, key).length > 0) {
+    // 一覧を取ってから検査するまでに編集されていることがあるので、知らせを消す前に今の本文を取り直して見る。
+    // 取り直しから削除までの間の小さな競合は残る（今の並行グループでは完全には直列にできない）。
+    const fresh = await fetchSource(env, env.number, comment.type, comment.id);
+    if (fresh.gone) {
+      await deleteAllNotices(env, key);
+      return [];
+    }
+    if (fresh.body !== (body ?? null))
+      pub = runPublicCheck(fresh.body, { extraFile: env.extraFile });
+  }
   if (pub.ok) {
     await deleteAllNotices(env, key);
     return [];
@@ -565,10 +578,9 @@ async function findPullsForRun(args) {
         })
       : [];
   if (hinted === null) return listed.filter(sameHead).map((pr) => pr.number);
-  // 同じコミットを head にする別の PR（base 違い）の実行は、同じ sha の並行グループで打ち切られうる。
-  // どの実行が残っても全部の PR を見るよう、1回の実行でまとめて見る。
-  const sameSha = listed.filter((pr) => run.head_sha && pr.head?.sha === run.head_sha);
-  return [...new Set([hinted, ...sameSha.map((pr) => pr.number)])];
+  // 同じ head の別の PR（base 違い）の実行は、同じ並行グループで打ち切られうる。どの実行が残っても全部の PR を見るよう、
+  // ヒントが無いときと同じ判定（開いた PR は同じブランチ、閉じた PR は sha の完全一致）で、1回の実行にまとめて見る。
+  return [...new Set([hinted, ...listed.filter(sameHead).map((pr) => pr.number)])];
 }
 
 const RELAY_WORKFLOW_PATH = '.github/workflows/text-checks-review-relay.yml';
@@ -584,19 +596,22 @@ function pastDeadline({ clock, deadline }) {
 const NOTICE_KEY_RE = /^public-comment-(review|review_comment)-(\d+)$/;
 
 // 一覧のページがずれて取りこぼしただけで知らせを消さないよう、消す前に元を1件ずつ取り直し、404 のときだけ消す。
-async function sourceIsGone({ github, context }, number, type, id) {
+async function fetchSource({ github, context }, number, type, id) {
   const { owner, repo } = context.repo;
   try {
-    if (type === 'review') {
-      await github.rest.pulls.getReview({ owner, repo, pull_number: number, review_id: id });
-    } else {
-      await github.rest.pulls.getReviewComment({ owner, repo, comment_id: id });
-    }
-    return false;
+    const res =
+      type === 'review'
+        ? await github.rest.pulls.getReview({ owner, repo, pull_number: number, review_id: id })
+        : await github.rest.pulls.getReviewComment({ owner, repo, comment_id: id });
+    return { gone: false, body: res.data?.body ?? null };
   } catch (err) {
-    if (err?.status === 404) return true;
+    if (err?.status === 404) return { gone: true, body: null };
     throw err;
   }
+}
+
+async function sourceIsGone(env, number, type, id) {
+  return (await fetchSource(env, number, type, id)).gone;
 }
 
 // PR のレビューとレビューコメントをすべて取り直して検査し、元が無くなった知らせを片づける。
@@ -611,26 +626,27 @@ async function sweepPull(args, number) {
   const reviewComments = await list(github.rest.pulls.listReviewComments, { pull_number: number });
   const env = { github, context, core, config, extraFile, existing, number };
 
-  // 新しいものから検査する。時間切れで途中までになっても、起こしたばかりの投稿は先に見られる。
+  // 新しい投稿を先頭にして、残りは毎時ずらした位置から検査する。時間切れで途中までになっても、起こしたばかりの投稿は先に見られ、
+  // 古い投稿もいつまでも後回しにならない。
+  const hourIndex = Math.floor(args.clock() / 3_600_000);
   const stamp = (x) => Date.parse(x.updated_at ?? x.submitted_at ?? x.created_at) || 0;
-  const sources = [
+  const newestFirst = [
     ...reviews.map((x) => ({ type: 'review', x })),
     ...reviewComments.map((x) => ({ type: 'review_comment', x })),
-  ]
-    .sort((a, b) => stamp(b.x) - stamp(a.x))
-    .map(({ type, x }) => ({
-      number,
-      body: x.body ?? null,
-      author: x.user?.login ?? null,
-      comment: { id: x.id, url: x.html_url, type },
-    }));
+  ].sort((a, b) => stamp(b.x) - stamp(a.x));
+  const sources = orderWithinPr(newestFirst, hourIndex, number).map(({ type, x }) => ({
+    number,
+    body: x.body ?? null,
+    author: x.user?.login ?? null,
+    comment: { id: x.id, url: x.html_url, type },
+  }));
 
   const failures = [];
   for (const [i, target] of sources.entries()) {
     // 時間切れで途中までのときは、確認していない分の知らせを「元が無い」と誤って消さないよう、片づけもしない。
     if (pastDeadline(args)) return { failures, left: sources.length - i };
     if (shouldSkipComment(target)) continue;
-    failures.push(...(await checkComment(env, target, false)));
+    failures.push(...(await checkComment(env, target, false, { recheck: true })));
   }
 
   // 消えたレビューコメントは消えたことを知らせる手段が無いので、知らせはここで片づける。issue コメントの知らせには触らない。
@@ -641,10 +657,12 @@ async function sweepPull(args, number) {
     const key = c.body.slice(prefix.length).split('\n', 1)[0];
     const m = NOTICE_KEY_RE.exec(key);
     if (!m || live.has(key)) continue;
+    // 片づけ1件ごとに API を呼ぶので、時間切れならここで止めて、片づけが途中であることを報告する。
+    if (pastDeadline(args)) return { failures, left: 0, cleanupCut: true };
     if (await sourceIsGone(env, number, m[1], Number(m[2])))
       await deleteNotice({ ...env, found: c });
   }
-  return { failures, left: 0 };
+  return { failures, left: 0, cleanupCut: false };
 }
 
 // 1つの PR の失敗で残りを止めない。失敗した PR は最後にまとめて落とす。レート制限だけは続けても無駄なのですぐ投げる。
@@ -661,10 +679,14 @@ async function sweepEach(args, numbers, { failOnNg }) {
       break;
     }
     try {
-      const { failures, left } = await sweepPull(args, number);
+      const { failures, left, cleanupCut } = await sweepPull(args, number);
       if (left > 0) {
         core.warning(`PR #${number}: 時間切れで残り ${left} 件のコメントが未確認です。`);
         unchecked.push(`#${number}（途中まで）`);
+      }
+      if (cleanupCut) {
+        core.warning(`PR #${number}: 時間切れで古い知らせの片づけが途中です。`);
+        unchecked.push(`#${number}（片づけ途中）`);
       }
       if (failures.length === 0) continue;
       core.warning(`PR #${number}: ${failures.join(' / ')}`);
@@ -709,18 +731,28 @@ async function runRelay(args) {
 
 // 時間切れで打ち切られても同じ末尾の PR がいつも未確認にならないよう、毎時、番号をハッシュで並べ替える。
 // 時刻だけで決まるので同じ時間なら同じ順になる。ずらすだけの回し方では PR どうしの順が固定され、重い PR の直後の PR がいつも後回しになるため、順そのものを毎時変える。
+function hourHash(hourIndex, n) {
+  let h = 0x811c9dc5;
+  for (const ch of `${hourIndex}:${n}`) {
+    h = Math.imul(h ^ ch.charCodeAt(0), 0x01000193) >>> 0;
+  }
+  // 末尾の1文字しか違わない入力でも並びが散るよう、最後に混ぜる（murmur3 の仕上げ）。
+  h = Math.imul(h ^ (h >>> 16), 0x85ebca6b);
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+  return (h ^ (h >>> 16)) >>> 0;
+}
+
 function sweepOrder(numbers, hourIndex) {
-  const hash = (n) => {
-    let h = 0x811c9dc5;
-    for (const ch of `${hourIndex}:${n}`) {
-      h = Math.imul(h ^ ch.charCodeAt(0), 0x01000193) >>> 0;
-    }
-    // 末尾の1文字しか違わない入力でも並びが散るよう、最後に混ぜる（murmur3 の仕上げ）。
-    h = Math.imul(h ^ (h >>> 16), 0x85ebca6b);
-    h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
-    return (h ^ (h >>> 16)) >>> 0;
-  };
-  return [...numbers].sort((a, b) => hash(a) - hash(b) || a - b);
+  return [...numbers].sort((a, b) => hourHash(hourIndex, a) - hourHash(hourIndex, b) || a - b);
+}
+
+// 1つの PR の中では、いちばん新しい投稿を先頭に置き、残りは毎時ずらした位置から回す。
+// 先頭が新しい順のままだと、時間切れの PR で古い投稿がいつまでも未確認になるため。
+function orderWithinPr(items, hourIndex, number) {
+  if (items.length <= 2) return [...items];
+  const [newest, ...rest] = items;
+  const offset = hourHash(hourIndex, number) % rest.length;
+  return [newest, ...rest.slice(offset), ...rest.slice(0, offset)];
 }
 
 // 中継が動かなかった（衝突・初回の承認待ち・中継の削除）ぶんは、定期の総ざらいで拾う。開いた PR と、最近閉じた・最近レビューコメントが動いた PR が対象。
@@ -793,6 +825,7 @@ async function run(input) {
 module.exports = {
   timedOut,
   sweepOrder,
+  orderWithinPr,
   cliFailure,
   CHECKS_DIR,
   HEADINGS_CONFIG,
