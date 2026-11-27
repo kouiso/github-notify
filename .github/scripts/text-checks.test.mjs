@@ -456,7 +456,9 @@ describe('長い行と検査の時間切れ', () => {
   const token = join('gh', 'p_', 'EXAMPLEONLY0000');
   const direct = (text) => {
     // runCli と同じく、親の環境の設定が本体の挙動を変えないよう外す
-    const { PUBLIC_TEXT_EXTRA_FILE: _extra, TEXT_CHECKS_CONFIG: _config, ...env } = process.env;
+    const env = Object.fromEntries(
+      Object.entries(process.env).filter(([k]) => !caller.INHERITED_BLOCKLIST.has(k)),
+    );
     const r = spawnSync(
       'python3',
       [path.join(caller.CHECKS_DIR, 'public_text_check.py'), '--json'],
@@ -619,6 +621,15 @@ const ALIGNED_HOUR = 493_087;
 const ALIGNED_NOW = ALIGNED_HOUR * 3_600_000;
 const ALIGNED_CLOCK = () => ALIGNED_NOW;
 
+// fakes の lists から、種類と id で一覧に載せたレビュー・レビューコメントを探す。
+function findListed(lists, type, id) {
+  const prefix = type === 'review' ? 'reviews' : 'reviewComments';
+  const arrays = Object.entries(lists)
+    .filter(([k, v]) => (k === prefix || k.startsWith(`${prefix}:`)) && Array.isArray(v))
+    .flatMap(([, v]) => v);
+  return arrays.find((x) => x.id === id);
+}
+
 const listFn = (key) => Object.assign(() => undefined, { key });
 
 // lists は一覧 API ごとの返り値。`キー:番号` があればその PR 専用、なければ `キー` を使う。
@@ -632,6 +643,7 @@ function fakes({
   live = [],
   liveBodies = {},
   fetchFail = null,
+  gone = [],
   onCreate = () => undefined,
   onDelete = () => undefined,
 } = {}) {
@@ -648,7 +660,11 @@ function fakes({
     calls.fetched.push(`${type}:${id}`);
     if (fetchFail) throw fetchFail;
     const key = `${type}:${id}`;
+    if (gone.includes(key)) throw Object.assign(new Error('Not Found'), { status: 404 });
     if (live.includes(key) || key in liveBodies) return { data: { body: liveBodies[key] } };
+    // 指定が無ければ、一覧に載せたものは一覧のときの本文のまま存在するものとして返す（一覧に無いものは 404）
+    const hit = findListed(lists, type, id);
+    if (hit) return { data: { body: hit.body } };
     throw Object.assign(new Error('Not Found'), { status: 404 });
   };
   const maybeFail = (name) => {
@@ -1565,8 +1581,8 @@ describe('中継（workflow_run）と総ざらい', () => {
         [3, '31'],
         [4, '41'],
       ]);
-      // 検査していないコメントがあるので、元が無いかどうかの確認も削除もしない
-      expect(f.calls.fetched).toHaveLength(0);
+      // 検査していないコメントがあるので、元が無いかどうかの確認も削除もしない（取り直すのは検査した NG の2件だけ）
+      expect(f.calls.fetched).toEqual(['review:31', 'review:41']);
       expect(f.calls.delete).toHaveLength(0);
       expect(
         f.calls.paginated.filter((c) => c.key === 'reviews').map((c) => c.params.pull_number),
@@ -1688,24 +1704,53 @@ describe('中継（workflow_run）と総ざらい', () => {
       expect(created(f)[0]).toBe('public-comment-review_comment-44');
     });
 
-    test('PR の中の並び: 先頭は最新のまま、残りは毎時ずれて、どの投稿も2番目に検査される時間がある', () => {
+    test('PR の中の並び: 先頭は最新のまま、残りは1時間ごとに1つずれ、残りの件数ぶんの時間で全員が2番目を務める', () => {
       const items = [100, 99, 98, 97, 96];
-      const secondSeen = new Set();
-      for (let h = ALIGNED_HOUR; h < ALIGNED_HOUR + 60; h++) {
-        const order = caller.orderWithinPr(items, h, 4);
-        expect(order[0]).toBe(100);
-        expect([...order].sort((a, b) => b - a)).toEqual(items);
-        // 残りは元の順の回転（並びの前後関係は崩さない）
-        const rest = order.slice(1);
-        const start = items.indexOf(rest[0]);
-        expect(rest).toEqual(
-          [...items.slice(1), ...items.slice(1)].slice(start - 1, start - 1 + 4),
-        );
-        secondSeen.add(order[1]);
+      const rest = items.slice(1);
+      for (const number of [4, 7, 1234]) {
+        const seconds = [];
+        for (let h = ALIGNED_HOUR; h < ALIGNED_HOUR + rest.length; h++) {
+          const order = caller.orderWithinPr(items, h, number);
+          expect(order[0]).toBe(100);
+          expect([...order].sort((a, b) => b - a)).toEqual(items);
+          // 残りは元の順の回転（並びの前後関係は崩さない）
+          const start = rest.indexOf(order[1]);
+          expect(order.slice(1)).toEqual([...rest.slice(start), ...rest.slice(0, start)]);
+          seconds.push(order[1]);
+        }
+        // 連続した件数ぶんの時間で、全員がちょうど1回ずつ2番目になる
+        expect([...seconds].sort()).toEqual([96, 97, 98, 99]);
       }
-      expect([...secondSeen].sort()).toEqual([96, 97, 98, 99]);
       // 2件以下はそのまま
       expect(caller.orderWithinPr([2, 1], ALIGNED_HOUR, 4)).toEqual([2, 1]);
+    });
+
+    test('中継の総ざらいは並べ替えず、新しい順のまま検査する', async () => {
+      const posts = [
+        rc(1, email, { updated_at: '2026-01-01T01:00:00Z' }),
+        rc(2, email, { updated_at: '2026-01-01T05:00:00Z' }),
+        rc(3, email, { updated_at: '2026-01-01T03:00:00Z' }),
+        rc(4, email, { updated_at: '2026-01-01T02:00:00Z' }),
+        rc(5, email, { updated_at: '2026-01-01T04:00:00Z' }),
+      ];
+      for (const hour of [0, 1, 2, 3, 4]) {
+        const f = relayFakes({
+          prs: { 9: pr(9) },
+          lists: { 'reviewComments:9': posts },
+        });
+        await caller.run({
+          github: f.github,
+          context: f.context,
+          core: f.core,
+          config,
+          extraFile: null,
+          tmpDir: dir,
+          clock: () => (ALIGNED_HOUR + hour) * 3_600_000,
+        });
+        expect(created(f)).toEqual(
+          [2, 5, 3, 4, 1].map((id) => `public-comment-review_comment-${id}`),
+        );
+      }
     });
 
     describe('OK のときは、消す前に今の本文を取り直す', () => {
@@ -1747,6 +1792,7 @@ describe('中継（workflow_run）と総ざらい', () => {
       test('取り直しが 404 なら、消えたものとして知らせを消す', async () => {
         const f = fakes({
           comments: [notice],
+          gone: ['review_comment:21'],
           lists: { 'pulls:open': [pr(4)], 'reviewComments:4': [rc(21, '直した')] },
         });
         await run1(f);
@@ -1791,8 +1837,106 @@ describe('中継（workflow_run）と総ざらい', () => {
         clock,
       });
       expect(f.calls.delete.map((c) => c.comment_id)).toEqual([70]);
-      expect(f.logs.failed).toEqual(['時間切れのため未確認の PR: #4（片づけ途中）']);
+      // 見ていない PR とは別の言い方で報告する（検査は終わっていて、古い知らせの片づけだけが途中）
+      expect(f.logs.failed).toEqual(['片づけが途中の PR: #4']);
       expect(f.logs.warning.some((m) => m.includes('片づけが途中'))).toBe(true);
+    });
+
+    test('レート制限で止めるときは、見られなかった PR とここまでの結果を報告してから投げ直す', async () => {
+      const f = fakes({
+        lists: {
+          'pulls:open': [pr(3), pr(4), pr(5)],
+          'reviewComments:3': [rc(31, email)],
+          'reviews:4': () => {
+            throw Object.assign(new Error('API rate limit exceeded'), { status: 403 });
+          },
+        },
+      });
+      await expect(
+        caller.run({
+          github: f.github,
+          context: ctx('schedule', {}),
+          core: f.core,
+          config,
+          extraFile: null,
+          clock: ALIGNED_CLOCK,
+        }),
+      ).rejects.toThrow('rate limit');
+      expect(f.calls.create.map((c) => c.issue_number)).toEqual([3]);
+      expect(f.logs.failed).toHaveLength(1);
+      expect(f.logs.failed[0]).toContain('時間切れのため未確認の PR: #4, #5');
+      expect(f.logs.failed[0]).toContain('レート制限のため中断しました');
+    });
+
+    describe('NG のときも、書く前に今の本文を取り直す', () => {
+      const run2 = (f) =>
+        caller.run({
+          github: f.github,
+          context: ctx('schedule', {}),
+          core: f.core,
+          config,
+          extraFile: null,
+          clock: ALIGNED_CLOCK,
+        });
+      const base = { lists: { 'pulls:open': [pr(4)], 'reviewComments:4': [rc(21, email)] } };
+      const reportFor = (body) =>
+        caller.formatReport(
+          'public',
+          caller.runPublicCheck(body),
+          config,
+          'public-comment-review_comment-21',
+          'https://example.test/rc/21',
+          'review_comment',
+        );
+
+      test('今も NG なら知らせを作る', async () => {
+        const f = fakes(base);
+        await run2(f);
+        expect(f.calls.fetched).toEqual(['review_comment:21']);
+        expect(created(f)).toEqual(['public-comment-review_comment-21']);
+      });
+
+      test('取り直すと直っていたら、知らせを作らない', async () => {
+        const f = fakes({ ...base, liveBodies: { 'review_comment:21': '直した' } });
+        await run2(f);
+        expect(f.calls.create).toHaveLength(0);
+        expect(f.logs.warning.some((m) => m.includes('PR #4'))).toBe(false);
+      });
+
+      test('取り直すと直っていたら、古い知らせは消す', async () => {
+        const f = fakes({
+          ...base,
+          comments: [noticeOf(70, 'public-comment-review_comment-21', '古い')],
+          liveBodies: { 'review_comment:21': '直した' },
+        });
+        await run2(f);
+        expect(f.calls.delete.map((c) => c.comment_id)).toEqual([70]);
+        expect(f.calls.update).toHaveLength(0);
+      });
+
+      test('取り直しが 404（消えた）なら、知らせを作らない', async () => {
+        const f = fakes({ ...base, gone: ['review_comment:21'] });
+        await run2(f);
+        expect(f.calls.create).toHaveLength(0);
+      });
+
+      test('取り直すと別の NG に変わっていたら、取り直した本文で知らせを書く', async () => {
+        const other = join('token ', 'gh', 'p_', 'EXAMPLEONLY0000');
+        const f = fakes({ ...base, liveBodies: { 'review_comment:21': other } });
+        await run2(f);
+        expect(f.calls.create[0].body).toContain('秘密の値');
+        expect(f.calls.create[0].body).not.toContain('メールアドレス');
+      });
+
+      test('知らせがすでに最新なら、取り直さず書き込みもしない（費用を抑える）', async () => {
+        const f = fakes({
+          ...base,
+          comments: [{ id: 70, user: BOT, body: reportFor(email) }],
+        });
+        await run2(f);
+        expect(f.calls.fetched).toHaveLength(0);
+        expect(f.calls.create.length + f.calls.update.length + f.calls.delete.length).toBe(0);
+      });
     });
 
     test('時間内に終わるなら、いつもどおり片づけまで行う', async () => {

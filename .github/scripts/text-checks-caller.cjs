@@ -382,9 +382,14 @@ async function checkComment(env, { body, comment }, deleted, { recheck = false }
     return [];
   }
   let pub = runPublicCheck(body, { extraFile: env.extraFile });
-  if (pub.ok && recheck && findNotices(env.existing, env.config, key).length > 0) {
-    // 一覧を取ってから検査するまでに編集されていることがあるので、知らせを消す前に今の本文を取り直して見る。
-    // 取り直しから削除までの間の小さな競合は残る（今の並行グループでは完全には直列にできない）。
+  const notices = findNotices(env.existing, env.config, key);
+  const reportOf = (result) =>
+    formatReport('public', result, env.config, key, comment.url, comment.type);
+  // 一覧を取ってから検査するまでに編集・削除されていることがあるので、知らせを作る・更新する・消す前に今の本文を取り直して見る。
+  // OK で知らせも無ければ何も書かないので取り直さない。NG でも知らせがすでに最新なら書き込みが無いので取り直さない（費用を抑える）。
+  // 取り直しから書き込みまでの間の小さな競合は残る（今の並行グループでは完全には直列にできない）。
+  const upToDate = notices.length === 1 && notices[0].body === reportOf(pub);
+  if (recheck && (pub.ok ? notices.length > 0 : !upToDate)) {
     const fresh = await fetchSource(env, env.number, comment.type, comment.id);
     if (fresh.gone) {
       await deleteAllNotices(env, key);
@@ -397,8 +402,7 @@ async function checkComment(env, { body, comment }, deleted, { recheck = false }
     await deleteAllNotices(env, key);
     return [];
   }
-  const report = formatReport('public', pub, env.config, key, comment.url, comment.type);
-  await upsertNotice(env, key, report, false);
+  await upsertNotice(env, key, reportOf(pub), false);
   return [publicFailure(pub)];
 }
 
@@ -617,7 +621,7 @@ async function sourceIsGone(env, number, type, id) {
 // PR のレビューとレビューコメントをすべて取り直して検査し、元が無くなった知らせを片づける。
 // 起こしたイベントの id を使わないので、中継の中身が偽でも、中継が動かなくても、本物の NG を取りこぼさない。
 // 返すのは NG の一覧。落とすかどうかは呼び出し側が決める。
-async function sweepPull(args, number) {
+async function sweepPull(args, number, { rotate = false } = {}) {
   const { github, context, core, config, extraFile } = args;
   const { owner, repo } = context.repo;
   const list = (fn, params) => github.paginate(fn, { owner, repo, ...params, per_page: 100 });
@@ -626,15 +630,16 @@ async function sweepPull(args, number) {
   const reviewComments = await list(github.rest.pulls.listReviewComments, { pull_number: number });
   const env = { github, context, core, config, extraFile, existing, number };
 
-  // 新しい投稿を先頭にして、残りは毎時ずらした位置から検査する。時間切れで途中までになっても、起こしたばかりの投稿は先に見られ、
-  // 古い投稿もいつまでも後回しにならない。
+  // 新しい投稿から検査する。中継では、起こした投稿はこの並びの先頭付近にあるので、そのまま新しい順にする。
+  // 毎時の総ざらいだけは、残りを毎時ずらして、時間切れでも古い投稿がいつまでも後回しにならないようにする。
   const hourIndex = Math.floor(args.clock() / 3_600_000);
   const stamp = (x) => Date.parse(x.updated_at ?? x.submitted_at ?? x.created_at) || 0;
   const newestFirst = [
     ...reviews.map((x) => ({ type: 'review', x })),
     ...reviewComments.map((x) => ({ type: 'review_comment', x })),
   ].sort((a, b) => stamp(b.x) - stamp(a.x));
-  const sources = orderWithinPr(newestFirst, hourIndex, number).map(({ type, x }) => ({
+  const ordered = rotate ? orderWithinPr(newestFirst, hourIndex, number) : newestFirst;
+  const sources = ordered.map(({ type, x }) => ({
     number,
     body: x.body ?? null,
     author: x.user?.login ?? null,
@@ -668,44 +673,53 @@ async function sweepPull(args, number) {
 // 1つの PR の失敗で残りを止めない。失敗した PR は最後にまとめて落とす。レート制限だけは続けても無駄なのですぐ投げる。
 // NG で実行まで落とすのは、起こした本人の投稿の結果を知らせたいとき（中継）だけ。毎時の総ざらいは同じ NG が直るまで毎回見つかるので、NG は警告にとどめる。
 // ただし時間切れと失敗は、見えないまま残らないよう毎時の総ざらいでも落とす。
-async function sweepEach(args, numbers, { failOnNg }) {
+async function sweepEach(args, numbers, { failOnNg, rotate = false }) {
   const { core } = args;
   const ng = [];
   const errored = [];
   const unchecked = [];
+  const cleanup = [];
+
+  // 例外にはせず、見たところまでの結果は残して実行を落とす。放っておくと見えないので、毎時の総ざらいでも落とす。
+  const summarize = (note) => {
+    const messages = failOnNg ? [...ng] : [];
+    if (errored.length > 0) messages.push(`総ざらいに失敗した PR: ${errored.join(', ')}`);
+    if (unchecked.length > 0) messages.push(`時間切れのため未確認の PR: ${unchecked.join(', ')}`);
+    if (cleanup.length > 0) messages.push(`片づけが途中の PR: ${cleanup.join(', ')}`);
+    if (note) messages.push(note);
+    if (messages.length > 0) core.setFailed(messages.join(' / '));
+  };
+
   for (const [i, number] of numbers.entries()) {
     if (pastDeadline(args)) {
       unchecked.push(...numbers.slice(i).map((n) => `#${n}`));
       break;
     }
     try {
-      const { failures, left, cleanupCut } = await sweepPull(args, number);
+      const { failures, left, cleanupCut } = await sweepPull(args, number, { rotate });
       if (left > 0) {
         core.warning(`PR #${number}: 時間切れで残り ${left} 件のコメントが未確認です。`);
         unchecked.push(`#${number}（途中まで）`);
       }
       if (cleanupCut) {
         core.warning(`PR #${number}: 時間切れで古い知らせの片づけが途中です。`);
-        unchecked.push(`#${number}（片づけ途中）`);
+        cleanup.push(`#${number}`);
       }
       if (failures.length === 0) continue;
       core.warning(`PR #${number}: ${failures.join(' / ')}`);
       ng.push(`PR #${number}: ${failures.join(' / ')}`);
     } catch (err) {
-      if (isRateLimited(err)) throw err;
+      if (isRateLimited(err)) {
+        // 続けても無駄なので止めるが、ここまでの結果と、見られなかった PR は報告に残してから投げ直す。
+        unchecked.push(...numbers.slice(i).map((n) => `#${n}`));
+        summarize('レート制限のため中断しました');
+        throw err;
+      }
       core.warning(`PR #${number} の総ざらいに失敗しました: ${err.message}`);
       errored.push(`#${number}`);
     }
   }
-  const messages = failOnNg ? ng : [];
-  if (errored.length > 0) messages.push(`総ざらいに失敗した PR: ${errored.join(', ')}`);
-  if (unchecked.length > 0) {
-    // 例外にはせず、見たところまでの結果は残して実行を落とす。放っておくと見えないので、毎時の総ざらいでも落とす。
-    // 毎時の総ざらいでは並びを毎時並べ替えるので、同じ PR がいつも後回しになることはない（中継は並べ替えない）。
-    const text = `時間切れのため未確認の PR: ${unchecked.join(', ')}`;
-    messages.push(text);
-  }
-  if (messages.length > 0) core.setFailed(messages.join(' / '));
+  summarize();
 }
 
 // fork の PR のレビュー系イベント用。既定ブランチのコードと書き込み権限で動き、中継の実行が成功したかどうかは見ない。
@@ -746,12 +760,14 @@ function sweepOrder(numbers, hourIndex) {
   return [...numbers].sort((a, b) => hourHash(hourIndex, a) - hourHash(hourIndex, b) || a - b);
 }
 
-// 1つの PR の中では、いちばん新しい投稿を先頭に置き、残りは毎時ずらした位置から回す。
-// 先頭が新しい順のままだと、時間切れの PR で古い投稿がいつまでも未確認になるため。
+// 毎時の総ざらいでは、1つの PR の中でいちばん新しい投稿を先頭に置き、残りは毎時1つずつずらした位置から回す。
+// 新しい順のままだと、時間切れの PR で古い投稿がいつまでも未確認になるため。
+// 時間に比例してずらすので、残りの件数ぶんの連続した時間があれば、どの投稿も必ず先頭の次に検査される。
+// PR ごとの初期位置は番号のハッシュで散らす。
 function orderWithinPr(items, hourIndex, number) {
   if (items.length <= 2) return [...items];
   const [newest, ...rest] = items;
-  const offset = hourHash(hourIndex, number) % rest.length;
+  const offset = (hourIndex + hourHash(0, number)) % rest.length;
   return [newest, ...rest.slice(offset), ...rest.slice(0, offset)];
 }
 
@@ -791,7 +807,7 @@ async function runSweepAll(args) {
   const dropped = parsed.length - parsed.filter(Boolean).length;
   const all = [...new Set([...open, ...closed].map((pr) => pr.number).concat([...fromComments]))];
   const numbers = sweepOrder(all, Math.floor(args.clock() / 3_600_000));
-  await sweepEach(args, numbers, { failOnNg: false });
+  await sweepEach(args, numbers, { failOnNg: false, rotate: true });
   args.core.info(
     `PR ${numbers.length} 件（開いた ${open.length} 件、最近閉じた ${closed.length} 件、最近更新のレビューコメントから ${fromComments.size} 件）を総ざらいしました。`,
   );
@@ -823,6 +839,7 @@ async function run(input) {
 }
 
 module.exports = {
+  INHERITED_BLOCKLIST,
   timedOut,
   sweepOrder,
   orderWithinPr,
