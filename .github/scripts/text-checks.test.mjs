@@ -445,6 +445,77 @@ describe('コメントの検査（ループ防止・鍵・知らせる文）', (
   });
 });
 
+describe('長い行と検査の時間切れ', () => {
+  const token = join('gh', 'p_', 'EXAMPLEONLY0000');
+  const direct = (text) => {
+    const r = spawnSync(
+      'python3',
+      [path.join(caller.CHECKS_DIR, 'public_text_check.py'), '--json'],
+      { input: text, encoding: 'utf8' },
+    );
+    return JSON.parse(r.stdout);
+  };
+
+  test('数字だけの6.5万桁の行でも、短い時間で終わる', () => {
+    const started = Date.now();
+    const r = caller.runPublicCheck('0'.repeat(65_000));
+    expect(Date.now() - started).toBeLessThan(5000);
+    expect(r.ok).toBe(true);
+    expect(r.hits).toEqual([]);
+    // 注意は元の行番号（1行目）に戻り、区切った行ぶんが1つにまとまる
+    expect(r.notices).toHaveLength(1);
+    expect(r.notices[0]).toMatchObject({ rule: '注意: 64字以上の16進', line: 1 });
+  });
+
+  test('長い行を区切っても、当たった行番号は元のまま（本体が数える行の区切りと同じ）', () => {
+    const text = [
+      'ふつうの1行目\r\n',
+      '2行目\u2028',
+      `${'x'.repeat(5000)} ${token} ${'y'.repeat(300)}\n`,
+      '4行目\f',
+      `${'z'.repeat(4500)} ${join('someone', '@', 'example.com')}\n`,
+      '最後',
+    ].join('');
+    const expected = direct(text);
+    expect([...new Set(expected.hits.map((h) => h.line))]).toEqual([3, 5]);
+    const r = caller.runPublicCheck(text);
+    expect(r.ok).toBe(false);
+    expect(r.hits.map((h) => [h.rule, h.line])).toEqual(expected.hits.map((h) => [h.rule, h.line]));
+  });
+
+  test('区切りの境界をまたぐ秘密の形も、重ねた部分で見つかり、1行1規則にまとまる', () => {
+    for (const offset of [1850, 1990, 1995]) {
+      const r = caller.runPublicCheck(`${'x'.repeat(offset)} ${token} ${'y'.repeat(3000)}`);
+      const hits = r.hits.filter((h) => h.rule === '秘密の値(よくある鍵の形)');
+      expect(hits).toHaveLength(1);
+      expect(hits[0].line).toBe(1);
+      expect(hits[0].count).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  test('長い行が無ければ本文をそのまま本体に渡す（結果は本体と同じ）', () => {
+    const text = `ふつう\n${join('someone', '@', 'example.com')}\n`;
+    expect(caller.runPublicCheck(text).hits).toEqual(direct(text).hits);
+  });
+
+  test('公開内容チェックが時間内に終わらなければ、通さず要確認にする', () => {
+    const r = caller.runPublicCheck('ふつうの文', { timeoutMs: 1 });
+    expect(r.ok).toBe(false);
+    expect(r.hits).toEqual([{ rule: '検査が時間内に終わらない', line: 0, count: 1 }]);
+    const report = caller.formatReport('public', r, config, 'public-body');
+    expect(report).toContain(
+      '- 検査が時間内に終わらない: 自動では確認できませんでした。目視で確認してください',
+    );
+    expect(report).not.toContain('0行目');
+  });
+
+  test('書き方チェックが時間内に終わらなければ、問題として返す', () => {
+    const r = caller.runFormatCheck('本文', 'pr', { timeoutMs: 1 });
+    expect(r.ok).toBe(false);
+    expect(r.problems).toEqual(['検査が時間内に終わりませんでした。目視で確認してください']);
+  });
+});
+
 // ---- GitHub への読み書き（偽の github で、呼ばれた API だけを確かめる） ----
 
 const BOT = { login: 'github-actions[bot]' };
@@ -1504,6 +1575,26 @@ describe('中継（workflow_run）と総ざらい', () => {
       expect(swept).toEqual([20]);
       expect(created(f)).toEqual(['public-comment-review_comment-201']);
       expect(f.calls.create[0].issue_number).toBe(20);
+    });
+
+    test('リポジトリ名の大文字小文字は区別せず、特定できないものは数だけ記録する', async () => {
+      const f = fakes({
+        lists: {
+          repoReviewComments: [
+            { id: 1, pull_request_url: 'https://api.github.com/repos/O/R/pulls/30' },
+            { id: 2, pull_request_url: 'https://api.github.com/repos/o/r/pulls/30' },
+            { id: 3, pull_request_url: 'https://api.github.com/repos/other/x/pulls/31' },
+          ],
+        },
+      });
+      await runSweep(f);
+      const swept = f.calls.paginated
+        .filter((c) => c.key === 'reviews')
+        .map((c) => c.params.pull_number);
+      expect(swept).toEqual([30]);
+      // 件数は重複を除いた PR の数
+      expect(f.logs.info.some((m) => m.includes('レビューコメントから 1 件'))).toBe(true);
+      expect(f.logs.info.some((m) => m.includes('特定できないレビューコメントが 1 件'))).toBe(true);
     });
 
     test('一覧とレビューコメント経由で同じ PR が重なっても1回だけ', async () => {

@@ -42,11 +42,11 @@ permissions:
 
 # コメントの検査が本文の検査や別のコメントの検査を打ち切らないよう、イベント名とコメントの id まで含める。
 # 同じコメントの連続編集だけが古い実行を打ち切る。
-# workflow_run は PR の番号が分からないので、workflow の path・event・head の sha ごとに分ける。同じコミットへの連続したレビューは新しい実行が古い実行を兼ねる（PR の全レビューを取り直すため）が、
+# workflow_run は PR の番号が分からないので、workflow の path・event・head のリポジトリ・ブランチ・sha ごとに分ける。同じコミットへの連続したレビューは新しい実行が古い実行を兼ねる（PR の全レビューを取り直すため）が、
 # 別のコミットの実行は打ち切らない。path と event を含めるのは、PR 側で同じ名前の別の workflow を作られても、本物の中継の実行を打ち切れないようにするため。
 # 総ざらいは1つにまとめて積み上げない。接頭辞が違うので、他のグループ（番号が先頭）とは重ならない。
 concurrency:
-  group: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'text-checks-sweep' || github.event_name == 'workflow_run' && format('text-checks-wr-{0}-{1}-{2}', github.event.workflow_run.path, github.event.workflow_run.event, github.event.workflow_run.head_sha || github.event.workflow_run.id) || format('text-checks-{0}-{1}-{2}', github.event.issue.number || github.event.pull_request.number, github.event_name, github.event.comment.id || 'body') }}
+  group: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'text-checks-sweep' || github.event_name == 'workflow_run' && format('text-checks-wr-{0}-{1}-{2}-{3}-{4}', github.event.workflow_run.path, github.event.workflow_run.event, github.event.workflow_run.head_repository.full_name, github.event.workflow_run.head_branch, github.event.workflow_run.head_sha || github.event.workflow_run.id) || format('text-checks-{0}-{1}-{2}', github.event.issue.number || github.event.pull_request.number, github.event_name, github.event.comment.id || 'body') }}
   cancel-in-progress: true
 
 jobs:

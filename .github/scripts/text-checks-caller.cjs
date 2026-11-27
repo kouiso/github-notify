@@ -129,7 +129,42 @@ function writeExtraFile(raw, dir) {
 
 const INHERITED_BLOCKLIST = new Set(['PUBLIC_TEXT_EXTRA_FILE', 'TEXT_CHECKS_CONFIG']);
 
-function runCli(script, args, text, extraFile) {
+// 写しの正規表現は、数字だけの非常に長い行で計算量が二乗に増える（6.5万桁で約2分）。
+// 公開リポの本文は誰でも書けるので、止まらない検査で runner を塞がれないよう、時間に上限を付ける。
+const CLI_TIMEOUT_MS = 15_000;
+// 長い行は検査の前に区切る。区切った行どうしは 200 字重ねるので、200 字以内の秘密の形は境界をまたいでも見つかる。
+// それより長い形が境界にちょうどまたがると見逃しうるが、行ごと検査できずに全体が止まるよりは受け入れる。
+const MAX_LINE = 1000;
+const LINE_OVERLAP = 200;
+const TIMEOUT_RULE = '検査が時間内に終わらない';
+// Python の str.splitlines が行の終わりとみなす文字。行番号の対応を本体と揃えるために同じ集合で区切る。
+const LINE_BREAKS = new Set([
+  '\n',
+  '\r',
+  '\v',
+  '\f',
+  '\x1c',
+  '\x1d',
+  '\x1e',
+  '\x85',
+  '\u2028',
+  '\u2029',
+]);
+
+function pythonSplitLines(text) {
+  const lines = [];
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (!LINE_BREAKS.has(text[i])) continue;
+    lines.push(text.slice(start, i));
+    if (text[i] === '\r' && text[i + 1] === '\n') i++;
+    start = i + 1;
+  }
+  if (start < text.length) lines.push(text.slice(start));
+  return lines;
+}
+
+function runCli(script, args, text, extraFile, timeoutMs = CLI_TIMEOUT_MS) {
   // 親の環境に残った値が本体の設定を差し替えないよう、この2つは必ず外してから渡し直す。
   const env = Object.fromEntries(
     Object.entries(process.env).filter(([k]) => !INHERITED_BLOCKLIST.has(k)),
@@ -139,23 +174,74 @@ function runCli(script, args, text, extraFile) {
     input: text,
     encoding: 'utf8',
     env,
+    timeout: timeoutMs,
   });
 }
 
+function timedOut(r) {
+  return r.error?.code === 'ETIMEDOUT' || Boolean(r.signal);
+}
+
+// 長い行を区切り、区切った後の各行が元の何行目かを返す。長い行が無ければ本文をそのまま使う。
+function splitLongLines(text) {
+  const lines = pythonSplitLines(text);
+  if (!lines.some((l) => l.length > MAX_LINE)) return { text, origin: null };
+  const out = [];
+  const origin = [];
+  lines.forEach((line, i) => {
+    if (line.length <= MAX_LINE) {
+      out.push(line);
+      origin.push(i + 1);
+      return;
+    }
+    for (let start = 0; ; start += MAX_LINE - LINE_OVERLAP) {
+      out.push(line.slice(start, start + MAX_LINE));
+      origin.push(i + 1);
+      if (start + MAX_LINE >= line.length) break;
+    }
+  });
+  return { text: out.join('\n'), origin };
+}
+
+// 区切った行の結果を元の行番号に戻し、同じ規則・同じ行は1つにまとめる。
+// 重なりの部分に当たったものは二重に数えうるので、区切った行の件数は目安。
+function mapBack(items, origin) {
+  if (!origin) return items;
+  const merged = new Map();
+  for (const it of items) {
+    const line = origin[it.line - 1];
+    const key = `${it.rule}\u0000${line}`;
+    const cur = merged.get(key);
+    if (cur) cur.count += it.count;
+    else merged.set(key, { ...it, line });
+  }
+  return [...merged.values()];
+}
+
 // 公開内容チェック。本文が空（終了コード 2）は書いてはいけないものが無いので OK とする。
-function runPublicCheck(text, { extraFile = null } = {}) {
-  const r = runCli('public_text_check.py', [], text || '', extraFile);
+// 時間内に終わらないものは通さず、要確認として人の目に回す。
+function runPublicCheck(text, { extraFile = null, timeoutMs = CLI_TIMEOUT_MS } = {}) {
+  const { text: body, origin } = splitLongLines(text || '');
+  const r = runCli('public_text_check.py', [], body, extraFile, timeoutMs);
+  if (timedOut(r))
+    return { ok: false, hits: [{ rule: TIMEOUT_RULE, line: 0, count: 1 }], notices: [] };
   if (r.status === 2) return { ok: true, hits: [], notices: [] };
   if (r.status !== 0 && r.status !== 1)
     throw new Error(`public_text_check.py が終了コード ${r.status} で止まりました`);
   const data = JSON.parse(r.stdout);
-  return { ok: data.ok, hits: data.hits, notices: data.notices };
+  return { ok: data.ok, hits: mapBack(data.hits, origin), notices: mapBack(data.notices, origin) };
 }
 
 // 書き方チェック。kind は issue か pr。既定ではこのリポの見出しの設定を渡す。configFile: null で本体の既定だけで判定する。
-function runFormatCheck(text, kind, { configFile = HEADINGS_CONFIG } = {}) {
+function runFormatCheck(
+  text,
+  kind,
+  { configFile = HEADINGS_CONFIG, timeoutMs = CLI_TIMEOUT_MS } = {},
+) {
   const args = ['--kind', kind, ...(configFile ? ['--config', configFile] : [])];
-  const r = runCli('format_check.py', args, text || '', null);
+  const r = runCli('format_check.py', args, text || '', null, timeoutMs);
+  if (timedOut(r))
+    return { ok: false, problems: ['検査が時間内に終わりませんでした。目視で確認してください'] };
   if (r.status !== 0 && r.status !== 1)
     throw new Error(`format_check.py が終了コード ${r.status} で止まりました`);
   const data = JSON.parse(r.stdout);
@@ -192,8 +278,10 @@ function formatReport(kind, result, config, key = kind, sourceUrl = null, commen
   if (kind === 'public') {
     // OK の知らせは本文だけ。コメントは OK になったら知らせごと消すので、URL つきの OK は作らない。
     if (result.ok) return `${marker}\n公開内容チェック: OK（当たった規則はありません）`;
-    const rows = groupHits(result.hits).map(
-      (g) => `- ${g.rule}: ${g.count}件、${g.lines.join('・')}行目`,
+    const rows = groupHits(result.hits).map((g) =>
+      g.rule === TIMEOUT_RULE
+        ? `- ${g.rule}: 自動では確認できませんでした。目視で確認してください`
+        : `- ${g.rule}: ${g.count}件、${g.lines.join('・')}行目`,
     );
     return [
       marker,
@@ -452,7 +540,8 @@ async function findPullsForRun(args) {
         })
       : [];
   if (hinted === null) return listed.filter(sameHead).map((pr) => pr.number);
-  // 同じコミットを head にする別の PR（base 違い）にも同じレビューが付きうるので、一緒に見る。
+  // 同じコミットを head にする別の PR（base 違い）の実行は、同じ sha の並行グループで打ち切られうる。
+  // どの実行が残っても全部の PR を見るよう、1回の実行でまとめて見る。
   const sameSha = listed.filter((pr) => run.head_sha && pr.head?.sha === run.head_sha);
   return [...new Set([hinted, ...sameSha.map((pr) => pr.number)])];
 }
@@ -597,20 +686,28 @@ async function runSweepAll(args) {
     since: new Date(cutoff).toISOString(),
     per_page: 100,
   });
-  const fromComments = touched.map((c) => pullNumberOf(c.pull_request_url, owner, repo));
+  const parsed = touched.map((c) => pullNumberOf(c.pull_request_url, owner, repo));
+  const fromComments = new Set(parsed.filter(Boolean));
+  const dropped = parsed.length - parsed.filter(Boolean).length;
   const numbers = [
-    ...new Set([...open, ...closed].map((pr) => pr.number).concat(fromComments.filter(Boolean))),
+    ...new Set([...open, ...closed].map((pr) => pr.number).concat([...fromComments])),
   ];
   await sweepEach(args, numbers, { failOnNg: false });
   args.core.info(
-    `PR ${numbers.length} 件（開いた ${open.length} 件、最近閉じた ${closed.length} 件、最近更新のレビューコメントから ${fromComments.length} 件）を総ざらいしました。`,
+    `PR ${numbers.length} 件（開いた ${open.length} 件、最近閉じた ${closed.length} 件、最近更新のレビューコメントから ${fromComments.size} 件）を総ざらいしました。`,
   );
+  if (dropped > 0)
+    args.core.info(`PR を特定できないレビューコメントが ${dropped} 件ありました（対象外）。`);
 }
 
 // 他のリポジトリの URL や形の違うものは数に入れない。
 function pullNumberOf(url, owner, repo) {
   const m = /\/repos\/([^/]+)\/([^/]+)\/pulls\/(\d+)$/.exec(String(url || ''));
-  return m && m[1] === owner && m[2] === repo ? Number(m[3]) : null;
+  return m &&
+    m[1].toLowerCase() === owner.toLowerCase() &&
+    m[2].toLowerCase() === repo.toLowerCase()
+    ? Number(m[3])
+    : null;
 }
 
 async function run(args) {
