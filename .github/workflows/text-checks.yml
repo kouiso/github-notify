@@ -1,14 +1,17 @@
 name: Text Checks
 
 # issue・PR の本文の書き方チェックと公開内容チェック、およびコメントの公開内容チェック（#99）。
-# きっかけは本文・コメント・レビューの作成と編集だけ。コメントは issue コメント（PR 上のものを含む）、PR のレビューコメント（行ごと）、レビュー本文。
-# 書き方チェックは本文だけで、コメントには公開内容チェックだけを掛ける。
-# 判定は brain #110 の本体の写し .github/scripts/text-checks/（Python 3 標準ライブラリのみ、出どころは
-# .github/text-checks.source.json）。呼び出しと知らせる文は .github/scripts/text-checks-caller.cjs、設定は .github/text-checks.config.json。
-# 本文・コメントの自動編集・自動削除はしない。目印つきのコメントを検査の種類ごと（コメントは1件ごと）に1つ作り、直れば同じコメントを更新する。
-# 知らせには元のコメントの URL と規則名・行・件数だけを書き、当たった文字は書かない。
-# 公開内容チェックは起こしたのが誰でも必ず動く（ただしこのワークフロー自身の知らせと Actions のボットのコメントは見ない。無限ループになるため）。
-# ボットを飛ばすのは書き方チェックだけ（caller の shouldSkipFormat）。
+# 判定の本体は .github/scripts/text-checks/（brain #110 の写し）、呼び出しは .github/scripts/text-checks-caller.cjs の run()。
+# 本文・コメントの自動編集・自動削除はしない。知らせるのは目印つきのコメントだけ。
+#
+# 見る場所:
+# - 結果を確かめる信頼できる手がかりは、元のコメントへのリンクつきの知らせのコメント。
+#   issue_comment と workflow_run の実行は PR の head ではなく既定ブランチに紐づくので、
+#   コメントごとのチェックの色は PR 上では当てにならない（失敗は Actions の実行一覧に出る）。
+# - コメントが NG のたびに知らせが1件ずつ増える（スパムは 1:1 で増える）。今の規模では許容し、直る・消えると知らせも消える。
+#
+# fork の PR のレビュー系イベントは text-checks-review-relay.yml が artifact で番号だけ渡し、
+# ここの workflow_run が既定ブランチのコードと書き込み権限で API から取り直して検査する。
 # pull_request_target でも PR 側のコードは取り出さない（checkout は既定ブランチのまま）。
 on:
   issues:
@@ -16,26 +19,30 @@ on:
   pull_request_target:
     types: [opened, edited, reopened, ready_for_review]
   issue_comment:
-    types: [created, edited]
-  pull_request_review_comment:
-    types: [created, edited]
-  pull_request_review:
-    types: [submitted, edited]
+    types: [created, edited, deleted]
+  workflow_run:
+    workflows: [Text Checks Relay]
+    types: [completed]
 
 permissions:
   contents: read
   issues: write
   pull-requests: write
+  # workflow_run で中継の artifact を読むため
+  actions: read
 
-# コメントの検査が本文の検査や別のコメントの検査を打ち切らないよう、イベント名とコメント・レビューの id まで含める。
-# 同じコメントの連続編集だけが古い実行を打ち切る。
+# コメントの検査が本文の検査や別のコメントの検査を打ち切らないよう、イベント名とコメントの id まで含める。
+# 同じコメントの連続編集だけが古い実行を打ち切る。workflow_run は番号が分からないので実行ごとに分ける。
 concurrency:
-  group: text-checks-${{ github.event.issue.number || github.event.pull_request.number }}-${{ github.event_name }}-${{ github.event.comment.id || github.event.review.id || 'body' }}
+  group: text-checks-${{ github.event.issue.number || github.event.pull_request.number || github.event.workflow_run.id }}-${{ github.event_name }}-${{ github.event.comment.id || 'body' }}
   cancel-in-progress: true
 
 jobs:
   check:
-    name: Check issue / PR text
+    # 本文とコメントを PR 上で見分けられるよう、名前を分ける。
+    name: ${{ (github.event_name == 'issues' || github.event_name == 'pull_request_target') && 'Check issue / PR text' || 'Check comment text' }}
+    # 中継の実行が失敗・取り消しのときは何も渡されていないので動かさない。
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -62,60 +69,4 @@ jobs:
             const checks = require('./.github/scripts/text-checks-caller.cjs');
             const config = require('./.github/text-checks.config.json');
             const extraFile = checks.writeExtraFile(process.env.PUBLIC_TEXT_EXTRA, process.env.RUNNER_TEMP);
-            const { owner, repo } = context.repo;
-
-            const target = checks.resolveTarget(context.eventName, context.payload);
-            const { number, body, author, kind, labels, draft, comment } = target;
-
-            // このワークフロー自身の知らせ（目印で始まる）と Actions のボットのコメントは見ない。見ると知らせが知らせを呼ぶ。
-            if (comment && checks.shouldSkipComment(target, config)) {
-              core.info('自分の知らせ、または Actions のボットのコメントなので検査しません。');
-              return;
-            }
-
-            const existing = await github.paginate(github.rest.issues.listComments, {
-              owner, repo, issue_number: number, per_page: 100,
-            });
-            // 同じ目印のコメントがあれば更新、なければ「要確認」のときだけ新規に作る。
-            // fork の PR では token が読み取り専用で 403 になるので、書けなくても判定は続けて下で落とす。
-            async function upsert(key, text, ok) {
-              const marker = `${config.marker}:${key}`;
-              const found = existing.find((c) => (c.body || '').startsWith(marker + '\n'));
-              if (found) {
-                if (found.body !== text) {
-                  await checks.writeOrWarn(
-                    () => github.rest.issues.updateComment({ owner, repo, comment_id: found.id, body: text }),
-                    core.warning,
-                  );
-                }
-              } else if (!ok) {
-                await checks.writeOrWarn(
-                  () => github.rest.issues.createComment({ owner, repo, issue_number: number, body: text }),
-                  core.warning,
-                );
-              }
-            }
-
-            const failures = [];
-
-            // 本文が空（承認だけのレビューなど）は書いてはいけないものが無いので OK。以前の指摘が残っていれば OK に更新する。
-            const pub = checks.runPublicCheck(body, { extraFile });
-            const pubKey = comment ? checks.commentKey(comment) : 'public-body';
-            await upsert(pubKey, checks.formatReport('public', pub, config, pubKey, comment ? comment.url : null), pub.ok);
-            if (!pub.ok) failures.push(`公開内容チェック: ${checks.groupHits(pub.hits).map((g) => g.rule).join(', ')}`);
-
-            // 書き方チェックは本文だけ。コメントでは見ない。
-            if (!comment) {
-              if (!checks.shouldSkipFormat({ kind, author, labels, draft }, config)) {
-                const fmt = checks.runFormatCheck(body, kind === 'issue' ? 'issue' : 'pr');
-                await upsert('format', checks.formatReport('format', fmt, config), fmt.ok);
-                if (!fmt.ok) failures.push(`書き方チェック: ${fmt.problems.length}件不足`);
-              } else {
-                // 対象外でも upsert は通す。対象になる前の指摘コメントが残り続けるのを防ぐため
-                const skipped = `${config.marker}:format\n書き方チェック: 対象外（ボット・下書き・対象外ラベルのため検査していません）`;
-                await upsert('format', skipped, true);
-              }
-            }
-
-            if (failures.length > 0) core.setFailed(failures.join(' / '));
-            else core.info('All text checks passed.');
+            await checks.run({ github, context, core, config, extraFile });

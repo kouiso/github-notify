@@ -1,10 +1,12 @@
 // text-checks のテスト（#99）。判定の本体は brain #110 の写し（Python）で、ここでは
 // ①写しが元のコミットから一字もずれていないこと、②写しが本体と同じ結果を返すこと（本体の examples）、
 // ③呼び出し側（text-checks-caller.cjs）が規則名だけを返し、当たった文字や追加の語を出さないこと、
-// ④コメント（issue コメント・レビューコメント・レビュー本文）も同じ呼び出し側で扱えることを確かめる。
+// ④コメント（issue コメント・レビューコメント・レビュー本文）も同じ呼び出し側で扱え、GitHub への読み書きの分岐が想定どおりであることを偽の github で確かめる。
 // 秘密の形の例は、検査ツールに本物と間違われないよう文字をつないで作る（どれも作り物）。
+
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -293,51 +295,11 @@ describe('検査の対象を揃える（resolveTarget）', () => {
     expect(onPr).toMatchObject({ number: 4, kind: 'pull_request', labels: [] });
   });
 
-  test('pull_request_review_comment: PR の番号に紐づき、作者はコメントの人', () => {
-    const t = caller.resolveTarget('pull_request_review_comment', {
-      pull_request: { number: 9, user: user('alice'), draft: false },
-      comment: {
-        id: 21,
-        body: '行コメント',
-        html_url: 'https://example.test/rc/21',
-        user: user('dave'),
-      },
-    });
-    expect(t).toEqual({
-      number: 9,
-      body: '行コメント',
-      author: 'dave',
-      kind: 'pull_request',
-      labels: [],
-      draft: false,
-      comment: { id: 21, url: 'https://example.test/rc/21', type: 'review_comment' },
-    });
-  });
-
-  test('pull_request_review: レビュー本文を対象にし、本文が無ければ null', () => {
-    const base = { pull_request: { number: 9, user: user('alice') } };
-    const t = caller.resolveTarget('pull_request_review', {
-      ...base,
-      review: {
-        id: 31,
-        body: 'レビュー',
-        html_url: 'https://example.test/r/31',
-        user: user('erin'),
-      },
-    });
-    expect(t).toMatchObject({
-      number: 9,
-      body: 'レビュー',
-      author: 'erin',
-      kind: 'pull_request',
-      comment: { id: 31, url: 'https://example.test/r/31', type: 'review' },
-    });
-    const empty = caller.resolveTarget('pull_request_review', {
-      ...base,
-      review: { id: 32, body: null, html_url: 'https://example.test/r/32', user: user('erin') },
-    });
-    expect(empty.body).toBeNull();
-    expect(caller.runPublicCheck(empty.body).ok).toBe(true);
+  test('レビュー系は fork の payload を信用できないので、直接は扱わない', () => {
+    expect(() => caller.resolveTarget('pull_request_review_comment', {})).toThrow(
+      '未対応のイベント',
+    );
+    expect(() => caller.resolveTarget('pull_request_review', {})).toThrow('未対応のイベント');
   });
 
   test('作者が消えたアカウント（user が null）でも落ちない', () => {
@@ -354,26 +316,14 @@ describe('検査の対象を揃える（resolveTarget）', () => {
 });
 
 describe('コメントの検査（ループ防止・鍵・知らせる文）', () => {
-  test('isOwnNotice: 目印で始まる本文だけが自分の知らせ', () => {
-    expect(caller.isOwnNotice(`${config.marker}:public-body\n公開内容チェック: OK`, config)).toBe(
-      true,
-    );
-    expect(caller.isOwnNotice(`${config.marker}`, config)).toBe(true);
-    expect(caller.isOwnNotice(`前置き\n${config.marker}:public-body`, config)).toBe(false);
-    expect(caller.isOwnNotice('ふつうのコメント', config)).toBe(false);
-    expect(caller.isOwnNotice(null, config)).toBe(false);
-    expect(caller.isOwnNotice(undefined, config)).toBe(false);
-  });
-
-  test('shouldSkipComment: 自分の知らせと github-actions[bot] は飛ばし、人のコメントは飛ばさない', () => {
+  test('shouldSkipComment: github-actions[bot] だけ飛ばし、目印で始まる人のコメントは飛ばさない', () => {
+    expect(caller.shouldSkipComment({ body: '普通', author: 'github-actions[bot]' })).toBe(true);
+    // 目印つきでも人が書いたものは検査する（飛ばすと検査を逃れる抜け道になる）
     expect(
-      caller.shouldSkipComment({ body: `${config.marker}:x\nok`, author: 'someone' }, config),
-    ).toBe(true);
-    expect(caller.shouldSkipComment({ body: '普通', author: 'github-actions[bot]' }, config)).toBe(
-      true,
-    );
-    expect(caller.shouldSkipComment({ body: '普通', author: 'someone' }, config)).toBe(false);
-    expect(caller.shouldSkipComment({ body: null, author: null }, config)).toBe(false);
+      caller.shouldSkipComment({ body: `${config.marker}:public-body\nok`, author: 'someone' }),
+    ).toBe(false);
+    expect(caller.shouldSkipComment({ body: '普通', author: 'someone' })).toBe(false);
+    expect(caller.shouldSkipComment({ body: null, author: null })).toBe(false);
   });
 
   test('commentKey: 種類と id から一意の鍵を作る', () => {
@@ -402,6 +352,9 @@ describe('コメントの検査（ループ防止・鍵・知らせる文）', (
     ]);
     expect(ng).toContain('- メールアドレス: 1件、1行目');
     expect(ng).not.toContain('example.com');
+    // コメントは編集では履歴に残るので、直すのではなく削除を案内する
+    expect(ng).toContain('コメントを削除して書き直してください');
+    expect(ng).not.toContain('本文を直してください');
     const ok = caller.formatReport('public', { ok: true, hits: [], notices: [] }, config, key, url);
     expect(ok).toBe(
       `${config.marker}:${key}\n対象のコメント: ${url}\n公開内容チェック: OK（当たった規則はありません）`,
@@ -410,6 +363,13 @@ describe('コメントの検査（ループ防止・鍵・知らせる文）', (
     expect(
       caller.formatReport('public', { ok: true, hits: [], notices: [] }, config, 'public-body'),
     ).toBe(`${config.marker}:public-body\n公開内容チェック: OK（当たった規則はありません）`);
+    const bodyNg = caller.formatReport(
+      'public',
+      caller.runPublicCheck(join('連絡先は someone', '@', 'example.com')),
+      config,
+      'public-body',
+    );
+    expect(bodyNg).toContain('本文を直してください');
   });
 
   test('作り物の秘密・メールを含むコメントは赤、ふつうの文は緑', () => {
@@ -440,5 +400,524 @@ describe('コメントの検査（ループ防止・鍵・知らせる文）', (
       }, warn),
     ).rejects.toThrow('boom');
     expect(warnings).toHaveLength(1);
+  });
+});
+
+// ---- GitHub への読み書き（偽の github で、呼ばれた API だけを確かめる） ----
+
+const BOT = { login: 'github-actions[bot]' };
+const email = join('連絡先は someone', '@', 'example.com');
+const noticeOf = (id, key, text = 'x', user = BOT) => ({
+  id,
+  user,
+  body: `${config.marker}:${key}\n${text}`,
+});
+
+function fakes({ comments = [], failWith = {}, pulls = {}, actions = {} } = {}) {
+  const calls = { list: 0, create: [], update: [], delete: [] };
+  const maybeFail = (name) => {
+    if (failWith[name]) throw Object.assign(new Error(name), { status: failWith[name] });
+  };
+  const github = {
+    paginate: async () => {
+      calls.list += 1;
+      return comments;
+    },
+    rest: {
+      issues: {
+        listComments: () => undefined,
+        createComment: async (p) => {
+          maybeFail('create');
+          calls.create.push(p);
+        },
+        updateComment: async (p) => {
+          maybeFail('update');
+          calls.update.push(p);
+        },
+        deleteComment: async (p) => {
+          maybeFail('delete');
+          calls.delete.push(p);
+        },
+      },
+      pulls,
+      actions,
+    },
+  };
+  const logs = { info: [], warning: [], failed: [] };
+  const core = {
+    info: (m) => logs.info.push(m),
+    warning: (m) => logs.warning.push(m),
+    setFailed: (m) => logs.failed.push(m),
+  };
+  return { github, core, calls, logs };
+}
+
+const ctx = (eventName, payload) => ({ repo: { owner: 'o', repo: 'r' }, eventName, payload });
+const issueEvent = (body, labels = [{ name: 'beta' }]) =>
+  ctx('issues', { action: 'edited', issue: { number: 5, body, user: { login: 'alice' }, labels } });
+const commentEvent = (body, { action = 'created', login = 'carol', id = 11 } = {}) =>
+  ctx('issue_comment', {
+    action,
+    issue: { number: 3, user: { login: 'alice' }, labels: [] },
+    comment: { id, body, html_url: `https://example.test/c/${id}`, user: { login } },
+  });
+const exec = (f, context) =>
+  caller.run({ github: f.github, context, core: f.core, config, extraFile: null });
+
+describe('run: 本文の検査', () => {
+  test('本文が NG で知らせが無ければ新規に作り、落とす', async () => {
+    const f = fakes();
+    await exec(f, issueEvent(email));
+    expect(f.calls.create).toHaveLength(1);
+    expect(f.calls.create[0]).toMatchObject({ owner: 'o', repo: 'r', issue_number: 5 });
+    expect(f.calls.create[0].body.startsWith(`${config.marker}:public-body\n`)).toBe(true);
+    expect(f.calls.create[0].body).toContain('本文を直してください');
+    expect(f.logs.failed).toHaveLength(1);
+  });
+
+  test('本文が OK で以前の知らせがあれば OK に更新する', async () => {
+    const f = fakes({ comments: [noticeOf(7, 'public-body', '公開内容チェック: 要確認')] });
+    await exec(f, issueEvent('ふつうの文'));
+    expect(f.calls.update).toHaveLength(1);
+    expect(f.calls.update[0]).toMatchObject({ comment_id: 7 });
+    expect(f.calls.update[0].body).toContain('公開内容チェック: OK');
+    expect(f.calls.create).toHaveLength(0);
+    expect(f.calls.delete).toHaveLength(0);
+    expect(f.logs.failed).toHaveLength(0);
+  });
+
+  test('本文が OK で知らせも無ければ何も書かない', async () => {
+    const f = fakes();
+    await exec(f, issueEvent('ふつうの文'));
+    expect(f.calls.create).toHaveLength(0);
+    expect(f.calls.update).toHaveLength(0);
+    expect(f.calls.delete).toHaveLength(0);
+    expect(f.logs.failed).toHaveLength(0);
+  });
+});
+
+describe('run: コメントの検査', () => {
+  test('NG なら、コメントごとの鍵と URL つきで新規に作り、落とす', async () => {
+    const f = fakes();
+    await exec(f, commentEvent(email));
+    expect(f.calls.create).toHaveLength(1);
+    const body = f.calls.create[0].body;
+    expect(f.calls.create[0].issue_number).toBe(3);
+    expect(body.split('\n').slice(0, 2)).toEqual([
+      `${config.marker}:public-comment-issue_comment-11`,
+      '対象のコメント: https://example.test/c/11',
+    ]);
+    expect(body).not.toContain('example.com');
+    expect(f.logs.failed).toHaveLength(1);
+  });
+
+  test('NG のまま編集されたら、同じ知らせを更新する（増やさない）', async () => {
+    const f = fakes({ comments: [noticeOf(9, 'public-comment-issue_comment-11', '古い')] });
+    await exec(f, commentEvent(email, { action: 'edited' }));
+    expect(f.calls.update).toHaveLength(1);
+    expect(f.calls.update[0].comment_id).toBe(9);
+    expect(f.calls.create).toHaveLength(0);
+  });
+
+  test('OK になったら、既存の知らせを削除する（OK の知らせは残さない）', async () => {
+    const f = fakes({ comments: [noticeOf(9, 'public-comment-issue_comment-11')] });
+    await exec(f, commentEvent('直しました', { action: 'edited' }));
+    expect(f.calls.delete).toEqual([{ owner: 'o', repo: 'r', comment_id: 9 }]);
+    expect(f.calls.create).toHaveLength(0);
+    expect(f.calls.update).toHaveLength(0);
+    expect(f.logs.failed).toHaveLength(0);
+  });
+
+  test('OK で知らせも無ければ何もしない', async () => {
+    const f = fakes();
+    await exec(f, commentEvent('ふつうの文'));
+    expect(f.calls.create.length + f.calls.update.length + f.calls.delete.length).toBe(0);
+  });
+
+  test('削除されたコメントは検査せず、知らせだけ消す', async () => {
+    const f = fakes({ comments: [noticeOf(9, 'public-comment-issue_comment-11')] });
+    // 本文は NG の形でも、削除では見ない
+    await exec(f, commentEvent(email, { action: 'deleted' }));
+    expect(f.calls.delete).toEqual([{ owner: 'o', repo: 'r', comment_id: 9 }]);
+    expect(f.calls.create).toHaveLength(0);
+    expect(f.logs.failed).toHaveLength(0);
+  });
+
+  test('削除されたコメントに知らせが無ければ何もしない', async () => {
+    const f = fakes();
+    await exec(f, commentEvent('x', { action: 'deleted' }));
+    expect(f.calls.delete).toHaveLength(0);
+  });
+
+  test('github-actions[bot] のコメントは、コメント一覧を取る前に飛ばす', async () => {
+    const f = fakes();
+    await exec(f, commentEvent(email, { login: 'github-actions[bot]' }));
+    expect(f.calls.list).toBe(0);
+    expect(f.calls.create.length + f.calls.update.length + f.calls.delete.length).toBe(0);
+    expect(f.logs.failed).toHaveLength(0);
+  });
+
+  test('目印で始まる人のコメントも検査する（抜け道にしない）', async () => {
+    const f = fakes();
+    await exec(f, commentEvent(`${config.marker}:public-body\n${email}`));
+    expect(f.calls.create).toHaveLength(1);
+    expect(f.logs.failed).toHaveLength(1);
+  });
+
+  test('コメントでは書き方チェックの知らせに触らない', async () => {
+    const f = fakes({
+      comments: [
+        noticeOf(1, 'format', '書き方チェック: 足りない項目があります'),
+        noticeOf(2, 'public-body', '公開内容チェック: 要確認'),
+        noticeOf(3, 'public-comment-issue_comment-11'),
+      ],
+    });
+    await exec(f, commentEvent('直しました', { action: 'edited' }));
+    expect(f.calls.delete.map((c) => c.comment_id)).toEqual([3]);
+    expect(f.calls.update).toHaveLength(0);
+    expect(f.calls.create).toHaveLength(0);
+  });
+
+  test('別の鍵（id が前方一致するだけ）の知らせは自分のものとして扱わない', async () => {
+    const f = fakes({ comments: [noticeOf(5, 'public-comment-issue_comment-111')] });
+    await exec(f, commentEvent('直しました', { action: 'edited' }));
+    expect(f.calls.delete).toHaveLength(0);
+  });
+});
+
+describe('run: 知らせの作者と書き込みの失敗', () => {
+  test('同じ目印でも github-actions[bot] 以外の作者のコメントは編集も削除もしない', async () => {
+    const mallory = { login: 'mallory' };
+    const f = fakes({
+      comments: [
+        noticeOf(1, 'public-body', '偽', mallory),
+        noticeOf(2, 'public-comment-issue_comment-11', '偽', mallory),
+      ],
+    });
+    await exec(f, issueEvent('ふつうの文'));
+    await exec(f, commentEvent('直しました', { action: 'edited' }));
+    expect(f.calls.update).toHaveLength(0);
+    expect(f.calls.delete).toHaveLength(0);
+    // NG になっても偽物を更新せず、自分の知らせを新規に作る
+    await exec(f, issueEvent(email));
+    expect(f.calls.update).toHaveLength(0);
+    expect(f.calls.create).toHaveLength(1);
+  });
+
+  test('作者が無い（消えたアカウント）知らせも触らない', async () => {
+    const f = fakes({ comments: [{ id: 1, user: null, body: `${config.marker}:public-body\nx` }] });
+    await exec(f, issueEvent('ふつうの文'));
+    expect(f.calls.update).toHaveLength(0);
+  });
+
+  test('書き込みが 403 でも警告にして判定は続け、NG なら落とす', async () => {
+    const f = fakes({ failWith: { create: 403 } });
+    await exec(f, issueEvent(email));
+    expect(f.logs.warning).toHaveLength(1);
+    expect(f.logs.failed).toHaveLength(1);
+  });
+
+  test('書き込みが 403 でも OK なら落とさない', async () => {
+    const f = fakes({
+      comments: [noticeOf(9, 'public-comment-issue_comment-11')],
+      failWith: { delete: 403 },
+    });
+    await exec(f, commentEvent('直しました', { action: 'edited' }));
+    expect(f.logs.warning).toHaveLength(1);
+    expect(f.logs.failed).toHaveLength(0);
+  });
+
+  test('知らせの削除が 404（すでに無い）なら失敗にしない', async () => {
+    const f = fakes({
+      comments: [noticeOf(9, 'public-comment-issue_comment-11')],
+      failWith: { delete: 404 },
+    });
+    await exec(f, commentEvent('x', { action: 'deleted' }));
+    expect(f.logs.warning).toHaveLength(0);
+    expect(f.logs.failed).toHaveLength(0);
+  });
+
+  test('403 以外の書き込みエラーは投げ直す', async () => {
+    const f = fakes({ failWith: { create: 500 } });
+    await expect(exec(f, issueEvent(email))).rejects.toThrow('create');
+  });
+});
+
+describe('中継（workflow_run）', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'text-checks-relay-'));
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  // 本物の zip を作る（unzip の呼び出しまで通すため）
+  function zipOf(text, name = caller.RELAY_FILE) {
+    const src = path.join(dir, name);
+    writeFileSync(src, text);
+    const out = path.join(dir, `a-${Math.random().toString(36).slice(2)}.zip`);
+    const r = spawnSync(
+      'python3',
+      [
+        '-I',
+        '-c',
+        'import sys,zipfile;z=zipfile.ZipFile(sys.argv[1],"w");z.write(sys.argv[2],sys.argv[3])',
+        out,
+        src,
+        name,
+      ],
+      { encoding: 'utf8' },
+    );
+    expect(r.status).toBe(0);
+    return readFileSync(out);
+  }
+
+  const relayJson = (o = {}) =>
+    JSON.stringify({
+      event: 'pull_request_review_comment',
+      action: 'created',
+      pr_number: 9,
+      id: 21,
+      ...o,
+    });
+
+  function relayFakes({
+    json = relayJson(),
+    run = {},
+    artifacts,
+    reviewComment,
+    review,
+    ...rest
+  } = {}) {
+    const calls = { reviewComment: 0, review: 0, download: 0 };
+    const f = fakes({
+      ...rest,
+      pulls: {
+        getReviewComment: async (p) => {
+          calls.reviewComment += 1;
+          if (reviewComment instanceof Error) throw reviewComment;
+          return { data: reviewComment, params: p };
+        },
+        getReview: async (p) => {
+          calls.review += 1;
+          if (review instanceof Error) throw review;
+          return { data: review, params: p };
+        },
+      },
+      actions: {
+        listWorkflowRunArtifacts: async () => ({
+          data: {
+            artifacts: artifacts ?? [
+              { id: 100, name: caller.RELAY_ARTIFACT, expired: false, size_in_bytes: 300 },
+            ],
+          },
+        }),
+        downloadArtifact: async () => {
+          calls.download += 1;
+          return { data: zipOf(json) };
+        },
+      },
+    });
+    const context = {
+      repo: { owner: 'o', repo: 'r' },
+      eventName: 'workflow_run',
+      payload: {
+        workflow_run: {
+          id: 77,
+          conclusion: 'success',
+          event: 'pull_request_review_comment',
+          ...run,
+        },
+      },
+    };
+    return { ...f, relayCalls: calls, context };
+  }
+  const go = (f) =>
+    caller.run({
+      github: f.github,
+      context: f.context,
+      core: f.core,
+      config,
+      extraFile: null,
+      tmpDir: dir,
+    });
+  const goodComment = (o = {}) => ({
+    body: email,
+    html_url: 'https://example.test/rc/21',
+    user: { login: 'dave' },
+    pull_request_url: 'https://api.example.test/repos/o/r/pulls/9',
+    ...o,
+  });
+  const noWrites = (f) =>
+    expect(f.calls.create.length + f.calls.update.length + f.calls.delete.length).toBe(0);
+
+  test('正しい artifact なら API から取り直した本文を検査し、知らせを作る', async () => {
+    const f = relayFakes({ reviewComment: goodComment() });
+    await go(f);
+    expect(f.calls.create).toHaveLength(1);
+    expect(f.calls.create[0].issue_number).toBe(9);
+    expect(f.calls.create[0].body.split('\n').slice(0, 2)).toEqual([
+      `${config.marker}:public-comment-review_comment-21`,
+      '対象のコメント: https://example.test/rc/21',
+    ]);
+    expect(f.logs.failed).toHaveLength(1);
+  });
+
+  test('レビュー本文も、PR の番号つきで取り直して検査する', async () => {
+    const f = relayFakes({
+      json: relayJson({ event: 'pull_request_review', action: 'submitted', id: 31 }),
+      run: { event: 'pull_request_review' },
+      review: {
+        body: email,
+        html_url: 'https://example.test/r/31',
+        user: { login: 'erin' },
+        pull_request_url: 'https://api.example.test/repos/o/r/pulls/9',
+      },
+    });
+    await go(f);
+    expect(f.calls.create[0].body).toContain(`${config.marker}:public-comment-review-31`);
+  });
+
+  test('取り直したコメントが OK なら、既存の知らせを消す', async () => {
+    const f = relayFakes({
+      reviewComment: goodComment({ body: '直しました' }),
+      comments: [noticeOf(4, 'public-comment-review_comment-21')],
+    });
+    await go(f);
+    expect(f.calls.delete.map((c) => c.comment_id)).toEqual([4]);
+  });
+
+  test('artifact に本文を入れても使わない（取り直した本文だけを見る）', async () => {
+    const f = relayFakes({
+      json: relayJson({ body: email }),
+      reviewComment: goodComment({ body: '直しました' }),
+    });
+    await expect(go(f)).rejects.toThrow('項目が不正');
+    noWrites(f);
+  });
+
+  test.each([
+    ['JSON ではない', '{oops'],
+    ['配列', '[]'],
+    ['null', 'null'],
+    ['未知の event', relayJson({ event: 'issue_comment' })],
+    [
+      'event と action の組が不正（review の deleted）',
+      relayJson({ event: 'pull_request_review', action: 'deleted' }),
+    ],
+    ['未知の action', relayJson({ action: 'closed' })],
+    ['PR の番号が文字列', relayJson({ pr_number: '9' })],
+    ['id が小数', relayJson({ id: 1.5 })],
+    ['id が 0', relayJson({ id: 0 })],
+    ['id が負', relayJson({ id: -3 })],
+    [
+      'id が大きすぎる',
+      '{"event":"pull_request_review_comment","action":"created","pr_number":9,"id":9007199254740993}',
+    ],
+    [
+      '項目が足りない',
+      JSON.stringify({ event: 'pull_request_review_comment', action: 'created', id: 21 }),
+    ],
+  ])('不正な artifact は弾く: %s', async (_name, json) => {
+    const f = relayFakes({ json, reviewComment: goodComment() });
+    await expect(go(f)).rejects.toThrow('中継の artifact');
+    expect(f.relayCalls.reviewComment + f.relayCalls.review).toBe(0);
+    noWrites(f);
+  });
+
+  test('実行の event と artifact の event が食い違えば弾く', async () => {
+    const f = relayFakes({ run: { event: 'pull_request_review' }, reviewComment: goodComment() });
+    await expect(go(f)).rejects.toThrow('一致しません');
+    noWrites(f);
+  });
+
+  test('artifact が無い・複数ある・期限切れ・大きすぎるときは弾く', async () => {
+    for (const artifacts of [
+      [],
+      [{ id: 1, name: 'other', expired: false, size_in_bytes: 10 }],
+      [
+        { id: 1, name: caller.RELAY_ARTIFACT, expired: false, size_in_bytes: 10 },
+        { id: 2, name: caller.RELAY_ARTIFACT, expired: false, size_in_bytes: 10 },
+      ],
+      [{ id: 1, name: caller.RELAY_ARTIFACT, expired: true, size_in_bytes: 10 }],
+      [{ id: 1, name: caller.RELAY_ARTIFACT, expired: false, size_in_bytes: 10_000_000 }],
+    ]) {
+      const f = relayFakes({ artifacts, reviewComment: goodComment() });
+      await expect(go(f)).rejects.toThrow('中継の artifact');
+      expect(f.relayCalls.download).toBe(0);
+    }
+  });
+
+  test('zip に決まった名前のファイルが無ければ弾く', async () => {
+    const f = relayFakes({ reviewComment: goodComment() });
+    f.github.rest.actions.downloadArtifact = async () => ({
+      data: zipOf(relayJson(), 'other.json'),
+    });
+    await expect(go(f)).rejects.toThrow('展開できません');
+  });
+
+  test('コメントが指定の PR のものでなければ弾く', async () => {
+    const f = relayFakes({
+      reviewComment: goodComment({
+        pull_request_url: 'https://api.example.test/repos/o/r/pulls/10',
+      }),
+    });
+    await expect(go(f)).rejects.toThrow('指定の PR のものではありません');
+    noWrites(f);
+  });
+
+  test('PR の番号が前方一致するだけ（pulls/90 と pulls/9）でも弾く', async () => {
+    const f = relayFakes({
+      reviewComment: goodComment({
+        pull_request_url: 'https://api.example.test/repos/o/r/pulls/90',
+      }),
+    });
+    await expect(go(f)).rejects.toThrow('指定の PR のものではありません');
+  });
+
+  test('取り直しが 404 なら削除済みとして扱い、知らせだけ消す', async () => {
+    const f = relayFakes({
+      json: relayJson({ action: 'deleted' }),
+      reviewComment: Object.assign(new Error('Not Found'), { status: 404 }),
+      comments: [noticeOf(4, 'public-comment-review_comment-21')],
+    });
+    await go(f);
+    expect(f.calls.delete.map((c) => c.comment_id)).toEqual([4]);
+    expect(f.calls.create).toHaveLength(0);
+    expect(f.logs.failed).toHaveLength(0);
+  });
+
+  test('レビューの取り直しが 404 でも削除済み扱い', async () => {
+    const f = relayFakes({
+      json: relayJson({ event: 'pull_request_review', action: 'edited', id: 31 }),
+      run: { event: 'pull_request_review' },
+      review: Object.assign(new Error('Not Found'), { status: 404 }),
+      comments: [noticeOf(4, 'public-comment-review-31')],
+    });
+    await go(f);
+    expect(f.calls.delete.map((c) => c.comment_id)).toEqual([4]);
+  });
+
+  test('404 以外の取り直しの失敗は投げ直す', async () => {
+    const f = relayFakes({ reviewComment: Object.assign(new Error('boom'), { status: 500 }) });
+    await expect(go(f)).rejects.toThrow('boom');
+  });
+
+  test('削除と書いてあっても API にコメントが残っていれば通常どおり検査する', async () => {
+    const f = relayFakes({ json: relayJson({ action: 'deleted' }), reviewComment: goodComment() });
+    await go(f);
+    expect(f.calls.create).toHaveLength(1);
+  });
+
+  test('github-actions[bot] のレビューコメントは一覧を取る前に飛ばす', async () => {
+    const f = relayFakes({
+      reviewComment: goodComment({ user: { login: 'github-actions[bot]' } }),
+    });
+    await go(f);
+    expect(f.calls.list).toBe(0);
+    noWrites(f);
+  });
+
+  test('中継の実行が成功でなければ何も読まない', async () => {
+    const f = relayFakes({ run: { conclusion: 'failure' }, reviewComment: goodComment() });
+    await go(f);
+    expect(f.relayCalls.download).toBe(0);
+    expect(f.calls.list).toBe(0);
   });
 });

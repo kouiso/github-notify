@@ -1,0 +1,42 @@
+name: Text Checks Relay
+
+# fork の PR のレビュー系イベントは token が読み取り専用・secret なしで、workflow 定義も PR 側のものが使われる。
+# そのためここでは検査せず、PR の番号と id だけを artifact で text-checks.yml（workflow_run、既定ブランチ・書き込み権限）へ渡す。
+# コードは取り出さず、権限も持たない。本文などは渡さない（受け取り側が API から取り直す）。
+on:
+  pull_request_review:
+    types: [submitted, edited]
+  pull_request_review_comment:
+    types: [created, edited, deleted]
+
+permissions: {}
+
+jobs:
+  relay:
+    name: Relay review event
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Write relay payload
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_ACTION: ${{ github.event.action }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          OBJECT_ID: ${{ github.event.review.id || github.event.comment.id }}
+        run: |
+          set -euo pipefail
+          mkdir -p relay
+          jq -n \
+            --arg event "$EVENT_NAME" \
+            --arg action "$EVENT_ACTION" \
+            --argjson pr_number "$PR_NUMBER" \
+            --argjson id "$OBJECT_ID" \
+            '{event: $event, action: $action, pr_number: $pr_number, id: $id}' > relay/relay.json
+      - name: Upload relay payload
+        # v4.6.2（git ls-remote で実コミットを確認）。リポの他の upload-artifact はタグ指定のままだが、権限なしで動かすここは SHA で固定する。
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: text-checks-relay
+          path: relay/relay.json
+          retention-days: 1
+          if-no-files-found: error
