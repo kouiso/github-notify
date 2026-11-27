@@ -3,6 +3,8 @@
 // 判定は brain #110 の本体の写し（.github/scripts/text-checks/ の Python）に任せ、
 // ここでは「対象外の判定」「本体の CLI を --json で呼ぶ」「知らせる文を作る」「GitHub への読み書き」をする。
 // workflow 側は run() を呼ぶだけにして、分岐をテストできる形でここに集める。
+// レビュー系（行コメント・レビュー本文）は fork の PR だと起こしたイベントも中継の中身も信用できないので、
+// 中継は「どの PR か」のヒントにだけ使い、その PR のレビューとレビューコメントを全部取り直して検査する（定期の総ざらいも同じ処理）。
 // 当たった文字そのものや追加の禁止語は、知らせる文にもログにも出さない（本体も規則名だけを返す）。
 const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
@@ -14,7 +16,7 @@ const CHECKS_DIR = path.join(__dirname, 'text-checks');
 const HEADINGS_CONFIG = path.join(__dirname, '..', 'text-checks.headings.json');
 // 知らせのコメントを書くのは Actions の GITHUB_TOKEN だけ。別の作者のコメントは同じ目印があっても自分のものとして扱わない。
 const NOTICE_AUTHOR = 'github-actions[bot]';
-// fork の PR のレビュー系イベントは中継ワークフローが artifact で渡す（text-checks-review-relay.yml）。
+// fork の PR のレビュー系イベントは中継ワークフローが artifact で PR の番号だけ渡す（text-checks-review-relay.yml）。
 const RELAY_ARTIFACT = 'text-checks-relay';
 const RELAY_FILE = 'relay.json';
 const RELAY_MAX_BYTES = 4096;
@@ -26,12 +28,7 @@ function isBotActor(login, config) {
 
 // イベントごとに payload の形が違うので、workflow 側の分岐を増やさないようここで1つの形に揃える。
 // コメントの通知は issue / PR 側のコメント欄に出すため、number は常に issue / PR の番号を返す。
-// レビュー系（行コメント・レビュー本文）は fork の PR だと payload を信用できないので、ここでは扱わず中継経由で API から取り直す。
-const COMMENT_TYPES = {
-  issue_comment: 'issue_comment',
-  pull_request_review_comment: 'review_comment',
-  pull_request_review: 'review',
-};
+const COMMENT_TYPES = { issue_comment: 'issue_comment' };
 
 function resolveTarget(eventName, payload) {
   const labelsOf = (issue) => (issue.labels || []).map((l) => l.name);
@@ -86,16 +83,23 @@ function shouldSkipComment({ author }) {
   return author === NOTICE_AUTHOR;
 }
 
-// fork の PR や Dependabot が起こしたイベントは token が読み取り専用で、コメントを書けず 403 になる。
-// 書けないこと自体で検査を落とすと判定が見えなくなるので、書き込みだけ警告にして判定は続ける（NG なら呼び出し側が落とす）。
+// レート制限は待てば直る一時的な失敗で、黙って警告にすると知らせが抜けたまま気づけない。
+// 権限の 403 と見分けるため、ヘッダーで判定して落とす側に回す。
+function isRateLimited(err) {
+  const h = err?.response?.headers || {};
+  return h['retry-after'] !== undefined || String(h['x-ratelimit-remaining']) === '0';
+}
+
+// fork の PR や Dependabot が起こしたイベントは token が読み取り専用で、書き込みが 403 になる。
+// 書けないこと自体で検査を落とすと判定が見えなくなるので、権限の失敗だけ警告にして判定は続ける（NG なら呼び出し側が落とす）。
 async function writeOrWarn(write, warn) {
   try {
     await write();
     return true;
   } catch (err) {
-    if (err && err.status === 403) {
+    if ((err?.status === 403 || err?.status === 429) && !isRateLimited(err)) {
       warn(
-        'コメントを書く権限がないため、知らせのコメントは作れませんでした（fork の PR や Dependabot の読み取り専用 token）。判定は有効です。',
+        `知らせのコメントの書き込みが ${err.status} で拒否されたため、作れませんでした（権限不足の可能性）。判定は有効です。`,
       );
       return false;
     }
@@ -204,17 +208,13 @@ function formatReport(kind, result, config, key = kind, sourceUrl = null, commen
   ].join('\n');
 }
 
-// 知らせのコメントを探す。作者と目印の鍵が完全に一致するものだけ。別の作者が同じ目印を書いても編集・削除しない。
+// 作者と目印の鍵が完全に一致するものだけ。別の作者が同じ目印を書いても編集・削除しない。
+// 古い順に並べるのは、同時に走った実行が同じ知らせを2つ作ったとき、一番古い1つを本物として残して残りを消すため。
 function findNotices(existing, config, key) {
   const marker = `${config.marker}:${key}`;
   return existing
     .filter((c) => c.user?.login === NOTICE_AUTHOR && (c.body || '').startsWith(`${marker}\n`))
     .sort((x, y) => x.id - y.id);
-}
-
-// 同時に走った実行が同じ知らせを2つ作ることがあるので、一番古い1つを本物として使い、残りは重複として消す。
-function findNotice(existing, config, key) {
-  return findNotices(existing, config, key)[0];
 }
 
 async function deleteNotice({ github, context, core, found }) {
@@ -280,10 +280,9 @@ function publicFailure(pub) {
     .join(', ')}`;
 }
 
-// 本文は公開内容と書き方の両方。直ったときは同じ知らせを OK に更新する。
+// 書き方チェックはコメントには掛けず本文だけ。直ったときは同じ知らせを OK に更新する。
 async function checkBody(env, { body, author, kind, labels, draft }) {
   const failures = [];
-  // 本文が空（承認だけのレビューなど）は書いてはいけないものが無いので OK。
   const pub = runPublicCheck(body, { extraFile: env.extraFile });
   await upsertNotice(
     env,
@@ -305,7 +304,7 @@ async function checkBody(env, { body, author, kind, labels, draft }) {
   return failures;
 }
 
-// 検査の本体。target は resolveTarget か中継の取り直しで作った形、deleted はコメントが消えたことを表す。
+// issues / pull_request_target / issue_comment の1件分。deleted はコメントが消えたことを表す。
 async function processTarget({
   github,
   context,
@@ -331,7 +330,6 @@ async function processTarget({
   });
   const env = { github, context, core, config, extraFile, existing, number: target.number };
 
-  // 書き方チェックは本文だけ。コメントには掛けず、本文の知らせにも触らない。
   const failures = target.comment
     ? await checkComment(env, target, deleted)
     : await checkBody(env, target);
@@ -340,12 +338,7 @@ async function processTarget({
   else if (!deleted) core.info('All text checks passed.');
 }
 
-// 中継の artifact は fork の PR から書き換えられる前提で、形を厳しく確かめてから使う。
-const RELAY_ACTIONS = {
-  pull_request_review: ['submitted', 'edited'],
-  pull_request_review_comment: ['created', 'edited', 'deleted'],
-};
-
+// 中継の artifact は PR の作者に書き換えられる前提で、番号1つだけをヒントとして受け取る。
 function isPositiveInt(v) {
   return typeof v === 'number' && Number.isSafeInteger(v) && v > 0;
 }
@@ -359,18 +352,14 @@ function parseRelayPayload(text) {
   }
   if (data === null || typeof data !== 'object' || Array.isArray(data))
     throw new Error('中継の artifact の形が不正です');
-  const keys = Object.keys(data).sort().join(',');
-  if (keys !== 'action,event,id,pr_number') throw new Error('中継の artifact の項目が不正です');
-  const { event, action, pr_number: prNumber, id } = data;
-  if (!Object.hasOwn(RELAY_ACTIONS, event)) throw new Error('中継の artifact の event が不正です');
-  if (!RELAY_ACTIONS[event].includes(action))
-    throw new Error('中継の artifact の action が不正です');
-  if (!isPositiveInt(prNumber) || !isPositiveInt(id))
-    throw new Error('中継の artifact の番号が不正です');
-  return { event, action, prNumber, id };
+  if (Object.keys(data).join(',') !== 'pr_number')
+    throw new Error('中継の artifact の項目が不正です');
+  if (!isPositiveInt(data.pr_number)) throw new Error('中継の artifact の番号が不正です');
+  return { prNumber: data.pr_number };
 }
 
 // zip の中の決まった1ファイルだけを標準出力に出す。他のファイルは展開しない。
+// 圧縮して小さく見せた巨大なファイルや、止まらない展開に備えて、出力の上限と時間の上限を付ける。
 function unzipRelay(buffer, dir) {
   const file = path.join(dir, `text-checks-relay-${process.pid}.zip`);
   fs.writeFileSync(file, Buffer.from(buffer), { mode: 0o600 });
@@ -378,8 +367,9 @@ function unzipRelay(buffer, dir) {
     const r = spawnSync('unzip', ['-p', file, RELAY_FILE], {
       encoding: 'utf8',
       maxBuffer: RELAY_MAX_BYTES,
+      timeout: 10_000,
     });
-    if (r.status !== 0) throw new Error('中継の artifact を展開できません');
+    if (r.error || r.status !== 0) throw new Error('中継の artifact を展開できません');
     return r.stdout;
   } finally {
     fs.rmSync(file, { force: true });
@@ -388,11 +378,11 @@ function unzipRelay(buffer, dir) {
 
 async function loadRelay({ github, context, tmpDir }) {
   const { owner, repo } = context.repo;
-  const run = context.payload.workflow_run;
   const { data } = await github.rest.actions.listWorkflowRunArtifacts({
     owner,
     repo,
-    run_id: run.id,
+    run_id: context.payload.workflow_run.id,
+    name: RELAY_ARTIFACT,
     per_page: 100,
   });
   const matches = (data.artifacts || []).filter((a) => a.name === RELAY_ARTIFACT && !a.expired);
@@ -405,91 +395,128 @@ async function loadRelay({ github, context, tmpDir }) {
     artifact_id: matches[0].id,
     archive_format: 'zip',
   });
-  const relay = parseRelayPayload(unzipRelay(dl.data, tmpDir));
-  // 起こした側のイベントと artifact の中身が食い違うものは捨てる。
-  if (relay.event !== run.event) throw new Error('中継の artifact の event が実行と一致しません');
-  return relay;
+  return parseRelayPayload(unzipRelay(dl.data, tmpDir)).prNumber;
 }
 
-// artifact の中身は信用しない。番号だけを使い、本文・作者・URL は API から取り直して、その PR のものか確かめる。
-// 取り直せない（404）ものは消えたものとして扱う。
-async function resolveRelayTarget({ github, context, relay }) {
-  const { owner, repo } = context.repo;
-  const type = COMMENT_TYPES[relay.event];
-  const gone = { number: relay.prNumber, comment: { id: relay.id, url: null, type } };
-  const base = { kind: 'pull_request', labels: [], draft: false };
-  const prPath = `/pulls/${relay.prNumber}`;
+// 中継が無い・壊れている・読めないのは普通に起きる（衝突で動かない、改ざん）ので、ヒント無しに戻して続ける。
+// レート制限だけは握りつぶさない。
+async function loadRelayHint(args) {
   try {
-    if (relay.event === 'pull_request_review_comment') {
-      const { data: c } = await github.rest.pulls.getReviewComment({
-        owner,
-        repo,
-        comment_id: relay.id,
-      });
-      if (!String(c.pull_request_url || '').endsWith(prPath))
-        throw new Error('取り直したコメントが指定の PR のものではありません');
-      return {
-        deleted: false,
-        target: {
-          ...base,
-          number: relay.prNumber,
-          body: c.body ?? null,
-          author: c.user?.login ?? null,
-          comment: { id: relay.id, url: c.html_url, type },
-        },
-      };
-    }
-    const { data: r } = await github.rest.pulls.getReview({
-      owner,
-      repo,
-      pull_number: relay.prNumber,
-      review_id: relay.id,
-    });
-    if (r.pull_request_url && !String(r.pull_request_url).endsWith(prPath))
-      throw new Error('取り直したレビューが指定の PR のものではありません');
-    return {
-      deleted: false,
-      target: {
-        ...base,
-        number: relay.prNumber,
-        body: r.body ?? null,
-        author: r.user?.login ?? null,
-        comment: { id: relay.id, url: r.html_url, type },
-      },
-    };
+    return await loadRelay(args);
   } catch (err) {
-    if (err && err.status === 404)
-      return {
-        deleted: true,
-        target: {
-          ...base,
-          number: relay.prNumber,
-          body: null,
-          author: null,
-          comment: gone.comment,
-        },
-      };
-    throw err;
+    if (isRateLimited(err)) throw err;
+    args.core.info(`中継の artifact は使いません: ${err.message}`);
+    return null;
   }
 }
 
-// fork の PR のレビュー系イベント用。既定ブランチのコードと書き込み権限で動き、中継の artifact から番号だけ受け取る。
-async function runRelay(args) {
-  const { context, core } = args;
+// 起こした実行の head と一致する PR だけを対象にする。番号は信用せず、head の sha か、head のリポジトリとブランチで確かめる。
+// 実行のあとに push があって sha が進んでいても、同じリポジトリとブランチなら同じ PR として扱う。
+async function findPullsForRun(args) {
+  const { github, context, core } = args;
+  const { owner, repo } = context.repo;
   const run = context.payload.workflow_run;
-  if (!run || run.conclusion !== 'success') {
-    core.info('中継の実行が成功していないので検査しません。');
+  const fullName = run.head_repository?.full_name;
+  const sameHead = (pr) =>
+    pr.state === 'open' &&
+    (pr.head?.sha === run.head_sha ||
+      (pr.head?.repo?.full_name === fullName && pr.head?.ref === run.head_branch));
+
+  const hint = await loadRelayHint(args);
+  if (hint) {
+    try {
+      const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: hint });
+      if (sameHead(pr)) return [pr.number];
+      core.info(`中継の PR #${hint} は、起こした実行の head と一致しないので使いません。`);
+    } catch (err) {
+      if (err?.status !== 404) throw err;
+    }
+  }
+  const headOwner = run.head_repository?.owner?.login;
+  if (!headOwner || !run.head_branch) return [];
+  const open = await github.paginate(github.rest.pulls.list, {
+    owner,
+    repo,
+    state: 'open',
+    head: `${headOwner}:${run.head_branch}`,
+    per_page: 100,
+  });
+  return open.filter(sameHead).map((pr) => pr.number);
+}
+
+const NOTICE_KEY_RE = /^public-comment-(review|review_comment)-\d+$/;
+
+// PR のレビューとレビューコメントをすべて取り直して検査し、元が無くなった知らせを片づける。
+// 起こしたイベントの id を使わないので、中継の中身が偽でも、中継が動かなくても、本物の NG を取りこぼさない。
+// 一度の総ざらいで NG が見つかっても実行は落とさない（毎時の実行が直るまで赤くなり続けるため）。知らせのコメントが手がかり。
+async function sweepPull(args, number) {
+  const { github, context, core, config, extraFile } = args;
+  const { owner, repo } = context.repo;
+  const list = (fn, params) => github.paginate(fn, { owner, repo, ...params, per_page: 100 });
+  const existing = await list(github.rest.issues.listComments, { issue_number: number });
+  const reviews = await list(github.rest.pulls.listReviews, { pull_number: number });
+  const reviewComments = await list(github.rest.pulls.listReviewComments, { pull_number: number });
+  const env = { github, context, core, config, extraFile, existing, number };
+
+  const sources = [
+    ...reviews.map((x) => ({ type: 'review', x })),
+    ...reviewComments.map((x) => ({ type: 'review_comment', x })),
+  ].map(({ type, x }) => ({
+    number,
+    body: x.body ?? null,
+    author: x.user?.login ?? null,
+    comment: { id: x.id, url: x.html_url, type },
+  }));
+
+  const failures = [];
+  for (const target of sources) {
+    if (shouldSkipComment(target)) continue;
+    failures.push(...(await checkComment(env, target, false)));
+  }
+
+  // 消えたレビューコメントの知らせは、消えたことを知らせる手段が無いのでここで片づける。issue コメントの知らせには触らない。
+  const live = new Set(sources.map((t) => commentKey(t.comment)));
+  const prefix = `${config.marker}:`;
+  for (const c of existing) {
+    if (c.user?.login !== NOTICE_AUTHOR || !(c.body || '').startsWith(prefix)) continue;
+    const key = c.body.slice(prefix.length).split('\n', 1)[0];
+    if (NOTICE_KEY_RE.test(key) && !live.has(key)) await deleteNotice({ ...env, found: c });
+  }
+
+  if (failures.length > 0) core.warning(`PR #${number}: ${failures.join(' / ')}`);
+  return failures;
+}
+
+// fork の PR のレビュー系イベント用。既定ブランチのコードと書き込み権限で動き、中継の実行が成功したかどうかは見ない。
+async function runRelay(args) {
+  const tmpDir = args.tmpDir || process.env.RUNNER_TEMP || os.tmpdir();
+  const numbers = await findPullsForRun({ ...args, tmpDir });
+  if (numbers.length === 0) {
+    args.core.info('対応する開いた PR が見つからないので何もしません。');
     return;
   }
-  const tmpDir = args.tmpDir || process.env.RUNNER_TEMP || os.tmpdir();
-  const relay = await loadRelay({ ...args, tmpDir });
-  const { target, deleted } = await resolveRelayTarget({ ...args, relay });
-  await processTarget({ ...args, target, deleted });
+  for (const number of numbers) await sweepPull(args, number);
+}
+
+// 中継が動かなかった（衝突・初回の承認待ち・中継の削除）ぶんは、定期の総ざらいで拾う。
+async function runSweepAll(args) {
+  const { github, context } = args;
+  const { owner, repo } = context.repo;
+  const open = await github.paginate(github.rest.pulls.list, {
+    owner,
+    repo,
+    state: 'open',
+    per_page: 100,
+  });
+  for (const pr of open) await sweepPull(args, pr.number);
+  args.core.info(`開いた PR ${open.length} 件を総ざらいしました。`);
 }
 
 async function run(args) {
   const { context } = args;
   if (context.eventName === 'workflow_run') return runRelay(args);
+  if (context.eventName === 'schedule' || context.eventName === 'workflow_dispatch')
+    return runSweepAll(args);
   const target = resolveTarget(context.eventName, context.payload);
   const deleted = Boolean(target.comment) && context.payload.action === 'deleted';
   return processTarget({ ...args, target, deleted });
@@ -512,12 +539,14 @@ module.exports = {
   NOTICE_AUTHOR,
   RELAY_ARTIFACT,
   RELAY_FILE,
-  findNotice,
   findNotices,
   parseRelayPayload,
   unzipRelay,
-  resolveRelayTarget,
+  isRateLimited,
+  findPullsForRun,
+  sweepPull,
   processTarget,
   runRelay,
+  runSweepAll,
   run,
 };

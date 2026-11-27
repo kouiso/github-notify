@@ -405,13 +405,43 @@ describe('コメントの検査（ループ防止・鍵・知らせる文）', (
       }, warn),
     ).toBe(false);
     expect(warnings).toHaveLength(1);
+    // レート制限は権限の 403 と違い、黙らず落とす
+    for (const headers of [{ 'retry-after': '30' }, { 'x-ratelimit-remaining': '0' }]) {
+      const limited = Object.assign(new Error('limited'), { status: 403, response: { headers } });
+      await expect(
+        caller.writeOrWarn(async () => {
+          throw limited;
+        }, warn),
+      ).rejects.toThrow('limited');
+    }
+    const limited429 = Object.assign(new Error('429'), {
+      status: 429,
+      response: { headers: { 'retry-after': '5' } },
+    });
+    await expect(
+      caller.writeOrWarn(async () => {
+        throw limited429;
+      }, warn),
+    ).rejects.toThrow('429');
+    // 残りがあるなら権限の 403 として警告にする
+    const withRemaining = Object.assign(new Error('perm'), {
+      status: 403,
+      response: { headers: { 'x-ratelimit-remaining': '4999' } },
+    });
+    expect(
+      await caller.writeOrWarn(async () => {
+        throw withRemaining;
+      }, warn),
+    ).toBe(false);
+    expect(warnings).toHaveLength(2);
+    expect(warnings[0]).not.toContain('読み取り専用');
     const boom = Object.assign(new Error('boom'), { status: 500 });
     await expect(
       caller.writeOrWarn(async () => {
         throw boom;
       }, warn),
     ).rejects.toThrow('boom');
-    expect(warnings).toHaveLength(1);
+    expect(warnings).toHaveLength(2);
   });
 });
 
@@ -425,19 +455,29 @@ const noticeOf = (id, key, text = 'x', user = BOT) => ({
   body: `${config.marker}:${key}\n${text}`,
 });
 
-function fakes({ comments = [], failWith = {}, pulls = {}, actions = {} } = {}) {
-  const calls = { list: 0, create: [], update: [], delete: [] };
+const listFn = (key) => Object.assign(() => undefined, { key });
+
+// lists は一覧 API ごとの返り値。`キー:番号` があればその PR 専用、なければ `キー` を使う。
+function fakes({ comments = [], lists = {}, failWith = {}, pulls = {}, actions = {} } = {}) {
+  const calls = { list: 0, paginated: [], create: [], update: [], delete: [] };
   const maybeFail = (name) => {
-    if (failWith[name]) throw Object.assign(new Error(name), { status: failWith[name] });
+    if (failWith[name])
+      throw failWith[name] instanceof Error
+        ? failWith[name]
+        : Object.assign(new Error(name), { status: failWith[name] });
   };
   const github = {
-    paginate: async () => {
+    paginate: async (fn, params) => {
       calls.list += 1;
-      return comments;
+      calls.paginated.push({ key: fn.key, params });
+      if (fn.key === 'issueComments') return comments;
+      const n = params.issue_number ?? params.pull_number;
+      const v = lists[`${fn.key}:${n}`] ?? lists[fn.key] ?? [];
+      return typeof v === 'function' ? v(params) : v;
     },
     rest: {
       issues: {
-        listComments: () => undefined,
+        listComments: listFn('issueComments'),
         createComment: async (p) => {
           maybeFail('create');
           calls.create.push(p);
@@ -451,7 +491,12 @@ function fakes({ comments = [], failWith = {}, pulls = {}, actions = {} } = {}) 
           calls.delete.push(p);
         },
       },
-      pulls,
+      pulls: {
+        list: listFn('pulls'),
+        listReviews: listFn('reviews'),
+        listReviewComments: listFn('reviewComments'),
+        ...pulls,
+      },
       actions,
     },
   };
@@ -716,11 +761,11 @@ describe('run: 知らせの作者と書き込みの失敗', () => {
   });
 });
 
-describe('中継（workflow_run）', () => {
+describe('中継（workflow_run）と総ざらい', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'text-checks-relay-'));
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
-  // 本物の zip を作る（unzip の呼び出しまで通すため）
+  // 本物の zip を作る（unzip の呼び出しまで通すため）。octokit と同じく ArrayBuffer で返す。
   function zipOf(text, name = caller.RELAY_FILE) {
     const src = path.join(dir, name);
     writeFileSync(src, text);
@@ -730,7 +775,7 @@ describe('中継（workflow_run）', () => {
       [
         '-I',
         '-c',
-        'import sys,zipfile;z=zipfile.ZipFile(sys.argv[1],"w");z.write(sys.argv[2],sys.argv[3])',
+        'import sys,zipfile;z=zipfile.ZipFile(sys.argv[1],"w",zipfile.ZIP_DEFLATED);z.write(sys.argv[2],sys.argv[3])',
         out,
         src,
         name,
@@ -738,51 +783,61 @@ describe('中継（workflow_run）', () => {
       { encoding: 'utf8' },
     );
     expect(r.status).toBe(0);
-    return readFileSync(out);
+    const buf = readFileSync(out);
+    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
   }
 
-  const relayJson = (o = {}) =>
-    JSON.stringify({
-      event: 'pull_request_review_comment',
-      action: 'created',
-      pr_number: 9,
-      id: 21,
-      ...o,
-    });
+  const HEAD = { sha: 'sha-1', ref: 'feature', repo: { full_name: 'forker/r' } };
+  const pr = (number, head = HEAD, state = 'open') => ({ number, state, head });
+  const RUN = {
+    id: 77,
+    conclusion: 'success',
+    event: 'pull_request_review_comment',
+    head_sha: 'sha-1',
+    head_branch: 'feature',
+    head_repository: { full_name: 'forker/r', owner: { login: 'forker' } },
+  };
+  const artifact = { id: 100, name: caller.RELAY_ARTIFACT, expired: false, size_in_bytes: 300 };
+  const rc = (id, body, o = {}) => ({
+    id,
+    body,
+    html_url: `https://example.test/rc/${id}`,
+    user: { login: 'dave' },
+    ...o,
+  });
+  const rv = (id, body, o = {}) => ({
+    id,
+    body,
+    html_url: `https://example.test/r/${id}`,
+    user: { login: 'erin' },
+    ...o,
+  });
 
   function relayFakes({
-    json = relayJson(),
+    json = '{"pr_number":9}',
     run = {},
-    artifacts,
-    reviewComment,
-    review,
+    artifacts = [artifact],
+    prs = {},
     ...rest
   } = {}) {
-    const calls = { reviewComment: 0, review: 0, download: 0 };
+    const rel = { download: 0, listArtifacts: [], get: [] };
     const f = fakes({
       ...rest,
       pulls: {
-        getReviewComment: async (p) => {
-          calls.reviewComment += 1;
-          if (reviewComment instanceof Error) throw reviewComment;
-          return { data: reviewComment, params: p };
-        },
-        getReview: async (p) => {
-          calls.review += 1;
-          if (review instanceof Error) throw review;
-          return { data: review, params: p };
+        get: async (p) => {
+          rel.get.push(p.pull_number);
+          const v = prs[p.pull_number];
+          if (!v) throw Object.assign(new Error('Not Found'), { status: 404 });
+          return { data: v };
         },
       },
       actions: {
-        listWorkflowRunArtifacts: async () => ({
-          data: {
-            artifacts: artifacts ?? [
-              { id: 100, name: caller.RELAY_ARTIFACT, expired: false, size_in_bytes: 300 },
-            ],
-          },
-        }),
+        listWorkflowRunArtifacts: async (p) => {
+          rel.listArtifacts.push(p);
+          return { data: { artifacts } };
+        },
         downloadArtifact: async () => {
-          calls.download += 1;
+          rel.download += 1;
           return { data: zipOf(json) };
         },
       },
@@ -790,16 +845,9 @@ describe('中継（workflow_run）', () => {
     const context = {
       repo: { owner: 'o', repo: 'r' },
       eventName: 'workflow_run',
-      payload: {
-        workflow_run: {
-          id: 77,
-          conclusion: 'success',
-          event: 'pull_request_review_comment',
-          ...run,
-        },
-      },
+      payload: { workflow_run: { ...RUN, ...run } },
     };
-    return { ...f, relayCalls: calls, context };
+    return { ...f, rel, context };
   }
   const go = (f) =>
     caller.run({
@@ -810,187 +858,299 @@ describe('中継（workflow_run）', () => {
       extraFile: null,
       tmpDir: dir,
     });
-  const goodComment = (o = {}) => ({
-    body: email,
-    html_url: 'https://example.test/rc/21',
-    user: { login: 'dave' },
-    pull_request_url: 'https://api.example.test/repos/o/r/pulls/9',
-    ...o,
-  });
-  const noWrites = (f) =>
-    expect(f.calls.create.length + f.calls.update.length + f.calls.delete.length).toBe(0);
+  const writes = (f) => f.calls.create.length + f.calls.update.length + f.calls.delete.length;
+  const created = (f) =>
+    f.calls.create.map((c) => c.body.split('\n')[0].slice(config.marker.length + 1));
 
-  test('正しい artifact なら API から取り直した本文を検査し、知らせを作る', async () => {
-    const f = relayFakes({ reviewComment: goodComment() });
-    await go(f);
-    expect(f.calls.create).toHaveLength(1);
-    expect(f.calls.create[0].issue_number).toBe(9);
-    expect(f.calls.create[0].body.split('\n').slice(0, 2)).toEqual([
-      `${config.marker}:public-comment-review_comment-21`,
-      '対象のコメント: https://example.test/rc/21',
-    ]);
-    expect(f.logs.failed).toHaveLength(1);
-  });
-
-  test('レビュー本文も、PR の番号つきで取り直して検査する', async () => {
-    const f = relayFakes({
-      json: relayJson({ event: 'pull_request_review', action: 'submitted', id: 31 }),
-      run: { event: 'pull_request_review' },
-      review: {
-        body: email,
-        html_url: 'https://example.test/r/31',
-        user: { login: 'erin' },
-        pull_request_url: 'https://api.example.test/repos/o/r/pulls/9',
-      },
+  describe('PR の特定', () => {
+    test('artifact の番号が実行の head と一致すれば、その PR を総ざらいする', async () => {
+      const f = relayFakes({
+        prs: { 9: pr(9) },
+        lists: { 'reviewComments:9': [rc(21, email)] },
+      });
+      await go(f);
+      expect(f.rel.listArtifacts[0]).toMatchObject({ run_id: 77, name: caller.RELAY_ARTIFACT });
+      expect(f.calls.paginated.some((c) => c.key === 'pulls')).toBe(false);
+      expect(created(f)).toEqual(['public-comment-review_comment-21']);
     });
-    await go(f);
-    expect(f.calls.create[0].body).toContain(`${config.marker}:public-comment-review-31`);
-  });
 
-  test('取り直したコメントが OK なら、既存の知らせを消す', async () => {
-    const f = relayFakes({
-      reviewComment: goodComment({ body: '直しました' }),
-      comments: [noticeOf(4, 'public-comment-review_comment-21')],
+    test('番号の PR の head が実行と一致しなければ、その PR には何もしない', async () => {
+      const other = { sha: 'zzz', ref: 'other', repo: { full_name: 'someone/r' } };
+      const f = relayFakes({
+        prs: { 9: pr(9, other) },
+        lists: { 'reviewComments:9': [rc(21, email)], pulls: [] },
+      });
+      await go(f);
+      expect(f.calls.paginated.filter((c) => c.key === 'reviewComments')).toHaveLength(0);
+      expect(writes(f)).toBe(0);
     });
-    await go(f);
-    expect(f.calls.delete.map((c) => c.comment_id)).toEqual([4]);
-  });
 
-  test('artifact に本文を入れても使わない（取り直した本文だけを見る）', async () => {
-    const f = relayFakes({
-      json: relayJson({ body: email }),
-      reviewComment: goodComment({ body: '直しました' }),
+    test('偽の番号でも、head が合う本物の PR は一覧から見つけて検査する', async () => {
+      const other = { sha: 'zzz', ref: 'other', repo: { full_name: 'someone/r' } };
+      const f = relayFakes({
+        json: '{"pr_number":5}',
+        prs: { 5: pr(5, other) },
+        lists: { pulls: [pr(9), pr(8, other)], 'reviewComments:9': [rc(21, email)] },
+      });
+      await go(f);
+      expect(created(f)).toEqual(['public-comment-review_comment-21']);
+      expect(f.calls.create[0].issue_number).toBe(9);
+      expect(f.calls.paginated.find((c) => c.key === 'pulls').params.head).toBe('forker:feature');
     });
-    await expect(go(f)).rejects.toThrow('項目が不正');
-    noWrites(f);
+
+    test('番号の PR が見つからない（404）ときも、一覧から探す', async () => {
+      const f = relayFakes({ lists: { pulls: [pr(9)], 'reviews:9': [rv(31, email)] } });
+      await go(f);
+      expect(created(f)).toEqual(['public-comment-review-31']);
+    });
+
+    test('push で sha が進んでいても、同じリポジトリとブランチなら同じ PR', async () => {
+      const moved = { sha: 'sha-2', ref: 'feature', repo: { full_name: 'forker/r' } };
+      const f = relayFakes({
+        prs: { 9: pr(9, moved) },
+        lists: { 'reviewComments:9': [rc(21, email)] },
+      });
+      await go(f);
+      expect(created(f)).toEqual(['public-comment-review_comment-21']);
+    });
+
+    test('閉じた PR は対象にしない', async () => {
+      const f = relayFakes({
+        prs: { 9: pr(9, HEAD, 'closed') },
+        lists: { pulls: [pr(9, HEAD, 'closed')] },
+      });
+      await go(f);
+      expect(f.calls.paginated.filter((c) => c.key === 'reviews')).toHaveLength(0);
+    });
+
+    test('中継の実行が失敗・取り消しでも総ざらいする', async () => {
+      for (const conclusion of ['failure', 'cancelled']) {
+        const f = relayFakes({
+          run: { conclusion },
+          lists: { pulls: [pr(9)], 'reviewComments:9': [rc(21, email)] },
+        });
+        await go(f);
+        expect(created(f)).toEqual(['public-comment-review_comment-21']);
+      }
+    });
+
+    test('head の情報が無ければ何もしない', async () => {
+      const f = relayFakes({
+        run: { head_repository: null, head_branch: null },
+        lists: { pulls: [pr(9)] },
+      });
+      await go(f);
+      expect(writes(f)).toBe(0);
+    });
   });
 
-  test.each([
-    ['JSON ではない', '{oops'],
-    ['配列', '[]'],
-    ['null', 'null'],
-    ['未知の event', relayJson({ event: 'issue_comment' })],
-    [
-      'event と action の組が不正（review の deleted）',
-      relayJson({ event: 'pull_request_review', action: 'deleted' }),
-    ],
-    ['未知の action', relayJson({ action: 'closed' })],
-    ['PR の番号が文字列', relayJson({ pr_number: '9' })],
-    ['id が小数', relayJson({ id: 1.5 })],
-    ['id が 0', relayJson({ id: 0 })],
-    ['id が負', relayJson({ id: -3 })],
-    [
-      'id が大きすぎる',
-      '{"event":"pull_request_review_comment","action":"created","pr_number":9,"id":9007199254740993}',
-    ],
-    [
-      '項目が足りない',
-      JSON.stringify({ event: 'pull_request_review_comment', action: 'created', id: 21 }),
-    ],
-  ])('不正な artifact は弾く: %s', async (_name, json) => {
-    const f = relayFakes({ json, reviewComment: goodComment() });
-    await expect(go(f)).rejects.toThrow('中継の artifact');
-    expect(f.relayCalls.reviewComment + f.relayCalls.review).toBe(0);
-    noWrites(f);
+  describe('artifact（ヒント）の読み取り', () => {
+    const noHintButPr = { lists: { pulls: [pr(9)], 'reviewComments:9': [rc(21, email)] } };
+
+    test.each([
+      ['JSON ではない', '{oops'],
+      ['配列', '[]'],
+      ['null', 'null'],
+      ['余分な項目（id）', '{"pr_number":9,"id":21}'],
+      ['番号が文字列', '{"pr_number":"9"}'],
+      ['番号が小数', '{"pr_number":1.5}'],
+      ['番号が 0', '{"pr_number":0}'],
+      ['番号が負', '{"pr_number":-3}'],
+      ['番号が大きすぎる', '{"pr_number":9007199254740993}'],
+      ['項目が無い', '{}'],
+    ])('不正な artifact はヒントとして使わず、一覧から探す: %s', async (_name, json) => {
+      const f = relayFakes({ json, ...noHintButPr });
+      await go(f);
+      expect(f.rel.get).toEqual([]);
+      expect(created(f)).toEqual(['public-comment-review_comment-21']);
+    });
+
+    test('artifact が無い・複数・期限切れ・大きすぎるときもヒント無しで続ける', async () => {
+      for (const artifacts of [
+        [],
+        [{ ...artifact, name: 'other' }],
+        [artifact, { ...artifact, id: 101 }],
+        [{ ...artifact, expired: true }],
+        [{ ...artifact, size_in_bytes: 10_000_000 }],
+      ]) {
+        const f = relayFakes({ artifacts, ...noHintButPr });
+        await go(f);
+        expect(f.rel.download).toBe(0);
+        expect(created(f)).toEqual(['public-comment-review_comment-21']);
+      }
+    });
+
+    test('zip に決まった名前のファイルが無ければヒント無しで続ける', async () => {
+      const f = relayFakes(noHintButPr);
+      f.github.rest.actions.downloadArtifact = async () => ({
+        data: zipOf('{"pr_number":9}', 'other.json'),
+      });
+      await go(f);
+      expect(f.rel.get).toEqual([]);
+      expect(created(f)).toEqual(['public-comment-review_comment-21']);
+    });
+
+    test('圧縮して小さく見せた巨大なファイル（出力の上限超え）もヒント無しで続ける', async () => {
+      const f = relayFakes({
+        json: `{"pr_number":9,"pad":"${'a'.repeat(50_000)}"}`,
+        ...noHintButPr,
+      });
+      await go(f);
+      expect(f.rel.get).toEqual([]);
+      expect(f.logs.info.some((m) => m.includes('展開できません'))).toBe(true);
+    });
+
+    test('レート制限は握りつぶさず投げ直す', async () => {
+      const f = relayFakes(noHintButPr);
+      f.github.rest.actions.listWorkflowRunArtifacts = async () => {
+        throw Object.assign(new Error('rate'), {
+          status: 403,
+          response: { headers: { 'x-ratelimit-remaining': '0' } },
+        });
+      };
+      await expect(go(f)).rejects.toThrow('rate');
+    });
   });
 
-  test('実行の event と artifact の event が食い違えば弾く', async () => {
-    const f = relayFakes({ run: { event: 'pull_request_review' }, reviewComment: goodComment() });
-    await expect(go(f)).rejects.toThrow('一致しません');
-    noWrites(f);
+  describe('総ざらい（PR 単位）', () => {
+    const base = { prs: { 9: pr(9) } };
+
+    test('その PR のレビューもレビューコメントも全部検査する（偽の id に引きずられない）', async () => {
+      const f = relayFakes({
+        ...base,
+        lists: {
+          'reviews:9': [rv(31, email), rv(32, 'ふつう'), rv(33, null)],
+          'reviewComments:9': [rc(21, '直した'), rc(22, email), rc(23, email)],
+        },
+      });
+      await go(f);
+      expect(created(f).sort()).toEqual([
+        'public-comment-review-31',
+        'public-comment-review_comment-22',
+        'public-comment-review_comment-23',
+      ]);
+      // 実行は落とさず、NG は警告にとどめる
+      expect(f.logs.failed).toHaveLength(0);
+      expect(f.logs.warning.some((m) => m.includes('PR #9'))).toBe(true);
+    });
+
+    test('レビューは種類つきの鍵なので、同じ id のレビューコメントと混ざらない', async () => {
+      const f = relayFakes({
+        ...base,
+        lists: { 'reviews:9': [rv(5, email)], 'reviewComments:9': [rc(5, email)] },
+      });
+      await go(f);
+      expect(created(f).sort()).toEqual([
+        'public-comment-review-5',
+        'public-comment-review_comment-5',
+      ]);
+    });
+
+    test('直ったものは知らせを消し、github-actions[bot] の投稿は見ない', async () => {
+      const f = relayFakes({
+        ...base,
+        comments: [noticeOf(4, 'public-comment-review_comment-21')],
+        lists: {
+          'reviewComments:9': [
+            rc(21, '直した'),
+            rc(22, email, { user: { login: 'github-actions[bot]' } }),
+          ],
+        },
+      });
+      await go(f);
+      expect(f.calls.delete.map((c) => c.comment_id)).toEqual([4]);
+      expect(f.calls.create).toHaveLength(0);
+    });
+
+    test('元が無くなったレビュー・レビューコメントの知らせは消し、他は消さない', async () => {
+      const mallory = { login: 'mallory' };
+      const f = relayFakes({
+        ...base,
+        comments: [
+          noticeOf(1, 'public-comment-review_comment-99'), // 消えた行コメント
+          noticeOf(2, 'public-comment-review-98'), // 消えたレビュー
+          noticeOf(3, 'public-comment-review_comment-21', '要確認'), // まだ NG のものは残す
+          noticeOf(4, 'public-comment-review_comment-97', '偽', mallory), // 他の作者
+          noticeOf(5, 'public-comment-issue_comment-96'), // issue コメントの知らせは別の経路
+          noticeOf(6, 'public-body'),
+          noticeOf(7, 'format'),
+          { id: 8, user: BOT, body: '目印の無いふつうの投稿' },
+        ],
+        lists: { 'reviewComments:9': [rc(21, email)] },
+      });
+      await go(f);
+      expect(f.calls.delete.map((c) => c.comment_id).sort()).toEqual([1, 2]);
+    });
+
+    test('消えた知らせの重複もすべて消す', async () => {
+      const f = relayFakes({
+        ...base,
+        comments: [
+          noticeOf(1, 'public-comment-review-98'),
+          noticeOf(2, 'public-comment-review-98'),
+        ],
+      });
+      await go(f);
+      expect(f.calls.delete.map((c) => c.comment_id).sort()).toEqual([1, 2]);
+    });
+
+    test('一覧は PR の番号でページをたどる', async () => {
+      const f = relayFakes(base);
+      await go(f);
+      const keys = f.calls.paginated.map((c) => c.key);
+      expect(keys).toEqual(['issueComments', 'reviews', 'reviewComments']);
+      expect(f.calls.paginated.every((c) => c.params.per_page === 100)).toBe(true);
+    });
   });
 
-  test('artifact が無い・複数ある・期限切れ・大きすぎるときは弾く', async () => {
-    for (const artifacts of [
-      [],
-      [{ id: 1, name: 'other', expired: false, size_in_bytes: 10 }],
-      [
-        { id: 1, name: caller.RELAY_ARTIFACT, expired: false, size_in_bytes: 10 },
-        { id: 2, name: caller.RELAY_ARTIFACT, expired: false, size_in_bytes: 10 },
-      ],
-      [{ id: 1, name: caller.RELAY_ARTIFACT, expired: true, size_in_bytes: 10 }],
-      [{ id: 1, name: caller.RELAY_ARTIFACT, expired: false, size_in_bytes: 10_000_000 }],
-    ]) {
-      const f = relayFakes({ artifacts, reviewComment: goodComment() });
-      await expect(go(f)).rejects.toThrow('中継の artifact');
-      expect(f.relayCalls.download).toBe(0);
+  describe('定期の総ざらい（schedule / workflow_dispatch）', () => {
+    for (const eventName of ['schedule', 'workflow_dispatch']) {
+      test(`${eventName}: 開いた PR を全部まわって検査・片づけをする`, async () => {
+        const f = fakes({
+          comments: [noticeOf(50, 'public-comment-review-98')],
+          lists: {
+            pulls: [pr(3), pr(4), pr(5)],
+            'reviews:3': [rv(31, email)],
+            'reviewComments:4': [rc(41, email)],
+          },
+        });
+        await caller.run({
+          github: f.github,
+          context: ctx(eventName, {}),
+          core: f.core,
+          config,
+          extraFile: null,
+        });
+        const pullsCall = f.calls.paginated.find((c) => c.key === 'pulls');
+        expect(pullsCall.params).toMatchObject({
+          owner: 'o',
+          repo: 'r',
+          state: 'open',
+          per_page: 100,
+        });
+        const swept = f.calls.paginated
+          .filter((c) => c.key === 'reviews')
+          .map((c) => c.params.pull_number);
+        expect(swept).toEqual([3, 4, 5]);
+        expect(created(f)).toEqual([
+          'public-comment-review-31',
+          'public-comment-review_comment-41',
+        ]);
+        expect(f.calls.create.map((c) => c.issue_number)).toEqual([3, 4]);
+        expect(f.logs.failed).toHaveLength(0);
+      });
     }
-  });
 
-  test('zip に決まった名前のファイルが無ければ弾く', async () => {
-    const f = relayFakes({ reviewComment: goodComment() });
-    f.github.rest.actions.downloadArtifact = async () => ({
-      data: zipOf(relayJson(), 'other.json'),
+    test('開いた PR が無ければ何も書かない', async () => {
+      const f = fakes();
+      await caller.run({
+        github: f.github,
+        context: ctx('schedule', {}),
+        core: f.core,
+        config,
+        extraFile: null,
+      });
+      expect(writes(f)).toBe(0);
     });
-    await expect(go(f)).rejects.toThrow('展開できません');
-  });
-
-  test('コメントが指定の PR のものでなければ弾く', async () => {
-    const f = relayFakes({
-      reviewComment: goodComment({
-        pull_request_url: 'https://api.example.test/repos/o/r/pulls/10',
-      }),
-    });
-    await expect(go(f)).rejects.toThrow('指定の PR のものではありません');
-    noWrites(f);
-  });
-
-  test('PR の番号が前方一致するだけ（pulls/90 と pulls/9）でも弾く', async () => {
-    const f = relayFakes({
-      reviewComment: goodComment({
-        pull_request_url: 'https://api.example.test/repos/o/r/pulls/90',
-      }),
-    });
-    await expect(go(f)).rejects.toThrow('指定の PR のものではありません');
-  });
-
-  test('取り直しが 404 なら削除済みとして扱い、知らせだけ消す', async () => {
-    const f = relayFakes({
-      json: relayJson({ action: 'deleted' }),
-      reviewComment: Object.assign(new Error('Not Found'), { status: 404 }),
-      comments: [noticeOf(4, 'public-comment-review_comment-21')],
-    });
-    await go(f);
-    expect(f.calls.delete.map((c) => c.comment_id)).toEqual([4]);
-    expect(f.calls.create).toHaveLength(0);
-    expect(f.logs.failed).toHaveLength(0);
-  });
-
-  test('レビューの取り直しが 404 でも削除済み扱い', async () => {
-    const f = relayFakes({
-      json: relayJson({ event: 'pull_request_review', action: 'edited', id: 31 }),
-      run: { event: 'pull_request_review' },
-      review: Object.assign(new Error('Not Found'), { status: 404 }),
-      comments: [noticeOf(4, 'public-comment-review-31')],
-    });
-    await go(f);
-    expect(f.calls.delete.map((c) => c.comment_id)).toEqual([4]);
-  });
-
-  test('404 以外の取り直しの失敗は投げ直す', async () => {
-    const f = relayFakes({ reviewComment: Object.assign(new Error('boom'), { status: 500 }) });
-    await expect(go(f)).rejects.toThrow('boom');
-  });
-
-  test('削除と書いてあっても API にコメントが残っていれば通常どおり検査する', async () => {
-    const f = relayFakes({ json: relayJson({ action: 'deleted' }), reviewComment: goodComment() });
-    await go(f);
-    expect(f.calls.create).toHaveLength(1);
-  });
-
-  test('github-actions[bot] のレビューコメントは一覧を取る前に飛ばす', async () => {
-    const f = relayFakes({
-      reviewComment: goodComment({ user: { login: 'github-actions[bot]' } }),
-    });
-    await go(f);
-    expect(f.calls.list).toBe(0);
-    noWrites(f);
-  });
-
-  test('中継の実行が成功でなければ何も読まない', async () => {
-    const f = relayFakes({ run: { conclusion: 'failure' }, reviewComment: goodComment() });
-    await go(f);
-    expect(f.relayCalls.download).toBe(0);
-    expect(f.calls.list).toBe(0);
   });
 });
