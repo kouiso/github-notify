@@ -522,12 +522,23 @@ describe('時間切れ・出力・行番号の上限', () => {
     expect(caller.timedOut({ status: 0 })).toBe(false);
   });
 
+  test('異常終了の知らせは、終了コード・エラーコード・シグナルのどれかを書く', () => {
+    expect(caller.cliFailure('x.py', { status: 3 }).message).toContain('終了コード／原因: 3');
+    expect(
+      caller.cliFailure('x.py', { status: null, error: { code: 'ENOBUFS' } }).message,
+    ).toContain('終了コード／原因: ENOBUFS');
+    expect(caller.cliFailure('x.py', { status: null, signal: 'SIGKILL' }).message).toContain(
+      '終了コード／原因: SIGKILL',
+    );
+    expect(caller.cliFailure('x.py', { status: null }).message).toContain('終了コード／原因: 不明');
+  });
+
   test('コマンドを起動できないなどの異常は、要確認にせず投げる', () => {
     const saved = process.env.PATH;
     process.env.PATH = '/nonexistent';
     try {
-      expect(() => caller.runPublicCheck('本文')).toThrow('終了コード');
-      expect(() => caller.runFormatCheck('本文', 'pr')).toThrow('終了コード');
+      expect(() => caller.runPublicCheck('本文')).toThrow('終了コード／原因: ENOENT');
+      expect(() => caller.runFormatCheck('本文', 'pr')).toThrow('終了コード／原因: ENOENT');
     } finally {
       process.env.PATH = saved;
     }
@@ -581,8 +592,10 @@ const noticeOf = (id, key, text = 'x', user = BOT) => ({
   body: `${config.marker}:${key}\n${text}`,
 });
 
-// 総ざらいは開始位置を毎時ずらすので、順序を確かめるテストでは時刻を固定する（時間の通し番号が 60 の倍数なら、5件までは先頭から始まる）。
-const ALIGNED_NOW = 60 * 3_600_000 * 8182;
+// 総ざらいの順序は毎時ハッシュで並べ替わるので、順序を確かめるテストでは時刻を固定する。
+// この時間（2026年初め）は、PR 3〜9 が番号順に並ぶ時間として探したもの（sweepOrder のテストで確かめる）。
+const ALIGNED_HOUR = 493_087;
+const ALIGNED_NOW = ALIGNED_HOUR * 3_600_000;
 const ALIGNED_CLOCK = () => ALIGNED_NOW;
 
 const listFn = (key) => Object.assign(() => undefined, { key });
@@ -1482,9 +1495,10 @@ describe('中継（workflow_run）と総ざらい', () => {
   });
 
   describe('総ざらいの持ち時間', () => {
-    const DEAD = 60 * 3_600_000 * 5000;
+    // 同じ時間のうちに持ち時間（3分半）だけ進める。時間が変わると並びが変わってしまう。
+    const DEAD = ALIGNED_NOW + 211_000;
     const mk = () => {
-      const st = { t: 0 };
+      const st = { t: ALIGNED_NOW };
       return { st, clock: () => st.t };
     };
     const stale = (id, n) => noticeOf(id, `public-comment-review-${n}`);
@@ -1523,7 +1537,6 @@ describe('中継（workflow_run）と総ざらい', () => {
         f.calls.paginated.filter((c) => c.key === 'reviews').map((c) => c.params.pull_number),
       ).toEqual([3, 4]);
       expect(f.logs.warning.some((m) => m.includes('PR #4') && m.includes('残り 1 件'))).toBe(true);
-      expect(f.logs.warning).toContain('時間切れのため未確認の PR: #4（途中まで）, #5');
       // 見えないまま残らないよう、毎時の総ざらいでも落とす（NG そのものは警告のまま）
       expect(f.logs.failed).toEqual(['時間切れのため未確認の PR: #4（途中まで）, #5']);
     });
@@ -1538,11 +1551,10 @@ describe('中継（workflow_run）と総ざらい', () => {
         extraFile: null,
         clock: (() => {
           let n = 0;
-          return () => (n++ === 0 ? 0 : DEAD);
+          return () => (n++ === 0 ? ALIGNED_NOW : DEAD);
         })(),
       });
       expect(f.calls.paginated.filter((c) => c.key === 'reviews')).toHaveLength(0);
-      expect(f.logs.warning).toContain('時間切れのため未確認の PR: #3, #4');
       expect(f.logs.failed).toEqual(['時間切れのため未確認の PR: #3, #4']);
     });
 
@@ -1574,26 +1586,41 @@ describe('中継（workflow_run）と総ざらい', () => {
       expect(f.logs.failed[0]).toContain('時間切れのため未確認の PR: #9（途中まで）, #10');
     });
 
-    test('開始位置は毎時ずれ、時間切れでも同じ PR がいつも後回しにならない', async () => {
+    test('PR の並びは毎時ハッシュで並べ替わり、同じ時間なら同じ順で、PR の集合は変わらない', async () => {
+      const nums = [3, 4, 5, 6, 7, 8, 9];
+      expect(caller.sweepOrder(nums, ALIGNED_HOUR)).toEqual(nums);
+      const orders = new Set();
+      for (let h = ALIGNED_HOUR; h < ALIGNED_HOUR + 24; h++) {
+        const order = caller.sweepOrder(nums, h);
+        expect([...order].sort((a, b) => a - b)).toEqual(nums);
+        expect(caller.sweepOrder([...nums].reverse(), h)).toEqual(order);
+        orders.add(order.join(','));
+      }
+      // 24時間でほぼ毎回違う並びになる（同じ PR がいつも末尾にならない）
+      expect(orders.size).toBeGreaterThan(20);
+      const lasts = new Set([...orders].map((o) => o.split(',').at(-1)));
+      expect(lasts.size).toBeGreaterThan(3);
+    });
+
+    test('実際の総ざらいも、その時間の並びで PR をまわる', async () => {
       const orderAt = async (hour) => {
-        const f = fakes({ lists: { pulls: [pr(5), pr(3), pr(4)] } });
+        const f = fakes({ lists: { pulls: [pr(5), pr(3), pr(4), pr(8)] } });
         await caller.run({
           github: f.github,
           context: ctx('schedule', {}),
           core: f.core,
           config,
           extraFile: null,
-          clock: () => ALIGNED_NOW + hour * 3_600_000,
+          clock: () => (ALIGNED_HOUR + hour) * 3_600_000,
         });
         return f.calls.paginated
           .filter((c) => c.key === 'issueComments')
-          .map((c) => c.params.pull_number ?? c.params.issue_number);
+          .map((c) => c.params.issue_number);
       };
-      // 番号順（3,4,5）を、時刻の通し番号が1つ進むごとに1つずつずらして回す
-      expect(await orderAt(0)).toEqual([3, 4, 5]);
-      expect(await orderAt(1)).toEqual([4, 5, 3]);
-      expect(await orderAt(2)).toEqual([5, 3, 4]);
-      expect(await orderAt(3)).toEqual([3, 4, 5]);
+      for (const hour of [0, 1, 2, 3]) {
+        expect(await orderAt(hour)).toEqual(caller.sweepOrder([3, 4, 5, 8], ALIGNED_HOUR + hour));
+      }
+      expect(await orderAt(1)).not.toEqual(await orderAt(0));
     });
 
     test('1つの PR の中では新しい投稿から検査する（レビューもレビューコメントも混ぜて）', async () => {

@@ -184,6 +184,13 @@ function runCli(script, args, text, extraFile, timeoutMs = CLI_TIMEOUT_MS) {
   });
 }
 
+// 終了コードが無いとき（起動できない・出力過多・シグナルで終了）は、その原因を書く。
+function cliFailure(script, r) {
+  return new Error(
+    `${script} が異常終了しました（終了コード／原因: ${r.status ?? r.error?.code ?? r.signal ?? '不明'}）`,
+  );
+}
+
 // 時間切れだけを要確認に回す。出力過多（ENOBUFS）やコマンドが無いなどの異常は、握りつぶさず呼び出し側で落とす。
 function timedOut(r) {
   return r.error?.code === 'ETIMEDOUT';
@@ -233,10 +240,7 @@ function runPublicCheck(text, { extraFile = null, timeoutMs = CLI_TIMEOUT_MS } =
   if (timedOut(r))
     return { ok: false, hits: [{ rule: TIMEOUT_RULE, line: 0, count: 1 }], notices: [] };
   if (r.status === 2) return { ok: true, hits: [], notices: [] };
-  if (r.status !== 0 && r.status !== 1)
-    throw new Error(
-      `public_text_check.py が終了コード ${r.status ?? r.error?.code ?? r.signal} で止まりました`,
-    );
+  if (r.status !== 0 && r.status !== 1) throw cliFailure('public_text_check.py', r);
   const data = JSON.parse(r.stdout);
   return { ok: data.ok, hits: mapBack(data.hits, origin), notices: mapBack(data.notices, origin) };
 }
@@ -251,10 +255,7 @@ function runFormatCheck(
   const r = runCli('format_check.py', args, text || '', null, timeoutMs);
   if (timedOut(r))
     return { ok: false, problems: ['検査が時間内に終わりませんでした。目視で確認してください'] };
-  if (r.status !== 0 && r.status !== 1)
-    throw new Error(
-      `format_check.py が終了コード ${r.status ?? r.error?.code ?? r.signal} で止まりました`,
-    );
+  if (r.status !== 0 && r.status !== 1) throw cliFailure('format_check.py', r);
   const data = JSON.parse(r.stdout);
   return { ok: data.ok, problems: data.problems };
 }
@@ -647,7 +648,8 @@ async function sweepPull(args, number) {
 }
 
 // 1つの PR の失敗で残りを止めない。失敗した PR は最後にまとめて落とす。レート制限だけは続けても無駄なのですぐ投げる。
-// 実行まで落とすのは、起こした本人の投稿の結果を知らせたいとき（中継）だけ。毎時の総ざらいは同じ NG が直るまで毎回見つかるので、落とすと赤いまま残る。
+// NG で実行まで落とすのは、起こした本人の投稿の結果を知らせたいとき（中継）だけ。毎時の総ざらいは同じ NG が直るまで毎回見つかるので、NG は警告にとどめる。
+// ただし時間切れと失敗は、見えないまま残らないよう毎時の総ざらいでも落とす。
 async function sweepEach(args, numbers, { failOnNg }) {
   const { core } = args;
   const ng = [];
@@ -677,9 +679,8 @@ async function sweepEach(args, numbers, { failOnNg }) {
   if (errored.length > 0) messages.push(`総ざらいに失敗した PR: ${errored.join(', ')}`);
   if (unchecked.length > 0) {
     // 例外にはせず、見たところまでの結果は残して実行を落とす。放っておくと見えないので、毎時の総ざらいでも落とす。
-    // 総ざらいは開始位置を毎時ずらすので、同じ PR がいつも後回しになることはない。
+    // 総ざらいは並びを毎時並べ替えるので、同じ PR がいつも後回しになることはない。
     const text = `時間切れのため未確認の PR: ${unchecked.join(', ')}`;
-    core.warning(text);
     messages.push(text);
   }
   if (messages.length > 0) core.setFailed(messages.join(' / '));
@@ -706,8 +707,24 @@ async function runRelay(args) {
   await sweepEach(args, numbers, { failOnNg: true });
 }
 
+// 時間切れで打ち切られても同じ末尾の PR がいつも未確認にならないよう、毎時、番号をハッシュで並べ替える。
+// 時刻だけで決まるので同じ時間なら同じ順になり、ずらすだけの回し方と違って、特定の PR が毎回末尾に回り続ける偏りも出にくい。
+function sweepOrder(numbers, hourIndex) {
+  const hash = (n) => {
+    let h = 0x811c9dc5;
+    for (const ch of `${hourIndex}:${n}`) {
+      h = Math.imul(h ^ ch.charCodeAt(0), 0x01000193) >>> 0;
+    }
+    // 末尾の1文字しか違わない入力でも並びが散るよう、最後に混ぜる（murmur3 の仕上げ）。
+    h = Math.imul(h ^ (h >>> 16), 0x85ebca6b);
+    h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+    return (h ^ (h >>> 16)) >>> 0;
+  };
+  return [...numbers].sort((a, b) => hash(a) - hash(b) || a - b);
+}
+
 // 中継が動かなかった（衝突・初回の承認待ち・中継の削除）ぶんは、定期の総ざらいで拾う。開いた PR と、最近閉じた・最近レビューコメントが動いた PR が対象。
-// 直るまで毎時の実行が赤くなり続けないよう、NG は警告にとどめる。
+// NG は警告、時間切れと失敗は赤。NG まで赤にすると、直るまで毎時の実行が赤くなり続けてしまう。
 async function runSweepAll(args) {
   const { github, context } = args;
   const { owner, repo } = context.repo;
@@ -741,10 +758,7 @@ async function runSweepAll(args) {
   const fromComments = new Set(parsed.filter(Boolean));
   const dropped = parsed.length - parsed.filter(Boolean).length;
   const all = [...new Set([...open, ...closed].map((pr) => pr.number).concat([...fromComments]))];
-  // 時間切れで打ち切られても同じ末尾の PR がいつも未確認にならないよう、番号順に並べて開始位置を毎時ずらす。
-  all.sort((a, b) => a - b);
-  const offset = all.length > 0 ? Math.floor(args.clock() / 3_600_000) % all.length : 0;
-  const numbers = [...all.slice(offset), ...all.slice(0, offset)];
+  const numbers = sweepOrder(all, Math.floor(args.clock() / 3_600_000));
   await sweepEach(args, numbers, { failOnNg: false });
   args.core.info(
     `PR ${numbers.length} 件（開いた ${open.length} 件、最近閉じた ${closed.length} 件、最近更新のレビューコメントから ${fromComments.size} 件）を総ざらいしました。`,
@@ -778,6 +792,8 @@ async function run(input) {
 
 module.exports = {
   timedOut,
+  sweepOrder,
+  cliFailure,
   CHECKS_DIR,
   HEADINGS_CONFIG,
   isBotActor,
