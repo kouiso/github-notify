@@ -593,7 +593,7 @@ const noticeOf = (id, key, text = 'x', user = BOT) => ({
 });
 
 // 総ざらいの順序は毎時ハッシュで並べ替わるので、順序を確かめるテストでは時刻を固定する。
-// この時間（2026年初め）は、PR 3〜9 が番号順に並ぶ時間として探したもの（sweepOrder のテストで確かめる）。
+// この時間（2026年4月2日 07:00 UTC）は、PR 3〜9 が番号順に並ぶ時間として探したもの（sweepOrder のテストで確かめる）。
 const ALIGNED_HOUR = 493_087;
 const ALIGNED_NOW = ALIGNED_HOUR * 3_600_000;
 const ALIGNED_CLOCK = () => ALIGNED_NOW;
@@ -1503,7 +1503,7 @@ describe('中継（workflow_run）と総ざらい', () => {
     };
     const stale = (id, n) => noticeOf(id, `public-comment-review-${n}`);
 
-    test('スケジュール: 途中で時間切れになっても例外にせず、未確認の PR を警告し、途中の PR は片づけない', async () => {
+    test('スケジュール: 途中で時間切れになっても例外にせず、未確認の PR を並べて実行を落とし、途中の PR は片づけない', async () => {
       const { st, clock } = mk();
       const f = fakes({
         comments: { 4: [stale(70, 98)] },

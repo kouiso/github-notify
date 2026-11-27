@@ -679,7 +679,7 @@ async function sweepEach(args, numbers, { failOnNg }) {
   if (errored.length > 0) messages.push(`総ざらいに失敗した PR: ${errored.join(', ')}`);
   if (unchecked.length > 0) {
     // 例外にはせず、見たところまでの結果は残して実行を落とす。放っておくと見えないので、毎時の総ざらいでも落とす。
-    // 総ざらいは並びを毎時並べ替えるので、同じ PR がいつも後回しになることはない。
+    // 毎時の総ざらいでは並びを毎時並べ替えるので、同じ PR がいつも後回しになることはない（中継は並べ替えない）。
     const text = `時間切れのため未確認の PR: ${unchecked.join(', ')}`;
     messages.push(text);
   }
@@ -708,7 +708,7 @@ async function runRelay(args) {
 }
 
 // 時間切れで打ち切られても同じ末尾の PR がいつも未確認にならないよう、毎時、番号をハッシュで並べ替える。
-// 時刻だけで決まるので同じ時間なら同じ順になり、ずらすだけの回し方と違って、特定の PR が毎回末尾に回り続ける偏りも出にくい。
+// 時刻だけで決まるので同じ時間なら同じ順になる。ずらすだけの回し方では PR どうしの順が固定され、重い PR の直後の PR がいつも後回しになるため、順そのものを毎時変える。
 function sweepOrder(numbers, hourIndex) {
   const hash = (n) => {
     let h = 0x811c9dc5;
