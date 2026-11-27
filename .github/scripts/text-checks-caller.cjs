@@ -142,7 +142,6 @@ const TIMEOUT_RULE = '検査が時間内に終わらない';
 const SWEEP_DEADLINE_MS = 3.5 * 60 * 1000;
 // 出力が大きくても spawnSync が途中で切れて JSON が壊れないよう、既定の 1 MiB より広げる。
 const CLI_MAX_BUFFER = 16 * 1024 * 1024;
-// 区切った行から見つかるものは、元の行には無い形（区切りの切れ目でできた断片）を含みうる。誤検知側に倒れるだけなので受け入れる。
 // Python の str.splitlines が行の終わりとみなす文字。行番号の対応を本体と揃えるために同じ集合で区切る。
 const LINE_BREAKS = new Set([
   '\n',
@@ -235,7 +234,9 @@ function runPublicCheck(text, { extraFile = null, timeoutMs = CLI_TIMEOUT_MS } =
     return { ok: false, hits: [{ rule: TIMEOUT_RULE, line: 0, count: 1 }], notices: [] };
   if (r.status === 2) return { ok: true, hits: [], notices: [] };
   if (r.status !== 0 && r.status !== 1)
-    throw new Error(`public_text_check.py が終了コード ${r.status} で止まりました`);
+    throw new Error(
+      `public_text_check.py が終了コード ${r.status ?? r.error?.code ?? r.signal} で止まりました`,
+    );
   const data = JSON.parse(r.stdout);
   return { ok: data.ok, hits: mapBack(data.hits, origin), notices: mapBack(data.notices, origin) };
 }
@@ -251,7 +252,9 @@ function runFormatCheck(
   if (timedOut(r))
     return { ok: false, problems: ['検査が時間内に終わりませんでした。目視で確認してください'] };
   if (r.status !== 0 && r.status !== 1)
-    throw new Error(`format_check.py が終了コード ${r.status} で止まりました`);
+    throw new Error(
+      `format_check.py が終了コード ${r.status ?? r.error?.code ?? r.signal} で止まりました`,
+    );
   const data = JSON.parse(r.stdout);
   return { ok: data.ok, problems: data.problems };
 }
@@ -607,15 +610,19 @@ async function sweepPull(args, number) {
   const reviewComments = await list(github.rest.pulls.listReviewComments, { pull_number: number });
   const env = { github, context, core, config, extraFile, existing, number };
 
+  // 新しいものから検査する。時間切れで途中までになっても、起こしたばかりの投稿は先に見られる。
+  const stamp = (x) => Date.parse(x.updated_at ?? x.submitted_at ?? x.created_at) || 0;
   const sources = [
     ...reviews.map((x) => ({ type: 'review', x })),
     ...reviewComments.map((x) => ({ type: 'review_comment', x })),
-  ].map(({ type, x }) => ({
-    number,
-    body: x.body ?? null,
-    author: x.user?.login ?? null,
-    comment: { id: x.id, url: x.html_url, type },
-  }));
+  ]
+    .sort((a, b) => stamp(b.x) - stamp(a.x))
+    .map(({ type, x }) => ({
+      number,
+      body: x.body ?? null,
+      author: x.user?.login ?? null,
+      comment: { id: x.id, url: x.html_url, type },
+    }));
 
   const failures = [];
   for (const [i, target] of sources.entries()) {
@@ -669,10 +676,11 @@ async function sweepEach(args, numbers, { failOnNg }) {
   const messages = failOnNg ? ng : [];
   if (errored.length > 0) messages.push(`総ざらいに失敗した PR: ${errored.join(', ')}`);
   if (unchecked.length > 0) {
-    // 時間切れでも例外にはせず、見たところまでの結果は残す。次の総ざらいが続きを拾う。
+    // 例外にはせず、見たところまでの結果は残して実行を落とす。放っておくと見えないので、毎時の総ざらいでも落とす。
+    // 総ざらいは開始位置を毎時ずらすので、同じ PR がいつも後回しになることはない。
     const text = `時間切れのため未確認の PR: ${unchecked.join(', ')}`;
     core.warning(text);
-    if (failOnNg) messages.push(text);
+    messages.push(text);
   }
   if (messages.length > 0) core.setFailed(messages.join(' / '));
 }
@@ -703,7 +711,7 @@ async function runRelay(args) {
 async function runSweepAll(args) {
   const { github, context } = args;
   const { owner, repo } = context.repo;
-  const cutoff = (args.now ?? args.clock()) - CLOSED_WINDOW_MS;
+  const cutoff = args.clock() - CLOSED_WINDOW_MS;
   const open = await github.paginate(github.rest.pulls.list, {
     owner,
     repo,
@@ -732,9 +740,11 @@ async function runSweepAll(args) {
   const parsed = touched.map((c) => pullNumberOf(c.pull_request_url, owner, repo));
   const fromComments = new Set(parsed.filter(Boolean));
   const dropped = parsed.length - parsed.filter(Boolean).length;
-  const numbers = [
-    ...new Set([...open, ...closed].map((pr) => pr.number).concat([...fromComments])),
-  ];
+  const all = [...new Set([...open, ...closed].map((pr) => pr.number).concat([...fromComments]))];
+  // 時間切れで打ち切られても同じ末尾の PR がいつも未確認にならないよう、番号順に並べて開始位置を毎時ずらす。
+  all.sort((a, b) => a - b);
+  const offset = all.length > 0 ? Math.floor(args.clock() / 3_600_000) % all.length : 0;
+  const numbers = [...all.slice(offset), ...all.slice(0, offset)];
   await sweepEach(args, numbers, { failOnNg: false });
   args.core.info(
     `PR ${numbers.length} 件（開いた ${open.length} 件、最近閉じた ${closed.length} 件、最近更新のレビューコメントから ${fromComments.size} 件）を総ざらいしました。`,

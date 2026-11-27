@@ -581,6 +581,10 @@ const noticeOf = (id, key, text = 'x', user = BOT) => ({
   body: `${config.marker}:${key}\n${text}`,
 });
 
+// 総ざらいは開始位置を毎時ずらすので、順序を確かめるテストでは時刻を固定する（時間の通し番号が 60 の倍数なら、5件までは先頭から始まる）。
+const ALIGNED_NOW = 60 * 3_600_000 * 8182;
+const ALIGNED_CLOCK = () => ALIGNED_NOW;
+
 const listFn = (key) => Object.assign(() => undefined, { key });
 
 // lists は一覧 API ごとの返り値。`キー:番号` があればその PR 専用、なければ `キー` を使う。
@@ -1430,6 +1434,7 @@ describe('中継（workflow_run）と総ざらい', () => {
         core: f.core,
         config,
         extraFile: null,
+        clock: ALIGNED_CLOCK,
       });
       expect(f.calls.create.map((c) => c.issue_number)).toEqual([5]);
       expect(f.logs.failed).toEqual(['総ざらいに失敗した PR: #4']);
@@ -1453,6 +1458,7 @@ describe('中継（workflow_run）と総ざらい', () => {
           core: f.core,
           config,
           extraFile: null,
+          clock: ALIGNED_CLOCK,
         }),
       ).rejects.toThrow('secondary rate limit');
       expect(
@@ -1476,7 +1482,7 @@ describe('中継（workflow_run）と総ざらい', () => {
   });
 
   describe('総ざらいの持ち時間', () => {
-    const DEAD = 1e12;
+    const DEAD = 60 * 3_600_000 * 5000;
     const mk = () => {
       const st = { t: 0 };
       return { st, clock: () => st.t };
@@ -1518,8 +1524,8 @@ describe('中継（workflow_run）と総ざらい', () => {
       ).toEqual([3, 4]);
       expect(f.logs.warning.some((m) => m.includes('PR #4') && m.includes('残り 1 件'))).toBe(true);
       expect(f.logs.warning).toContain('時間切れのため未確認の PR: #4（途中まで）, #5');
-      // 毎時の実行は赤くしない
-      expect(f.logs.failed).toHaveLength(0);
+      // 見えないまま残らないよう、毎時の総ざらいでも落とす（NG そのものは警告のまま）
+      expect(f.logs.failed).toEqual(['時間切れのため未確認の PR: #4（途中まで）, #5']);
     });
 
     test('持ち時間が最初から無ければ、どの PR も検査せず全部を未確認として報告する', async () => {
@@ -1537,7 +1543,7 @@ describe('中継（workflow_run）と総ざらい', () => {
       });
       expect(f.calls.paginated.filter((c) => c.key === 'reviews')).toHaveLength(0);
       expect(f.logs.warning).toContain('時間切れのため未確認の PR: #3, #4');
-      expect(f.logs.failed).toHaveLength(0);
+      expect(f.logs.failed).toEqual(['時間切れのため未確認の PR: #3, #4']);
     });
 
     test('中継: 時間切れでも例外にせず、未確認の PR を並べて実行を落とす', async () => {
@@ -1566,6 +1572,56 @@ describe('中継（workflow_run）と総ざらい', () => {
       expect(f.calls.delete).toHaveLength(0);
       expect(f.logs.failed).toHaveLength(1);
       expect(f.logs.failed[0]).toContain('時間切れのため未確認の PR: #9（途中まで）, #10');
+    });
+
+    test('開始位置は毎時ずれ、時間切れでも同じ PR がいつも後回しにならない', async () => {
+      const orderAt = async (hour) => {
+        const f = fakes({ lists: { pulls: [pr(5), pr(3), pr(4)] } });
+        await caller.run({
+          github: f.github,
+          context: ctx('schedule', {}),
+          core: f.core,
+          config,
+          extraFile: null,
+          clock: () => ALIGNED_NOW + hour * 3_600_000,
+        });
+        return f.calls.paginated
+          .filter((c) => c.key === 'issueComments')
+          .map((c) => c.params.pull_number ?? c.params.issue_number);
+      };
+      // 番号順（3,4,5）を、時刻の通し番号が1つ進むごとに1つずつずらして回す
+      expect(await orderAt(0)).toEqual([3, 4, 5]);
+      expect(await orderAt(1)).toEqual([4, 5, 3]);
+      expect(await orderAt(2)).toEqual([5, 3, 4]);
+      expect(await orderAt(3)).toEqual([3, 4, 5]);
+    });
+
+    test('1つの PR の中では新しい投稿から検査する（レビューもレビューコメントも混ぜて）', async () => {
+      const f = fakes({
+        lists: {
+          'pulls:open': [pr(4)],
+          'reviews:4': [rv(41, email, { submitted_at: '2026-01-01T01:00:00Z' })],
+          'reviewComments:4': [
+            rc(42, email, { updated_at: '2026-01-01T03:00:00Z' }),
+            rc(43, email, { updated_at: '2026-01-01T02:00:00Z' }),
+            rc(44, email, { updated_at: '2026-01-01T04:00:00Z' }),
+          ],
+        },
+      });
+      await caller.run({
+        github: f.github,
+        context: ctx('schedule', {}),
+        core: f.core,
+        config,
+        extraFile: null,
+        clock: ALIGNED_CLOCK,
+      });
+      expect(created(f)).toEqual([
+        'public-comment-review_comment-44',
+        'public-comment-review_comment-42',
+        'public-comment-review_comment-43',
+        'public-comment-review-41',
+      ]);
     });
 
     test('時間内に終わるなら、いつもどおり片づけまで行う', async () => {
@@ -1604,6 +1660,7 @@ describe('中継（workflow_run）と総ざらい', () => {
           core: f.core,
           config,
           extraFile: null,
+          clock: ALIGNED_CLOCK,
         });
         const pullsCall = f.calls.paginated.find((c) => c.key === 'pulls');
         expect(pullsCall.params).toMatchObject({
@@ -1628,7 +1685,7 @@ describe('中継（workflow_run）と総ざらい', () => {
       });
     }
 
-    const NOW = Date.parse('2026-01-01T12:00:00Z');
+    const NOW = ALIGNED_NOW;
     const hoursAgo = (h) => new Date(NOW - h * 3_600_000).toISOString();
     const closedPr = (number, h) => ({ ...pr(number, HEAD, 'closed'), updated_at: hoursAgo(h) });
     const runSweep = (f) =>
@@ -1638,7 +1695,7 @@ describe('中継（workflow_run）と総ざらい', () => {
         core: f.core,
         config,
         extraFile: null,
-        now: NOW,
+        clock: ALIGNED_CLOCK,
       });
 
     test('最近閉じた PR も総ざらいし、窓より古いものは打ち切って対象にしない', async () => {
@@ -1793,6 +1850,7 @@ describe('中継（workflow_run）と総ざらい', () => {
         core: f.core,
         config,
         extraFile: null,
+        clock: ALIGNED_CLOCK,
       });
       expect(writes(f)).toBe(0);
     });
