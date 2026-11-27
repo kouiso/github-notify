@@ -1,4 +1,5 @@
-// issue と PR の本文のチェックの呼び出し側（#99）。コメントは見ない（workflow が本文の作成・編集でだけ動く）。
+// issue と PR の本文、およびコメント（issue コメント・PR のレビューコメント・レビュー本文）のチェックの呼び出し側（#99）。
+// 書き方チェックは本文だけ、公開内容チェックは本文とコメントの両方に掛ける。
 // 判定は brain #110 の本体の写し（.github/scripts/text-checks/ の Python）に任せ、
 // ここでは「対象外の判定」「本体の CLI を --json で呼ぶ」「知らせる文を作る」だけをする。
 // 当たった文字そのものや追加の禁止語は、知らせる文にもログにも出さない（本体も規則名だけを返す）。
@@ -15,10 +16,118 @@ function isBotActor(login, config) {
   return login.endsWith('[bot]') || (config.skipActors || []).includes(login);
 }
 
+// イベントごとに payload の形が違うので、workflow 側の分岐を増やさないようここで1つの形に揃える。
+// コメントの通知は issue / PR 側のコメント欄に出すため、number は常に issue / PR の番号を返す。
+const COMMENT_TYPES = {
+  issue_comment: 'issue_comment',
+  pull_request_review_comment: 'review_comment',
+  pull_request_review: 'review',
+};
+
+function resolveTarget(eventName, payload) {
+  const labelsOf = (issue) => (issue.labels || []).map((l) => l.name);
+  const loginOf = (obj) => obj?.user?.login ?? null;
+  switch (eventName) {
+    case 'issues':
+      return {
+        number: payload.issue.number,
+        body: payload.issue.body ?? null,
+        author: loginOf(payload.issue),
+        kind: 'issue',
+        labels: labelsOf(payload.issue),
+        draft: false,
+        comment: null,
+      };
+    case 'pull_request_target':
+      return {
+        number: payload.pull_request.number,
+        body: payload.pull_request.body ?? null,
+        author: loginOf(payload.pull_request),
+        kind: 'pull_request',
+        labels: [],
+        draft: Boolean(payload.pull_request.draft),
+        comment: null,
+      };
+    case 'issue_comment': {
+      // issue_comment は PR 上のコメントでも飛んでくるので、PR かどうかは issue.pull_request の有無で見分ける。
+      const { issue, comment } = payload;
+      return {
+        number: issue.number,
+        body: comment.body ?? null,
+        author: loginOf(comment),
+        kind: issue.pull_request ? 'pull_request' : 'issue',
+        labels: labelsOf(issue),
+        draft: false,
+        comment: { id: comment.id, url: comment.html_url, type: COMMENT_TYPES[eventName] },
+      };
+    }
+    case 'pull_request_review_comment': {
+      const { pull_request: pr, comment } = payload;
+      return {
+        number: pr.number,
+        body: comment.body ?? null,
+        author: loginOf(comment),
+        kind: 'pull_request',
+        labels: [],
+        draft: Boolean(pr.draft),
+        comment: { id: comment.id, url: comment.html_url, type: COMMENT_TYPES[eventName] },
+      };
+    }
+    case 'pull_request_review': {
+      const { pull_request: pr, review } = payload;
+      return {
+        number: pr.number,
+        // コメントなしの承認などでは本文が null になる。
+        body: review.body ?? null,
+        author: loginOf(review),
+        kind: 'pull_request',
+        labels: [],
+        draft: Boolean(pr.draft),
+        comment: { id: review.id, url: review.html_url, type: COMMENT_TYPES[eventName] },
+      };
+    }
+    default:
+      throw new Error(`未対応のイベントです: ${eventName}`);
+  }
+}
+
+// このワークフローが作った知らせのコメントを自分で検査すると、知らせが知らせを呼ぶ無限ループになる。
+function isOwnNotice(body, config) {
+  return typeof body === 'string' && body.startsWith(config.marker);
+}
+
+// 知らせのコメントの目印に使う鍵。コメントごとに別の知らせ1つを更新できるよう、種類と id で一意にする。
+function commentKey(comment) {
+  return `public-comment-${comment.type}-${comment.id}`;
+}
+
+// コメント側の検査を飛ばす条件。自分の知らせ（ループ防止）と Actions のボット。
+function shouldSkipComment({ body, author }, config) {
+  return isOwnNotice(body, config) || author === 'github-actions[bot]';
+}
+
+// fork の PR から飛んだレビュー系のイベントは token が読み取り専用で、コメントを書けず 403 になる。
+// 書けないこと自体で検査を落とすと本文の判定が見えなくなるので、書き込みだけ警告にして判定は続ける。
+async function writeOrWarn(write, warn) {
+  try {
+    await write();
+    return true;
+  } catch (err) {
+    if (err && err.status === 403) {
+      warn(
+        'コメントを書く権限がないため、知らせのコメントは作れませんでした（fork の PR の読み取り専用 token）。判定は有効です。',
+      );
+      return false;
+    }
+    throw err;
+  }
+}
+
 function shouldSkipFormat({ kind, author, labels = [], draft = false }, config) {
   if (isBotActor(author, config)) return true;
   if (kind === 'pull_request' && draft) return true;
-  if (kind === 'issue' && labels.some((l) => (config.skipIssueLabels || []).includes(l))) return true;
+  if (kind === 'issue' && labels.some((l) => (config.skipIssueLabels || []).includes(l)))
+    return true;
   return false;
 }
 
@@ -47,7 +156,8 @@ function runCli(script, args, text, extraFile) {
 function runPublicCheck(text, { extraFile = null } = {}) {
   const r = runCli('public_text_check.py', [], text || '', extraFile);
   if (r.status === 2) return { ok: true, hits: [], notices: [] };
-  if (r.status !== 0 && r.status !== 1) throw new Error(`public_text_check.py が終了コード ${r.status} で止まりました`);
+  if (r.status !== 0 && r.status !== 1)
+    throw new Error(`public_text_check.py が終了コード ${r.status} で止まりました`);
   const data = JSON.parse(r.stdout);
   return { ok: data.ok, hits: data.hits, notices: data.notices };
 }
@@ -56,7 +166,8 @@ function runPublicCheck(text, { extraFile = null } = {}) {
 function runFormatCheck(text, kind, { configFile = HEADINGS_CONFIG } = {}) {
   const args = ['--kind', kind, ...(configFile ? ['--config', configFile] : [])];
   const r = runCli('format_check.py', args, text || '', null);
-  if (r.status !== 0 && r.status !== 1) throw new Error(`format_check.py が終了コード ${r.status} で止まりました`);
+  if (r.status !== 0 && r.status !== 1)
+    throw new Error(`format_check.py が終了コード ${r.status} で止まりました`);
   const data = JSON.parse(r.stdout);
   return { ok: data.ok, problems: data.problems };
 }
@@ -73,26 +184,41 @@ function groupHits(hits) {
   return [...byRule.values()];
 }
 
-function formatReport(kind, result, config, key = kind) {
+// sourceUrl はコメントの検査のときだけ渡す。どのコメントの話かを示すための URL で、本文の一部は載せない。
+function formatReport(kind, result, config, key = kind, sourceUrl = null) {
   const marker = `${config.marker}:${key}`;
+  const source = sourceUrl ? [`対象のコメント: ${sourceUrl}`] : [];
   if (kind === 'public') {
-    if (result.ok) return `${marker}\n公開内容チェック: OK（当たった規則はありません）`;
-    const rows = groupHits(result.hits).map((g) => `- ${g.rule}: ${g.count}件、${g.lines.join('・')}行目`);
+    if (result.ok)
+      return [marker, ...source, '公開内容チェック: OK（当たった規則はありません）'].join('\n');
+    const rows = groupHits(result.hits).map(
+      (g) => `- ${g.rule}: ${g.count}件、${g.lines.join('・')}行目`,
+    );
     return [
       marker,
+      ...source,
       '公開内容チェック: 要確認',
       '公開リポに書いてはいけない形の文字が見つかりました。当たった文字はここには書きません。本文を直してください。',
       ...rows,
     ].join('\n');
   }
   if (result.ok) return `${marker}\n書き方チェック: OK`;
-  return [marker, '書き方チェック: 足りない項目があります', ...result.problems.map((p) => `- ${p}`)].join('\n');
+  return [
+    marker,
+    '書き方チェック: 足りない項目があります',
+    ...result.problems.map((p) => `- ${p}`),
+  ].join('\n');
 }
 
 module.exports = {
   CHECKS_DIR,
   HEADINGS_CONFIG,
   isBotActor,
+  resolveTarget,
+  isOwnNotice,
+  commentKey,
+  shouldSkipComment,
+  writeOrWarn,
   shouldSkipFormat,
   writeExtraFile,
   runPublicCheck,

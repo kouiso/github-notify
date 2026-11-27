@@ -1,6 +1,7 @@
 // text-checks のテスト（#99）。判定の本体は brain #110 の写し（Python）で、ここでは
 // ①写しが元のコミットから一字もずれていないこと、②写しが本体と同じ結果を返すこと（本体の examples）、
-// ③呼び出し側（text-checks-caller.cjs）が規則名だけを返し、当たった文字や追加の語を出さないことを確かめる。
+// ③呼び出し側（text-checks-caller.cjs）が規則名だけを返し、当たった文字や追加の語を出さないこと、
+// ④コメント（issue コメント・レビューコメント・レビュー本文）も同じ呼び出し側で扱えることを確かめる。
 // 秘密の形の例は、検査ツールに本物と間違われないよう文字をつないで作る（どれも作り物）。
 import { createHash } from 'node:crypto';
 import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
@@ -55,18 +56,31 @@ const CORE = { configFile: null };
 
 describe('写しが本体と同じ結果を返す（本体の examples）', () => {
   test('issue_ok は緑、issue_ng は本体と同じ3件で赤', () => {
-    expect(caller.runFormatCheck(example('issue_ok.md'), 'issue', CORE)).toEqual({ ok: true, problems: [] });
+    expect(caller.runFormatCheck(example('issue_ok.md'), 'issue', CORE)).toEqual({
+      ok: true,
+      problems: [],
+    });
     expect(caller.runFormatCheck(example('issue_ng.md'), 'issue', CORE)).toEqual({
       ok: false,
-      problems: ['「今どこまで」が未記入です', '「次にやること」が未記入です', '見出し「誰の判断待ち」がありません'],
+      problems: [
+        '「今どこまで」が未記入です',
+        '「次にやること」が未記入です',
+        '見出し「誰の判断待ち」がありません',
+      ],
     });
   });
 
   test('pr_ok は緑、pr_ng は本体と同じ2件で赤', () => {
-    expect(caller.runFormatCheck(example('pr_ok.md'), 'pr', CORE)).toEqual({ ok: true, problems: [] });
+    expect(caller.runFormatCheck(example('pr_ok.md'), 'pr', CORE)).toEqual({
+      ok: true,
+      problems: [],
+    });
     expect(caller.runFormatCheck(example('pr_ng.md'), 'pr', CORE)).toEqual({
       ok: false,
-      problems: ['見出し「変更内容」がありません', '「関連Issue」に #番号 か issue の URL がありません'],
+      problems: [
+        '見出し「変更内容」がありません',
+        '「関連Issue」に #番号 か issue の URL がありません',
+      ],
     });
   });
 
@@ -101,7 +115,9 @@ describe('写しが本体と同じ結果を返す（本体の examples）', () =
 
 describe('このリポの見出しの設定', () => {
   test('設定は本体の examples の設定と同じ中身', () => {
-    expect(readFileSync(caller.HEADINGS_CONFIG, 'utf8')).toBe(example('config_skillsheet_example.json'));
+    expect(readFileSync(caller.HEADINGS_CONFIG, 'utf8')).toBe(
+      example('config_skillsheet_example.json'),
+    );
   });
 
   test('フォームの形（### 見出し）の本文でも通る', () => {
@@ -115,7 +131,8 @@ describe('このリポの見出しの設定', () => {
 
   test('github-notify のフォームとテンプレートが通る', () => {
     // SBI フォーム（タスク概要・受け入れ基準）は別名で 背景・完了条件 に当たる
-    const sbi = '### 親PBI\n#1\n\n### タスク概要\n呼び出しを足す。\n\n### 受け入れ基準\n- テストが通る\n';
+    const sbi =
+      '### 親PBI\n#1\n\n### タスク概要\n呼び出しを足す。\n\n### 受け入れ基準\n- テストが通る\n';
     expect(caller.runFormatCheck(sbi, 'issue')).toEqual({ ok: true, problems: [] });
     // pull_request_template.md と同じ見出し構成（概要/変更内容/関連Issue + リポ固有の欄）
     const pr =
@@ -184,11 +201,21 @@ describe('追加の禁止語（secret から一時ファイルで渡す）', () 
 
 describe('対象外と知らせる文', () => {
   test('ボット・下書き PR・アラート系ラベルは書き方チェックを飛ばす', () => {
-    expect(caller.shouldSkipFormat({ kind: 'issue', author: 'github-actions[bot]' }, config)).toBe(true);
-    expect(caller.shouldSkipFormat({ kind: 'pull_request', author: 'someone', draft: true }, config)).toBe(true);
-    expect(caller.shouldSkipFormat({ kind: 'issue', author: 'someone', labels: ['ci-failure'] }, config)).toBe(true);
-    expect(caller.shouldSkipFormat({ kind: 'issue', author: 'someone', labels: ['bug'] }, config)).toBe(false);
-    expect(caller.shouldSkipFormat({ kind: 'pull_request', author: 'someone', draft: false }, config)).toBe(false);
+    expect(caller.shouldSkipFormat({ kind: 'issue', author: 'github-actions[bot]' }, config)).toBe(
+      true,
+    );
+    expect(
+      caller.shouldSkipFormat({ kind: 'pull_request', author: 'someone', draft: true }, config),
+    ).toBe(true);
+    expect(
+      caller.shouldSkipFormat({ kind: 'issue', author: 'someone', labels: ['ci-failure'] }, config),
+    ).toBe(true);
+    expect(
+      caller.shouldSkipFormat({ kind: 'issue', author: 'someone', labels: ['bug'] }, config),
+    ).toBe(false);
+    expect(
+      caller.shouldSkipFormat({ kind: 'pull_request', author: 'someone', draft: false }, config),
+    ).toBe(false);
   });
 
   test('書き方の結果の文は目印で始まり、足りないものを本体の文のまま並べる', () => {
@@ -199,5 +226,219 @@ describe('対象外と知らせる文', () => {
     expect(caller.formatReport('format', { ok: true, problems: [] }, config)).toBe(
       `${config.marker}:format\n書き方チェック: OK`,
     );
+  });
+});
+
+describe('検査の対象を揃える（resolveTarget）', () => {
+  const user = (login) => ({ login });
+
+  test('issues: 本文・作者・ラベルを返し、コメントは無い', () => {
+    const t = caller.resolveTarget('issues', {
+      issue: {
+        number: 5,
+        body: '本文',
+        user: user('alice'),
+        labels: [{ name: 'bug' }, { name: 'beta' }],
+      },
+    });
+    expect(t).toEqual({
+      number: 5,
+      body: '本文',
+      author: 'alice',
+      kind: 'issue',
+      labels: ['bug', 'beta'],
+      draft: false,
+      comment: null,
+    });
+  });
+
+  test('pull_request_target: draft を引き継ぎ、本文が null でも落ちない', () => {
+    const t = caller.resolveTarget('pull_request_target', {
+      pull_request: { number: 7, body: null, user: user('bob'), draft: true },
+    });
+    expect(t).toMatchObject({
+      number: 7,
+      body: null,
+      author: 'bob',
+      kind: 'pull_request',
+      draft: true,
+      comment: null,
+    });
+  });
+
+  test('issue_comment: issue 上のコメントは kind=issue、PR 上のコメントは kind=pull_request', () => {
+    const comment = {
+      id: 11,
+      body: 'こめんと',
+      html_url: 'https://example.test/c/11',
+      user: user('carol'),
+    };
+    const onIssue = caller.resolveTarget('issue_comment', {
+      issue: { number: 3, user: user('alice'), labels: [{ name: 'bug' }] },
+      comment,
+    });
+    expect(onIssue).toEqual({
+      number: 3,
+      body: 'こめんと',
+      author: 'carol',
+      kind: 'issue',
+      labels: ['bug'],
+      draft: false,
+      comment: { id: 11, url: 'https://example.test/c/11', type: 'issue_comment' },
+    });
+    const onPr = caller.resolveTarget('issue_comment', {
+      issue: { number: 4, user: user('alice'), pull_request: { url: 'https://example.test/pr/4' } },
+      comment,
+    });
+    expect(onPr).toMatchObject({ number: 4, kind: 'pull_request', labels: [] });
+  });
+
+  test('pull_request_review_comment: PR の番号に紐づき、作者はコメントの人', () => {
+    const t = caller.resolveTarget('pull_request_review_comment', {
+      pull_request: { number: 9, user: user('alice'), draft: false },
+      comment: {
+        id: 21,
+        body: '行コメント',
+        html_url: 'https://example.test/rc/21',
+        user: user('dave'),
+      },
+    });
+    expect(t).toEqual({
+      number: 9,
+      body: '行コメント',
+      author: 'dave',
+      kind: 'pull_request',
+      labels: [],
+      draft: false,
+      comment: { id: 21, url: 'https://example.test/rc/21', type: 'review_comment' },
+    });
+  });
+
+  test('pull_request_review: レビュー本文を対象にし、本文が無ければ null', () => {
+    const base = { pull_request: { number: 9, user: user('alice') } };
+    const t = caller.resolveTarget('pull_request_review', {
+      ...base,
+      review: {
+        id: 31,
+        body: 'レビュー',
+        html_url: 'https://example.test/r/31',
+        user: user('erin'),
+      },
+    });
+    expect(t).toMatchObject({
+      number: 9,
+      body: 'レビュー',
+      author: 'erin',
+      kind: 'pull_request',
+      comment: { id: 31, url: 'https://example.test/r/31', type: 'review' },
+    });
+    const empty = caller.resolveTarget('pull_request_review', {
+      ...base,
+      review: { id: 32, body: null, html_url: 'https://example.test/r/32', user: user('erin') },
+    });
+    expect(empty.body).toBeNull();
+    expect(caller.runPublicCheck(empty.body).ok).toBe(true);
+  });
+
+  test('作者が消えたアカウント（user が null）でも落ちない', () => {
+    const t = caller.resolveTarget('issue_comment', {
+      issue: { number: 3, user: null },
+      comment: { id: 1, body: 'x', html_url: 'u', user: null },
+    });
+    expect(t.author).toBeNull();
+  });
+
+  test('未対応のイベントは明示的に失敗する', () => {
+    expect(() => caller.resolveTarget('push', {})).toThrow('未対応のイベント');
+  });
+});
+
+describe('コメントの検査（ループ防止・鍵・知らせる文）', () => {
+  test('isOwnNotice: 目印で始まる本文だけが自分の知らせ', () => {
+    expect(caller.isOwnNotice(`${config.marker}:public-body\n公開内容チェック: OK`, config)).toBe(
+      true,
+    );
+    expect(caller.isOwnNotice(`${config.marker}`, config)).toBe(true);
+    expect(caller.isOwnNotice(`前置き\n${config.marker}:public-body`, config)).toBe(false);
+    expect(caller.isOwnNotice('ふつうのコメント', config)).toBe(false);
+    expect(caller.isOwnNotice(null, config)).toBe(false);
+    expect(caller.isOwnNotice(undefined, config)).toBe(false);
+  });
+
+  test('shouldSkipComment: 自分の知らせと github-actions[bot] は飛ばし、人のコメントは飛ばさない', () => {
+    expect(
+      caller.shouldSkipComment({ body: `${config.marker}:x\nok`, author: 'someone' }, config),
+    ).toBe(true);
+    expect(caller.shouldSkipComment({ body: '普通', author: 'github-actions[bot]' }, config)).toBe(
+      true,
+    );
+    expect(caller.shouldSkipComment({ body: '普通', author: 'someone' }, config)).toBe(false);
+    expect(caller.shouldSkipComment({ body: null, author: null }, config)).toBe(false);
+  });
+
+  test('commentKey: 種類と id から一意の鍵を作る', () => {
+    expect(caller.commentKey({ id: 12, type: 'issue_comment' })).toBe(
+      'public-comment-issue_comment-12',
+    );
+    expect(caller.commentKey({ id: 12, type: 'review_comment' })).toBe(
+      'public-comment-review_comment-12',
+    );
+    expect(caller.commentKey({ id: 12, type: 'review' })).toBe('public-comment-review-12');
+  });
+
+  test('formatReport: コメントの URL を目印の直後に載せる（本文は載せない）', () => {
+    const url = 'https://example.test/issues/3#issuecomment-11';
+    const key = caller.commentKey({ id: 11, type: 'issue_comment' });
+    const ng = caller.formatReport(
+      'public',
+      caller.runPublicCheck(join('連絡先は someone', '@', 'example.com')),
+      config,
+      key,
+      url,
+    );
+    expect(ng.split('\n').slice(0, 2)).toEqual([
+      `${config.marker}:${key}`,
+      `対象のコメント: ${url}`,
+    ]);
+    expect(ng).toContain('- メールアドレス: 1件、1行目');
+    expect(ng).not.toContain('example.com');
+    const ok = caller.formatReport('public', { ok: true, hits: [], notices: [] }, config, key, url);
+    expect(ok).toBe(
+      `${config.marker}:${key}\n対象のコメント: ${url}\n公開内容チェック: OK（当たった規則はありません）`,
+    );
+    // 本文の知らせは今まで通り（URL の行が増えない）
+    expect(
+      caller.formatReport('public', { ok: true, hits: [], notices: [] }, config, 'public-body'),
+    ).toBe(`${config.marker}:public-body\n公開内容チェック: OK（当たった規則はありません）`);
+  });
+
+  test('作り物の秘密・メールを含むコメントは赤、ふつうの文は緑', () => {
+    const secret = join('トークンは ', 'gh', 'p_', 'EXAMPLEONLY0000', ' です');
+    const email = join('連絡は someone', '@', 'example.com', ' まで');
+    expect(caller.runPublicCheck(secret).ok).toBe(false);
+    expect(caller.runPublicCheck(email).ok).toBe(false);
+    expect(caller.runPublicCheck('レビューありがとうございます。直しました。').ok).toBe(true);
+  });
+
+  test('writeOrWarn: 403 は警告にして続け、それ以外のエラーは投げ直す', async () => {
+    const warnings = [];
+    const warn = (m) => warnings.push(m);
+    expect(await caller.writeOrWarn(async () => undefined, warn)).toBe(true);
+    const forbidden = Object.assign(new Error('Resource not accessible by integration'), {
+      status: 403,
+    });
+    expect(
+      await caller.writeOrWarn(async () => {
+        throw forbidden;
+      }, warn),
+    ).toBe(false);
+    expect(warnings).toHaveLength(1);
+    const boom = Object.assign(new Error('boom'), { status: 500 });
+    await expect(
+      caller.writeOrWarn(async () => {
+        throw boom;
+      }, warn),
+    ).rejects.toThrow('boom');
+    expect(warnings).toHaveLength(1);
   });
 });
