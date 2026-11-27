@@ -429,26 +429,32 @@ async function findPullsForRun(args) {
     );
   };
 
+  let hinted = null;
   const hint = await loadRelayHint(args);
   if (hint) {
     try {
       const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: hint });
-      if (sameHead(pr)) return [pr.number];
-      core.info(`中継の PR #${hint} は、起こした実行の head と一致しないので使いません。`);
+      if (sameHead(pr)) hinted = pr.number;
+      else core.info(`中継の PR #${hint} は、起こした実行の head と一致しないので使いません。`);
     } catch (err) {
       if (err?.status !== 404) throw err;
     }
   }
   const headOwner = run.head_repository?.owner?.login;
-  if (!headOwner || !run.head_branch) return [];
-  const prs = await github.paginate(github.rest.pulls.list, {
-    owner,
-    repo,
-    state: 'all',
-    head: `${headOwner}:${run.head_branch}`,
-    per_page: 100,
-  });
-  return prs.filter(sameHead).map((pr) => pr.number);
+  const listed =
+    headOwner && run.head_branch
+      ? await github.paginate(github.rest.pulls.list, {
+          owner,
+          repo,
+          state: 'all',
+          head: `${headOwner}:${run.head_branch}`,
+          per_page: 100,
+        })
+      : [];
+  if (hinted === null) return listed.filter(sameHead).map((pr) => pr.number);
+  // 同じコミットを head にする別の PR（base 違い）にも同じレビューが付きうるので、一緒に見る。
+  const sameSha = listed.filter((pr) => run.head_sha && pr.head?.sha === run.head_sha);
+  return [...new Set([hinted, ...sameSha.map((pr) => pr.number)])];
 }
 
 const RELAY_WORKFLOW_PATH = '.github/workflows/text-checks-review-relay.yml';
@@ -560,7 +566,7 @@ async function runRelay(args) {
   await sweepEach(args, numbers, { failOnNg: true });
 }
 
-// 中継が動かなかった（衝突・初回の承認待ち・中継の削除）ぶんは、定期の総ざらいで拾う。開いた PR と、最近閉じた PR が対象。
+// 中継が動かなかった（衝突・初回の承認待ち・中継の削除）ぶんは、定期の総ざらいで拾う。開いた PR と、最近閉じた・最近レビューコメントが動いた PR が対象。
 // 直るまで毎時の実行が赤くなり続けないよう、NG は警告にとどめる。
 async function runSweepAll(args) {
   const { github, context } = args;
@@ -572,7 +578,7 @@ async function runSweepAll(args) {
     state: 'open',
     per_page: 100,
   });
-  // 更新の新しい順に取り、窓より古いものが出たらそこで打ち切る。
+  // 更新の新しい順なので、窓より古いものが出たらその先は全部古い。ページを取りすぎないよう打ち切る。
   const closed = await github.paginate(
     github.rest.pulls.list,
     { owner, repo, state: 'closed', sort: 'updated', direction: 'desc', per_page: 100 },
@@ -582,11 +588,29 @@ async function runSweepAll(args) {
       return recent;
     },
   );
-  const numbers = [...new Set([...open, ...closed].map((pr) => pr.number))];
+  // 閉じた PR の updated_at はレビューコメントが付いても動かないことがあるので、リポ全体の更新済みレビューコメントからも PR を拾う。
+  const touched = await github.paginate(github.rest.pulls.listReviewCommentsForRepo, {
+    owner,
+    repo,
+    sort: 'updated',
+    direction: 'desc',
+    since: new Date(cutoff).toISOString(),
+    per_page: 100,
+  });
+  const fromComments = touched.map((c) => pullNumberOf(c.pull_request_url, owner, repo));
+  const numbers = [
+    ...new Set([...open, ...closed].map((pr) => pr.number).concat(fromComments.filter(Boolean))),
+  ];
   await sweepEach(args, numbers, { failOnNg: false });
   args.core.info(
-    `PR ${numbers.length} 件（開いた ${open.length} 件、最近閉じた ${closed.length} 件）を総ざらいしました。`,
+    `PR ${numbers.length} 件（開いた ${open.length} 件、最近閉じた ${closed.length} 件、最近更新のレビューコメントから ${fromComments.length} 件）を総ざらいしました。`,
   );
+}
+
+// 他のリポジトリの URL や形の違うものは数に入れない。
+function pullNumberOf(url, owner, repo) {
+  const m = /\/repos\/([^/]+)\/([^/]+)\/pulls\/(\d+)$/.exec(String(url || ''));
+  return m && m[1] === owner && m[2] === repo ? Number(m[3]) : null;
 }
 
 async function run(args) {

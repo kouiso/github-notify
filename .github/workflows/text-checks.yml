@@ -14,7 +14,9 @@ name: Text Checks
 # ここの workflow_run（既定ブランチのコード・書き込み権限）が、その PR のレビューとレビューコメントを全部取り直して検査する。
 # マージ・クローズ済みの PR も、実行の head と sha が完全に一致すれば対象にする。
 # 中継は PR の作者が書き換えたり消したりでき、衝突や初回投稿者の承認待ちでそもそも動かないこともある。
-# その取りこぼしを拾うため、毎時と手動で、開いた PR と最近（3時間以内に更新された）閉じた PR をすべて総ざらいする（schedule / workflow_dispatch）。
+# その取りこぼしを拾うため、毎時と手動で、開いた PR と、最近（3時間以内）閉じた・レビューコメントが更新された PR をすべて総ざらいする（schedule / workflow_dispatch）。
+# 限界: レビュー本文には、リポ全体を新しい順に引ける一覧が無い。そのため、古い閉じた PR のレビュー本文を後から編集しても、
+# PR の updated_at が動かない限り拾えない。古い閉じた PR のレビューコメントの削除も拾えない（残った知らせは次に触れた時に片づく）。
 # 実行回数: レビュー系の1イベントにつき中継と検査の2回、総ざらいは1日24回。公開リポで標準の runner は無料。
 # pull_request_target でも PR 側のコードは取り出さない（checkout は既定ブランチのまま）。
 on:
@@ -40,17 +42,17 @@ permissions:
 
 # コメントの検査が本文の検査や別のコメントの検査を打ち切らないよう、イベント名とコメントの id まで含める。
 # 同じコメントの連続編集だけが古い実行を打ち切る。
-# workflow_run は PR の番号が分からないので head の sha ごとに分ける。同じコミットへの連続したレビューは新しい実行が古い実行を兼ねる（PR の全レビューを取り直すため）が、
-# 別のコミットや同じブランチの別の PR の実行は打ち切らない。
+# workflow_run は PR の番号が分からないので、workflow の path・event・head の sha ごとに分ける。同じコミットへの連続したレビューは新しい実行が古い実行を兼ねる（PR の全レビューを取り直すため）が、
+# 別のコミットの実行は打ち切らない。path と event を含めるのは、PR 側で同じ名前の別の workflow を作られても、本物の中継の実行を打ち切れないようにするため。
 # 総ざらいは1つにまとめて積み上げない。接頭辞が違うので、他のグループ（番号が先頭）とは重ならない。
 concurrency:
-  group: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'text-checks-sweep' || github.event_name == 'workflow_run' && format('text-checks-wr-{0}', github.event.workflow_run.head_sha || github.event.workflow_run.id) || format('text-checks-{0}-{1}-{2}', github.event.issue.number || github.event.pull_request.number, github.event_name, github.event.comment.id || 'body') }}
+  group: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'text-checks-sweep' || github.event_name == 'workflow_run' && format('text-checks-wr-{0}-{1}-{2}', github.event.workflow_run.path, github.event.workflow_run.event, github.event.workflow_run.head_sha || github.event.workflow_run.id) || format('text-checks-{0}-{1}-{2}', github.event.issue.number || github.event.pull_request.number, github.event_name, github.event.comment.id || 'body') }}
   cancel-in-progress: true
 
 jobs:
   check:
     # 本文とコメントを PR 上で見分けられるよう、名前を分ける。
-    name: ${{ (github.event_name == 'issues' || github.event_name == 'pull_request_target') && 'Check issue / PR text' || (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'Sweep open PR reviews' || 'Check comment text' }}
+    name: ${{ (github.event_name == 'issues' || github.event_name == 'pull_request_target') && 'Check issue / PR text' || (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'Sweep PR reviews' || 'Check comment text' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

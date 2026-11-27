@@ -498,12 +498,22 @@ function fakes({
       const n = params.issue_number ?? params.pull_number ?? params.state;
       const v = lists[`${fn.key}:${n}`] ?? lists[fn.key] ?? [];
       const data = typeof v === 'function' ? v(params) : v;
-      if (!mapFn) return data;
-      // octokit の paginate と同じく、ページごとに map へ渡し、done() で以降のページを取らない。
+      // { pages: [[...], [...]] } なら複数ページ。octokit の paginate と同じく、ページごとに map へ渡し、done() で以降のページを取らない。
+      const pages = data?.pages ?? [data];
+      if (!mapFn) return pages.flat();
       calls.stopped = false;
-      return mapFn({ data }, () => {
-        calls.stopped = true;
-      });
+      calls.pagesFetched = 0;
+      const out = [];
+      for (const page of pages) {
+        calls.pagesFetched += 1;
+        out.push(
+          ...mapFn({ data: page }, () => {
+            calls.stopped = true;
+          }),
+        );
+        if (calls.stopped) break;
+      }
+      return out;
     },
     rest: {
       issues: {
@@ -525,6 +535,7 @@ function fakes({
         list: listFn('pulls'),
         listReviews: listFn('reviews'),
         listReviewComments: listFn('reviewComments'),
+        listReviewCommentsForRepo: listFn('repoReviewComments'),
         getReview: (p) => fetchOne('review', p.review_id)(),
         getReviewComment: (p) => fetchOne('review_comment', p.comment_id)(),
         ...pulls,
@@ -903,8 +914,28 @@ describe('中継（workflow_run）と総ざらい', () => {
       });
       await go(f);
       expect(f.rel.listArtifacts[0]).toMatchObject({ run_id: 77, name: caller.RELAY_ARTIFACT });
-      expect(f.calls.paginated.some((c) => c.key === 'pulls')).toBe(false);
       expect(created(f)).toEqual(['public-comment-review_comment-21']);
+    });
+
+    test('番号が一致したら、同じ sha を head にする別の PR（base 違い）も一緒に見る', async () => {
+      const f = relayFakes({
+        prs: { 9: pr(9) },
+        lists: {
+          pulls: [pr(9), pr(10), pr(11, { ...HEAD, sha: 'other' })],
+          'reviews:10': [rv(101, email)],
+          'reviews:11': [rv(111, email)],
+        },
+      });
+      await go(f);
+      const swept = f.calls.paginated
+        .filter((c) => c.key === 'reviews')
+        .map((c) => c.params.pull_number);
+      expect(swept).toEqual([9, 10]);
+      expect(created(f)).toEqual(['public-comment-review-101']);
+      expect(f.calls.paginated.find((c) => c.key === 'pulls').params).toMatchObject({
+        state: 'all',
+        head: 'forker:feature',
+      });
     });
 
     test('番号の PR の head が実行と一致しなければ、その PR には何もしない', async () => {
@@ -1187,7 +1218,7 @@ describe('中継（workflow_run）と総ざらい', () => {
     test('一覧は PR の番号でページをたどる', async () => {
       const f = relayFakes(base);
       await go(f);
-      const keys = f.calls.paginated.map((c) => c.key);
+      const keys = f.calls.paginated.map((c) => c.key).filter((k) => k !== 'pulls');
       expect(keys).toEqual(['issueComments', 'reviews', 'reviewComments']);
       expect(f.calls.paginated.every((c) => c.params.per_page === 100)).toBe(true);
     });
@@ -1357,7 +1388,8 @@ describe('中継（workflow_run）と総ざらい', () => {
       });
     }
 
-    const hoursAgo = (h) => new Date(Date.now() - h * 3_600_000).toISOString();
+    const NOW = Date.parse('2026-01-01T12:00:00Z');
+    const hoursAgo = (h) => new Date(NOW - h * 3_600_000).toISOString();
     const closedPr = (number, h) => ({ ...pr(number, HEAD, 'closed'), updated_at: hoursAgo(h) });
     const runSweep = (f) =>
       caller.run({
@@ -1366,6 +1398,7 @@ describe('中継（workflow_run）と総ざらい', () => {
         core: f.core,
         config,
         extraFile: null,
+        now: NOW,
       });
 
     test('最近閉じた PR も総ざらいし、窓より古いものは打ち切って対象にしない', async () => {
@@ -1413,6 +1446,77 @@ describe('中継（workflow_run）と総ざらい', () => {
       await runSweep(f);
       expect(f.calls.create.map((c) => c.issue_number)).toEqual([7]);
       expect(f.logs.failed).toEqual(['総ざらいに失敗した PR: #6']);
+    });
+
+    test('閉じた一覧が複数ページでも、窓より古いものが出たらそれ以降のページは取らない', async () => {
+      const f = fakes({
+        lists: {
+          'pulls:closed': { pages: [[closedPr(6, 1), closedPr(7, 5)], [closedPr(8, 1)]] },
+        },
+      });
+      await runSweep(f);
+      expect(f.calls.pagesFetched).toBe(1);
+      const swept = f.calls.paginated
+        .filter((c) => c.key === 'reviews')
+        .map((c) => c.params.pull_number);
+      expect(swept).toEqual([6]);
+    });
+
+    test('ページが全部窓の中なら、次のページも取る', async () => {
+      const f = fakes({
+        lists: { 'pulls:closed': { pages: [[closedPr(6, 1)], [closedPr(8, 2)]] } },
+      });
+      await runSweep(f);
+      expect(f.calls.pagesFetched).toBe(2);
+      const swept = f.calls.paginated
+        .filter((c) => c.key === 'reviews')
+        .map((c) => c.params.pull_number);
+      expect(swept).toEqual([6, 8]);
+    });
+
+    test('PR の updated_at が動いていなくても、最近更新されたレビューコメントの PR を総ざらいする', async () => {
+      const f = fakes({
+        lists: {
+          'pulls:closed': [closedPr(6, 100)],
+          repoReviewComments: [
+            { id: 1, pull_request_url: 'https://api.github.com/repos/o/r/pulls/20' },
+            { id: 2, pull_request_url: 'https://api.github.com/repos/o/r/pulls/20' },
+            { id: 3, pull_request_url: 'https://api.github.com/repos/other/x/pulls/21' },
+            { id: 4, pull_request_url: 'not a url' },
+            { id: 5 },
+          ],
+          'reviewComments:20': [rc(201, email)],
+        },
+      });
+      await runSweep(f);
+      const call = f.calls.paginated.find((c) => c.key === 'repoReviewComments');
+      expect(call.params).toMatchObject({
+        owner: 'o',
+        repo: 'r',
+        sort: 'updated',
+        direction: 'desc',
+        since: hoursAgo(3),
+        per_page: 100,
+      });
+      const swept = f.calls.paginated
+        .filter((c) => c.key === 'reviews')
+        .map((c) => c.params.pull_number);
+      expect(swept).toEqual([20]);
+      expect(created(f)).toEqual(['public-comment-review_comment-201']);
+      expect(f.calls.create[0].issue_number).toBe(20);
+    });
+
+    test('一覧とレビューコメント経由で同じ PR が重なっても1回だけ', async () => {
+      const f = fakes({
+        lists: {
+          'pulls:open': [pr(3)],
+          repoReviewComments: [
+            { id: 1, pull_request_url: 'https://api.github.com/repos/o/r/pulls/3' },
+          ],
+        },
+      });
+      await runSweep(f);
+      expect(f.calls.paginated.filter((c) => c.key === 'reviews')).toHaveLength(1);
     });
 
     test('開いた一覧と閉じた一覧に同じ PR があっても1回だけ', async () => {
