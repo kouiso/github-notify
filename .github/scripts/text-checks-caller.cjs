@@ -28,7 +28,6 @@ function isBotActor(login, config) {
 
 // イベントごとに payload の形が違うので、workflow 側の分岐を増やさないようここで1つの形に揃える。
 // コメントの通知は issue / PR 側のコメント欄に出すため、number は常に issue / PR の番号を返す。
-
 function resolveTarget(eventName, payload) {
   const labelsOf = (issue) => (issue.labels || []).map((l) => l.name);
   const loginOf = (obj) => obj?.user?.login ?? null;
@@ -452,6 +451,11 @@ async function findPullsForRun(args) {
   return prs.filter(sameHead).map((pr) => pr.number);
 }
 
+const RELAY_WORKFLOW_PATH = '.github/workflows/text-checks-review-relay.yml';
+const RELAY_EVENTS = new Set(['pull_request_review', 'pull_request_review_comment']);
+// 閉じた PR にも後からレビューが付く。総ざらいは毎時なので、1回飛んだり遅れたりしても穴が開かないよう、周期より広い3時間に取る。
+const CLOSED_WINDOW_MS = 3 * 60 * 60 * 1000;
+
 const NOTICE_KEY_RE = /^public-comment-(review|review_comment)-(\d+)$/;
 
 // 一覧のページがずれて取りこぼしただけで知らせを消さないよう、消す前に元を1件ずつ取り直し、404 のときだけ消す。
@@ -513,7 +517,7 @@ async function sweepPull(args, number) {
 }
 
 // 1つの PR の失敗で残りを止めない。失敗した PR は最後にまとめて落とす。レート制限だけは続けても無駄なのですぐ投げる。
-// NG は警告に出し、failOnNg のときだけ実行も落とす。
+// 実行まで落とすのは、起こした本人の投稿の結果を知らせたいとき（中継）だけ。毎時の総ざらいは同じ NG が直るまで毎回見つかるので、落とすと赤いまま残る。
 async function sweepEach(args, numbers, { failOnNg }) {
   const { core } = args;
   const ng = [];
@@ -538,6 +542,15 @@ async function sweepEach(args, numbers, { failOnNg }) {
 // fork の PR のレビュー系イベント用。既定ブランチのコードと書き込み権限で動き、中継の実行が成功したかどうかは見ない。
 // 起こした本人の投稿の結果なので、NG なら他のイベントと同じく落とす。
 async function runRelay(args) {
+  const run = args.context.payload.workflow_run;
+  // PR の作者が別の workflow を同じ名前で作っても、この中継の実行以外は相手にしない。path に付く @ref は取り除いて比べる。
+  if (
+    String(run.path || '').split('@')[0] !== RELAY_WORKFLOW_PATH ||
+    !RELAY_EVENTS.has(run.event)
+  ) {
+    args.core.info('想定した中継の実行ではないので何もしません。');
+    return;
+  }
   const tmpDir = args.tmpDir || process.env.RUNNER_TEMP || os.tmpdir();
   const numbers = await findPullsForRun({ ...args, tmpDir });
   if (numbers.length === 0) {
@@ -547,23 +560,33 @@ async function runRelay(args) {
   await sweepEach(args, numbers, { failOnNg: true });
 }
 
-// 中継が動かなかった（衝突・初回の承認待ち・中継の削除）ぶんは、定期の総ざらいで拾う。
+// 中継が動かなかった（衝突・初回の承認待ち・中継の削除）ぶんは、定期の総ざらいで拾う。開いた PR と、最近閉じた PR が対象。
 // 直るまで毎時の実行が赤くなり続けないよう、NG は警告にとどめる。
 async function runSweepAll(args) {
   const { github, context } = args;
   const { owner, repo } = context.repo;
+  const cutoff = (args.now ?? Date.now()) - CLOSED_WINDOW_MS;
   const open = await github.paginate(github.rest.pulls.list, {
     owner,
     repo,
     state: 'open',
     per_page: 100,
   });
-  await sweepEach(
-    args,
-    open.map((pr) => pr.number),
-    { failOnNg: false },
+  // 更新の新しい順に取り、窓より古いものが出たらそこで打ち切る。
+  const closed = await github.paginate(
+    github.rest.pulls.list,
+    { owner, repo, state: 'closed', sort: 'updated', direction: 'desc', per_page: 100 },
+    (response, done) => {
+      const recent = response.data.filter((pr) => Date.parse(pr.updated_at) >= cutoff);
+      if (recent.length < response.data.length) done();
+      return recent;
+    },
   );
-  args.core.info(`開いた PR ${open.length} 件を総ざらいしました。`);
+  const numbers = [...new Set([...open, ...closed].map((pr) => pr.number))];
+  await sweepEach(args, numbers, { failOnNg: false });
+  args.core.info(
+    `PR ${numbers.length} 件（開いた ${open.length} 件、最近閉じた ${closed.length} 件）を総ざらいしました。`,
+  );
 }
 
 async function run(args) {

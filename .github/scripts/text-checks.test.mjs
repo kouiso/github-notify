@@ -468,7 +468,15 @@ function fakes({
   live = [],
   fetchFail = null,
 } = {}) {
-  const calls = { list: 0, paginated: [], fetched: [], create: [], update: [], delete: [] };
+  const calls = {
+    list: 0,
+    stopped: null,
+    paginated: [],
+    fetched: [],
+    create: [],
+    update: [],
+    delete: [],
+  };
   const fetchOne = (type, id) => async () => {
     calls.fetched.push(`${type}:${id}`);
     if (fetchFail) throw fetchFail;
@@ -482,14 +490,20 @@ function fakes({
         : Object.assign(new Error(name), { status: failWith[name] });
   };
   const github = {
-    paginate: async (fn, params) => {
+    paginate: async (fn, params, mapFn) => {
       calls.list += 1;
       calls.paginated.push({ key: fn.key, params });
       if (fn.key === 'issueComments')
         return Array.isArray(comments) ? comments : (comments[params.issue_number] ?? []);
-      const n = params.issue_number ?? params.pull_number;
+      const n = params.issue_number ?? params.pull_number ?? params.state;
       const v = lists[`${fn.key}:${n}`] ?? lists[fn.key] ?? [];
-      return typeof v === 'function' ? v(params) : v;
+      const data = typeof v === 'function' ? v(params) : v;
+      if (!mapFn) return data;
+      // octokit の paginate と同じく、ページごとに map へ渡し、done() で以降のページを取らない。
+      calls.stopped = false;
+      return mapFn({ data }, () => {
+        calls.stopped = true;
+      });
     },
     rest: {
       issues: {
@@ -811,6 +825,7 @@ describe('中継（workflow_run）と総ざらい', () => {
     id: 77,
     conclusion: 'success',
     event: 'pull_request_review_comment',
+    path: '.github/workflows/text-checks-review-relay.yml',
     head_sha: 'sha-1',
     head_branch: 'feature',
     head_repository: { full_name: 'forker/r', owner: { login: 'forker' } },
@@ -969,6 +984,32 @@ describe('中継（workflow_run）と総ざらい', () => {
       });
       await go(f);
       expect(f.calls.paginated.filter((c) => c.key === 'reviews')).toHaveLength(0);
+    });
+
+    test.each([
+      ['別の workflow', { path: '.github/workflows/evil.yml' }],
+      ['path が無い', { path: undefined }],
+      ['想定外の event', { event: 'issue_comment' }],
+    ])('想定した中継の実行でなければ何もしない: %s', async (_n, run) => {
+      const f = relayFakes({
+        run,
+        prs: { 9: pr(9) },
+        lists: { pulls: [pr(9)], 'reviewComments:9': [rc(21, email)] },
+      });
+      await go(f);
+      expect(f.rel.listArtifacts).toHaveLength(0);
+      expect(f.calls.list).toBe(0);
+      expect(writes(f)).toBe(0);
+    });
+
+    test('path に付く @ref は取り除いて比べる', async () => {
+      const f = relayFakes({
+        run: { path: '.github/workflows/text-checks-review-relay.yml@refs/pull/9/merge' },
+        prs: { 9: pr(9) },
+        lists: { 'reviewComments:9': [rc(21, email)] },
+      });
+      await go(f);
+      expect(created(f)).toEqual(['public-comment-review_comment-21']);
     });
 
     test('中継の実行が失敗・取り消しでも総ざらいする', async () => {
@@ -1315,6 +1356,70 @@ describe('中継（workflow_run）と総ざらい', () => {
         expect(f.logs.warning.some((m) => m.includes('PR #3'))).toBe(true);
       });
     }
+
+    const hoursAgo = (h) => new Date(Date.now() - h * 3_600_000).toISOString();
+    const closedPr = (number, h) => ({ ...pr(number, HEAD, 'closed'), updated_at: hoursAgo(h) });
+    const runSweep = (f) =>
+      caller.run({
+        github: f.github,
+        context: ctx('schedule', {}),
+        core: f.core,
+        config,
+        extraFile: null,
+      });
+
+    test('最近閉じた PR も総ざらいし、窓より古いものは打ち切って対象にしない', async () => {
+      const f = fakes({
+        lists: {
+          'pulls:open': [pr(3)],
+          'pulls:closed': [closedPr(6, 1), closedPr(7, 2.5), closedPr(8, 5), closedPr(9, 6)],
+          'reviewComments:6': [rc(61, email)],
+          'reviewComments:8': [rc(81, email)],
+        },
+      });
+      await runSweep(f);
+      const closedCall = f.calls.paginated.find(
+        (c) => c.key === 'pulls' && c.params.state === 'closed',
+      );
+      expect(closedCall.params).toMatchObject({
+        sort: 'updated',
+        direction: 'desc',
+        per_page: 100,
+      });
+      expect(f.calls.stopped).toBe(true);
+      const swept = f.calls.paginated
+        .filter((c) => c.key === 'reviews')
+        .map((c) => c.params.pull_number);
+      expect(swept).toEqual([3, 6, 7]);
+      expect(created(f)).toEqual(['public-comment-review_comment-61']);
+    });
+
+    test('窓の中だけなら打ち切らない（次のページも取る）', async () => {
+      const f = fakes({ lists: { 'pulls:closed': [closedPr(6, 1), closedPr(7, 2)] } });
+      await runSweep(f);
+      expect(f.calls.stopped).toBe(false);
+    });
+
+    test('閉じた PR の失敗も1件ずつ分けて扱う', async () => {
+      const f = fakes({
+        lists: {
+          'pulls:closed': [closedPr(6, 1), closedPr(7, 1)],
+          'reviews:6': () => {
+            throw Object.assign(new Error('boom'), { status: 500 });
+          },
+          'reviewComments:7': [rc(71, email)],
+        },
+      });
+      await runSweep(f);
+      expect(f.calls.create.map((c) => c.issue_number)).toEqual([7]);
+      expect(f.logs.failed).toEqual(['総ざらいに失敗した PR: #6']);
+    });
+
+    test('開いた一覧と閉じた一覧に同じ PR があっても1回だけ', async () => {
+      const f = fakes({ lists: { 'pulls:open': [pr(3)], 'pulls:closed': [closedPr(3, 1)] } });
+      await runSweep(f);
+      expect(f.calls.paginated.filter((c) => c.key === 'reviews')).toHaveLength(1);
+    });
 
     test('開いた PR が無ければ何も書かない', async () => {
       const f = fakes();
