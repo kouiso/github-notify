@@ -6,6 +6,7 @@
 // レビュー系（行コメント・レビュー本文）は fork の PR だと起こしたイベントも中継の中身も信用できないので、
 // 中継は「どの PR か」のヒントにだけ使い、その PR のレビューとレビューコメントを全部取り直して検査する（定期の総ざらいも同じ処理）。
 // 当たった文字そのものや追加の禁止語は、知らせる文にもログにも出さない（本体も規則名だけを返す）。
+// 長い行は区切って検査するので、区切りの切れ目でできた断片が元の行に無い形に当たることがある（誤検知側なので受け入れる）。
 const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -137,6 +138,11 @@ const CLI_TIMEOUT_MS = 15_000;
 const MAX_LINE = 1000;
 const LINE_OVERLAP = 200;
 const TIMEOUT_RULE = '検査が時間内に終わらない';
+// 総ざらいの全体の持ち時間。ジョブの上限は5分で、checkout などの前後の処理と、実行が打ち切られて何も報告できなくなる事態を避けるため、手前の3分半で自分から止める。
+const SWEEP_DEADLINE_MS = 3.5 * 60 * 1000;
+// 出力が大きくても spawnSync が途中で切れて JSON が壊れないよう、既定の 1 MiB より広げる。
+const CLI_MAX_BUFFER = 16 * 1024 * 1024;
+// 区切った行から見つかるものは、元の行には無い形（区切りの切れ目でできた断片）を含みうる。誤検知側に倒れるだけなので受け入れる。
 // Python の str.splitlines が行の終わりとみなす文字。行番号の対応を本体と揃えるために同じ集合で区切る。
 const LINE_BREAKS = new Set([
   '\n',
@@ -175,11 +181,13 @@ function runCli(script, args, text, extraFile, timeoutMs = CLI_TIMEOUT_MS) {
     encoding: 'utf8',
     env,
     timeout: timeoutMs,
+    maxBuffer: CLI_MAX_BUFFER,
   });
 }
 
+// 時間切れだけを要確認に回す。出力過多（ENOBUFS）やコマンドが無いなどの異常は、握りつぶさず呼び出し側で落とす。
 function timedOut(r) {
-  return r.error?.code === 'ETIMEDOUT' || Boolean(r.signal);
+  return r.error?.code === 'ETIMEDOUT';
 }
 
 // 長い行を区切り、区切った後の各行が元の何行目かを返す。長い行が無ければ本文をそのまま使う。
@@ -260,6 +268,14 @@ function groupHits(hits) {
   return [...byRule.values()];
 }
 
+// 行番号が何百もあると知らせが長くなるので、先頭の一部だけ並べて残りは数にする。
+const MAX_LISTED_LINES = 50;
+function lineList(lines) {
+  const shown = lines.slice(0, MAX_LISTED_LINES).join('・');
+  const rest = lines.length - MAX_LISTED_LINES;
+  return rest > 0 ? `${shown}行目、ほか ${rest} 行` : `${shown}行目`;
+}
+
 // 直し方の案内。コメントは編集しても履歴に元の文字が残るので削除を勧める。
 // レビューは送信後に削除できないため、本文の編集と履歴の扱いを案内する。
 function ngAdvice(sourceUrl, commentType) {
@@ -278,10 +294,15 @@ function formatReport(kind, result, config, key = kind, sourceUrl = null, commen
   if (kind === 'public') {
     // OK の知らせは本文だけ。コメントは OK になったら知らせごと消すので、URL つきの OK は作らない。
     if (result.ok) return `${marker}\n公開内容チェック: OK（当たった規則はありません）`;
-    const rows = groupHits(result.hits).map((g) =>
-      g.rule === TIMEOUT_RULE
-        ? `- ${g.rule}: 自動では確認できませんでした。目視で確認してください`
-        : `- ${g.rule}: ${g.count}件、${g.lines.join('・')}行目`,
+    if (result.hits.every((h) => h.rule === TIMEOUT_RULE))
+      return [
+        marker,
+        ...source,
+        '公開内容チェック: 要確認',
+        '自動で確認できなかったので目視で確認してください',
+      ].join('\n');
+    const rows = groupHits(result.hits).map(
+      (g) => `- ${g.rule}: ${g.count}件、${lineList(g.lines)}`,
     );
     return [
       marker,
@@ -551,6 +572,11 @@ const RELAY_EVENTS = new Set(['pull_request_review', 'pull_request_review_commen
 // 閉じた PR にも後からレビューが付く。総ざらいは毎時なので、1回飛んだり遅れたりしても穴が開かないよう、周期より広い3時間に取る。
 const CLOSED_WINDOW_MS = 3 * 60 * 60 * 1000;
 
+// 持ち時間（run が決める deadline）を過ぎたかどうか。deadline が無い呼び出しでは時間で止めない。
+function pastDeadline({ clock, deadline }) {
+  return deadline !== undefined && clock() >= deadline;
+}
+
 const NOTICE_KEY_RE = /^public-comment-(review|review_comment)-(\d+)$/;
 
 // 一覧のページがずれて取りこぼしただけで知らせを消さないよう、消す前に元を1件ずつ取り直し、404 のときだけ消す。
@@ -592,7 +618,9 @@ async function sweepPull(args, number) {
   }));
 
   const failures = [];
-  for (const target of sources) {
+  for (const [i, target] of sources.entries()) {
+    // 時間切れで途中までのときは、確認していない分の知らせを「元が無い」と誤って消さないよう、片づけもしない。
+    if (pastDeadline(args)) return { failures, left: sources.length - i };
     if (shouldSkipComment(target)) continue;
     failures.push(...(await checkComment(env, target, false)));
   }
@@ -608,7 +636,7 @@ async function sweepPull(args, number) {
     if (await sourceIsGone(env, number, m[1], Number(m[2])))
       await deleteNotice({ ...env, found: c });
   }
-  return failures;
+  return { failures, left: 0 };
 }
 
 // 1つの PR の失敗で残りを止めない。失敗した PR は最後にまとめて落とす。レート制限だけは続けても無駄なのですぐ投げる。
@@ -617,9 +645,18 @@ async function sweepEach(args, numbers, { failOnNg }) {
   const { core } = args;
   const ng = [];
   const errored = [];
-  for (const number of numbers) {
+  const unchecked = [];
+  for (const [i, number] of numbers.entries()) {
+    if (pastDeadline(args)) {
+      unchecked.push(...numbers.slice(i).map((n) => `#${n}`));
+      break;
+    }
     try {
-      const failures = await sweepPull(args, number);
+      const { failures, left } = await sweepPull(args, number);
+      if (left > 0) {
+        core.warning(`PR #${number}: 時間切れで残り ${left} 件のコメントが未確認です。`);
+        unchecked.push(`#${number}（途中まで）`);
+      }
       if (failures.length === 0) continue;
       core.warning(`PR #${number}: ${failures.join(' / ')}`);
       ng.push(`PR #${number}: ${failures.join(' / ')}`);
@@ -631,6 +668,12 @@ async function sweepEach(args, numbers, { failOnNg }) {
   }
   const messages = failOnNg ? ng : [];
   if (errored.length > 0) messages.push(`総ざらいに失敗した PR: ${errored.join(', ')}`);
+  if (unchecked.length > 0) {
+    // 時間切れでも例外にはせず、見たところまでの結果は残す。次の総ざらいが続きを拾う。
+    const text = `時間切れのため未確認の PR: ${unchecked.join(', ')}`;
+    core.warning(text);
+    if (failOnNg) messages.push(text);
+  }
   if (messages.length > 0) core.setFailed(messages.join(' / '));
 }
 
@@ -660,7 +703,7 @@ async function runRelay(args) {
 async function runSweepAll(args) {
   const { github, context } = args;
   const { owner, repo } = context.repo;
-  const cutoff = (args.now ?? Date.now()) - CLOSED_WINDOW_MS;
+  const cutoff = (args.now ?? args.clock()) - CLOSED_WINDOW_MS;
   const open = await github.paginate(github.rest.pulls.list, {
     owner,
     repo,
@@ -710,8 +753,11 @@ function pullNumberOf(url, owner, repo) {
     : null;
 }
 
-async function run(args) {
-  const { context } = args;
+async function run(input) {
+  const { context } = input;
+  // clock はテストで差し替える。
+  const clock = input.clock ?? Date.now;
+  const args = { ...input, clock, deadline: clock() + SWEEP_DEADLINE_MS };
   if (context.eventName === 'workflow_run') return runRelay(args);
   if (context.eventName === 'schedule' || context.eventName === 'workflow_dispatch')
     return runSweepAll(args);
@@ -721,6 +767,7 @@ async function run(args) {
 }
 
 module.exports = {
+  timedOut,
   CHECKS_DIR,
   HEADINGS_CONFIG,
   isBotActor,

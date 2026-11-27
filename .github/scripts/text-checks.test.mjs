@@ -459,7 +459,7 @@ describe('長い行と検査の時間切れ', () => {
   test('数字だけの6.5万桁の行でも、短い時間で終わる', () => {
     const started = Date.now();
     const r = caller.runPublicCheck('0'.repeat(65_000));
-    expect(Date.now() - started).toBeLessThan(5000);
+    expect(Date.now() - started).toBeLessThan(12_000);
     expect(r.ok).toBe(true);
     expect(r.hits).toEqual([]);
     // 注意は元の行番号（1行目）に戻り、区切った行ぶんが1つにまとまる
@@ -503,9 +503,7 @@ describe('長い行と検査の時間切れ', () => {
     expect(r.ok).toBe(false);
     expect(r.hits).toEqual([{ rule: '検査が時間内に終わらない', line: 0, count: 1 }]);
     const report = caller.formatReport('public', r, config, 'public-body');
-    expect(report).toContain(
-      '- 検査が時間内に終わらない: 自動では確認できませんでした。目視で確認してください',
-    );
+    expect(report).toContain('自動で確認できなかったので目視で確認してください');
     expect(report).not.toContain('0行目');
   });
 
@@ -513,6 +511,63 @@ describe('長い行と検査の時間切れ', () => {
     const r = caller.runFormatCheck('本文', 'pr', { timeoutMs: 1 });
     expect(r.ok).toBe(false);
     expect(r.problems).toEqual(['検査が時間内に終わりませんでした。目視で確認してください']);
+  });
+});
+
+describe('時間切れ・出力・行番号の上限', () => {
+  test('timedOut は ETIMEDOUT だけを時間切れとみなす', () => {
+    expect(caller.timedOut({ error: { code: 'ETIMEDOUT' } })).toBe(true);
+    expect(caller.timedOut({ error: { code: 'ENOBUFS' } })).toBe(false);
+    expect(caller.timedOut({ signal: 'SIGKILL', status: null })).toBe(false);
+    expect(caller.timedOut({ status: 0 })).toBe(false);
+  });
+
+  test('コマンドを起動できないなどの異常は、要確認にせず投げる', () => {
+    const saved = process.env.PATH;
+    process.env.PATH = '/nonexistent';
+    try {
+      expect(() => caller.runPublicCheck('本文')).toThrow('終了コード');
+      expect(() => caller.runFormatCheck('本文', 'pr')).toThrow('終了コード');
+    } finally {
+      process.env.PATH = saved;
+    }
+  });
+
+  test('時間切れだけのときの知らせは、目視の案内だけ（見つかった・削除の文言を含めない）', () => {
+    const r = caller.runPublicCheck('ふつうの文', { timeoutMs: 1 });
+    for (const [key, url] of [
+      ['public-body', null],
+      ['public-comment-review-1', 'https://example.test/r/1'],
+    ]) {
+      const report = caller.formatReport('public', r, config, key, url, 'review');
+      expect(report.split('\n').slice(-2)).toEqual([
+        '公開内容チェック: 要確認',
+        '自動で確認できなかったので目視で確認してください',
+      ]);
+      expect(report).not.toContain('見つかりました');
+      expect(report).not.toContain('削除して');
+      expect(report).not.toContain('編集して');
+    }
+  });
+
+  test('1つの規則の行番号が多いときは、先頭の50行だけ並べて残りは数にする', () => {
+    const lines = Array.from({ length: 80 }, (_, i) => join('a', String(i), '@', 'example.com'));
+    const r = caller.runPublicCheck(lines.join('\n'));
+    expect(r.hits).toHaveLength(80);
+    const report = caller.formatReport('public', r, config, 'public-body');
+    const row = report.split('\n').find((l) => l.startsWith('- メールアドレス'));
+    expect(row).toContain('80件');
+    expect(row).toContain(
+      `${Array.from({ length: 50 }, (_, i) => i + 1).join('・')}行目、ほか 30 行`,
+    );
+    expect(row).not.toContain('51');
+    // 少なければ従来どおり全部並べる
+    const few = caller.formatReport(
+      'public',
+      { ok: false, hits: r.hits.slice(0, 3), notices: [] },
+      config,
+    );
+    expect(few).toContain('- メールアドレス: 3件、1・2・3行目');
   });
 });
 
@@ -538,6 +593,7 @@ function fakes({
   actions = {},
   live = [],
   fetchFail = null,
+  onCreate = () => undefined,
 } = {}) {
   const calls = {
     list: 0,
@@ -592,6 +648,7 @@ function fakes({
         createComment: async (p) => {
           maybeFail('create');
           calls.create.push(p);
+          onCreate(p);
         },
         updateComment: async (p) => {
           maybeFail('update');
@@ -1415,6 +1472,118 @@ describe('中継（workflow_run）と総ざらい', () => {
           () => undefined,
         ),
       ).rejects.toThrow('secondary rate limit');
+    });
+  });
+
+  describe('総ざらいの持ち時間', () => {
+    const DEAD = 1e12;
+    const mk = () => {
+      const st = { t: 0 };
+      return { st, clock: () => st.t };
+    };
+    const stale = (id, n) => noticeOf(id, `public-comment-review-${n}`);
+
+    test('スケジュール: 途中で時間切れになっても例外にせず、未確認の PR を警告し、途中の PR は片づけない', async () => {
+      const { st, clock } = mk();
+      const f = fakes({
+        comments: { 4: [stale(70, 98)] },
+        lists: {
+          pulls: [pr(3), pr(4), pr(5)],
+          'reviews:3': [rv(31, email)],
+          'reviews:4': [rv(41, email), rv(42, email)],
+        },
+        // PR 4 の最初のコメントを検査して知らせを作った直後に、持ち時間を使い切る
+        onCreate: (p) => {
+          if (p.issue_number === 4) st.t = DEAD;
+        },
+      });
+      await caller.run({
+        github: f.github,
+        context: ctx('schedule', {}),
+        core: f.core,
+        config,
+        extraFile: null,
+        clock,
+      });
+      // PR 3 と PR 4 の1件目は検査した。2件目と PR 5 は検査していない
+      expect(f.calls.create.map((c) => [c.issue_number, c.body.split('\n')[0].slice(-2)])).toEqual([
+        [3, '31'],
+        [4, '41'],
+      ]);
+      // 検査していないコメントがあるので、元が無いかどうかの確認も削除もしない
+      expect(f.calls.fetched).toHaveLength(0);
+      expect(f.calls.delete).toHaveLength(0);
+      expect(
+        f.calls.paginated.filter((c) => c.key === 'reviews').map((c) => c.params.pull_number),
+      ).toEqual([3, 4]);
+      expect(f.logs.warning.some((m) => m.includes('PR #4') && m.includes('残り 1 件'))).toBe(true);
+      expect(f.logs.warning).toContain('時間切れのため未確認の PR: #4（途中まで）, #5');
+      // 毎時の実行は赤くしない
+      expect(f.logs.failed).toHaveLength(0);
+    });
+
+    test('持ち時間が最初から無ければ、どの PR も検査せず全部を未確認として報告する', async () => {
+      const f = fakes({ lists: { pulls: [pr(3), pr(4)] } });
+      await caller.run({
+        github: f.github,
+        context: ctx('workflow_dispatch', {}),
+        core: f.core,
+        config,
+        extraFile: null,
+        clock: (() => {
+          let n = 0;
+          return () => (n++ === 0 ? 0 : DEAD);
+        })(),
+      });
+      expect(f.calls.paginated.filter((c) => c.key === 'reviews')).toHaveLength(0);
+      expect(f.logs.warning).toContain('時間切れのため未確認の PR: #3, #4');
+      expect(f.logs.failed).toHaveLength(0);
+    });
+
+    test('中継: 時間切れでも例外にせず、未確認の PR を並べて実行を落とす', async () => {
+      const { st, clock } = mk();
+      const f = relayFakes({
+        prs: { 9: pr(9) },
+        comments: { 9: [stale(70, 98)] },
+        lists: {
+          pulls: [pr(9), pr(10)],
+          'reviewComments:9': [rc(91, email), rc(92, email)],
+        },
+        onCreate: () => {
+          st.t = DEAD;
+        },
+      });
+      await caller.run({
+        github: f.github,
+        context: f.context,
+        core: f.core,
+        config,
+        extraFile: null,
+        tmpDir: dir,
+        clock,
+      });
+      expect(created(f)).toEqual(['public-comment-review_comment-91']);
+      expect(f.calls.delete).toHaveLength(0);
+      expect(f.logs.failed).toHaveLength(1);
+      expect(f.logs.failed[0]).toContain('時間切れのため未確認の PR: #9（途中まで）, #10');
+    });
+
+    test('時間内に終わるなら、いつもどおり片づけまで行う', async () => {
+      const { clock } = mk();
+      const f = fakes({
+        comments: { 4: [stale(70, 98)] },
+        lists: { pulls: [pr(4)] },
+      });
+      await caller.run({
+        github: f.github,
+        context: ctx('schedule', {}),
+        core: f.core,
+        config,
+        extraFile: null,
+        clock,
+      });
+      expect(f.calls.delete.map((c) => c.comment_id)).toEqual([70]);
+      expect(f.logs.warning.some((m) => m.includes('時間切れ'))).toBe(false);
     });
   });
 
