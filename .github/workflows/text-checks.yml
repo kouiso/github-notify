@@ -7,11 +7,12 @@ name: Text Checks
 # 見る場所:
 # - 結果を確かめる信頼できる手がかりは、元のコメントへのリンクつきの知らせのコメント。
 #   issue_comment・workflow_run・schedule の実行は PR の head ではなく既定ブランチに紐づくので、
-#   コメントごとのチェックの色は PR 上では当てにならない。レビュー系の NG は実行を落とさず警告にとどめる（毎時の総ざらいが赤くなり続けるため）。
+#   コメントごとのチェックの色は PR 上では当てにならない。毎時の総ざらいだけは NG を警告にとどめる（直るまで赤くなり続けるため）。
 # - コメントが NG のたびに知らせが1件ずつ増える（スパムは 1:1 で増える）。今の規模では許容し、直る・消えると知らせも消す。
 #
 # fork の PR のレビュー系イベントは信用できないので、text-checks-review-relay.yml が PR の番号だけを artifact で渡し、
 # ここの workflow_run（既定ブランチのコード・書き込み権限）が、その PR のレビューとレビューコメントを全部取り直して検査する。
+# マージ・クローズ済みの PR も、実行の head と sha が完全に一致すれば対象にする。
 # 中継は PR の作者が書き換えたり消したりでき、衝突や初回投稿者の承認待ちでそもそも動かないこともある。
 # その取りこぼしを拾うため、毎時と手動で開いた PR をすべて総ざらいする（schedule / workflow_dispatch）。
 # 実行回数: レビュー系の1イベントにつき中継と検査の2回、総ざらいは1日24回。公開リポで標準の runner は無料。
@@ -38,9 +39,11 @@ permissions:
   actions: read
 
 # コメントの検査が本文の検査や別のコメントの検査を打ち切らないよう、イベント名とコメントの id まで含める。
-# 同じコメントの連続編集だけが古い実行を打ち切る。workflow_run は実行ごとに分け、総ざらいは1つにまとめて積み上げない。
+# 同じコメントの連続編集だけが古い実行を打ち切る。
+# workflow_run は PR の番号が分からないので head のブランチごとに分け（PR の全レビューを取り直すので新しい実行が古い実行を兼ねる）、
+# 総ざらいは1つにまとめて積み上げない。接頭辞が違うので、他のグループ（番号が先頭）とは重ならない。
 concurrency:
-  group: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'text-checks-sweep' || format('text-checks-{0}-{1}-{2}', github.event.issue.number || github.event.pull_request.number || github.event.workflow_run.id, github.event_name, github.event.comment.id || 'body') }}
+  group: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'text-checks-sweep' || github.event_name == 'workflow_run' && format('text-checks-wr-{0}-{1}', github.event.workflow_run.head_repository.full_name, github.event.workflow_run.head_branch) || format('text-checks-{0}-{1}-{2}', github.event.issue.number || github.event.pull_request.number, github.event_name, github.event.comment.id || 'body') }}
   cancel-in-progress: true
 
 jobs:

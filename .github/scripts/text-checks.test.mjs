@@ -458,8 +458,23 @@ const noticeOf = (id, key, text = 'x', user = BOT) => ({
 const listFn = (key) => Object.assign(() => undefined, { key });
 
 // lists は一覧 API ごとの返り値。`キー:番号` があればその PR 専用、なければ `キー` を使う。
-function fakes({ comments = [], lists = {}, failWith = {}, pulls = {}, actions = {} } = {}) {
-  const calls = { list: 0, paginated: [], create: [], update: [], delete: [] };
+// comments は配列なら全部の PR で同じ、オブジェクトなら PR の番号ごと。live はまだ存在するレビュー・レビューコメント（`review:1` など）。
+function fakes({
+  comments = [],
+  lists = {},
+  failWith = {},
+  pulls = {},
+  actions = {},
+  live = [],
+  fetchFail = null,
+} = {}) {
+  const calls = { list: 0, paginated: [], fetched: [], create: [], update: [], delete: [] };
+  const fetchOne = (type, id) => async () => {
+    calls.fetched.push(`${type}:${id}`);
+    if (fetchFail) throw fetchFail;
+    if (live.includes(`${type}:${id}`)) return { data: {} };
+    throw Object.assign(new Error('Not Found'), { status: 404 });
+  };
   const maybeFail = (name) => {
     if (failWith[name])
       throw failWith[name] instanceof Error
@@ -470,7 +485,8 @@ function fakes({ comments = [], lists = {}, failWith = {}, pulls = {}, actions =
     paginate: async (fn, params) => {
       calls.list += 1;
       calls.paginated.push({ key: fn.key, params });
-      if (fn.key === 'issueComments') return comments;
+      if (fn.key === 'issueComments')
+        return Array.isArray(comments) ? comments : (comments[params.issue_number] ?? []);
       const n = params.issue_number ?? params.pull_number;
       const v = lists[`${fn.key}:${n}`] ?? lists[fn.key] ?? [];
       return typeof v === 'function' ? v(params) : v;
@@ -495,6 +511,8 @@ function fakes({ comments = [], lists = {}, failWith = {}, pulls = {}, actions =
         list: listFn('pulls'),
         listReviews: listFn('reviews'),
         listReviewComments: listFn('reviewComments'),
+        getReview: (p) => fetchOne('review', p.review_id)(),
+        getReviewComment: (p) => fetchOne('review_comment', p.comment_id)(),
         ...pulls,
       },
       actions,
@@ -914,10 +932,40 @@ describe('中継（workflow_run）と総ざらい', () => {
       expect(created(f)).toEqual(['public-comment-review_comment-21']);
     });
 
-    test('閉じた PR は対象にしない', async () => {
-      const f = relayFakes({
+    test('閉じた PR でも sha が完全に一致すれば検査する（ヒント経由・一覧経由とも）', async () => {
+      const viaHint = relayFakes({
         prs: { 9: pr(9, HEAD, 'closed') },
-        lists: { pulls: [pr(9, HEAD, 'closed')] },
+        lists: { 'reviewComments:9': [rc(21, email)] },
+      });
+      await go(viaHint);
+      expect(created(viaHint)).toEqual(['public-comment-review_comment-21']);
+
+      const viaList = relayFakes({
+        json: '{oops',
+        lists: { pulls: [pr(9, HEAD, 'closed')], 'reviewComments:9': [rc(21, email)] },
+      });
+      await go(viaList);
+      expect(viaList.calls.paginated.find((c) => c.key === 'pulls').params.state).toBe('all');
+      expect(created(viaList)).toEqual(['public-comment-review_comment-21']);
+    });
+
+    test('閉じた PR で、ブランチが同じだけ（sha が違う）なら検査しない', async () => {
+      const moved = { sha: 'sha-2', ref: 'feature', repo: { full_name: 'forker/r' } };
+      const f = relayFakes({
+        prs: { 9: pr(9, moved, 'closed') },
+        lists: { pulls: [pr(9, moved, 'closed')], 'reviewComments:9': [rc(21, email)] },
+      });
+      await go(f);
+      expect(f.calls.paginated.filter((c) => c.key === 'reviews')).toHaveLength(0);
+      expect(writes(f)).toBe(0);
+    });
+
+    test('実行側のリポジトリ名が無いとき、未定義どうしの一致で通さない', async () => {
+      const noRepo = { sha: 'sha-2', ref: 'feature', repo: undefined };
+      const f = relayFakes({
+        run: { head_repository: { owner: { login: 'forker' } } },
+        prs: { 9: pr(9, noRepo) },
+        lists: { pulls: [pr(9, noRepo)], 'reviewComments:9': [rc(21, email)] },
       });
       await go(f);
       expect(f.calls.paginated.filter((c) => c.key === 'reviews')).toHaveLength(0);
@@ -1029,8 +1077,9 @@ describe('中継（workflow_run）と総ざらい', () => {
         'public-comment-review_comment-22',
         'public-comment-review_comment-23',
       ]);
-      // 実行は落とさず、NG は警告にとどめる
-      expect(f.logs.failed).toHaveLength(0);
+      // 起こした本人の投稿の結果なので、NG なら落とす
+      expect(f.logs.failed).toHaveLength(1);
+      expect(f.logs.failed[0]).toContain('PR #9');
       expect(f.logs.warning.some((m) => m.includes('PR #9'))).toBe(true);
     });
 
@@ -1103,11 +1152,134 @@ describe('中継（workflow_run）と総ざらい', () => {
     });
   });
 
+  describe('片づけの安全性と失敗の扱い', () => {
+    const base = { prs: { 9: pr(9) } };
+    const stale = (id, n) => noticeOf(id, `public-comment-review-${n}`);
+
+    test('別の PR の知らせは、その PR を総ざらいしても消さない', async () => {
+      const f = relayFakes({
+        ...base,
+        comments: { 9: [stale(2, 97)], 3: [stale(1, 98)] },
+      });
+      await go(f);
+      expect(f.calls.delete.map((c) => c.comment_id)).toEqual([2]);
+      expect(
+        f.calls.paginated
+          .filter((c) => c.key === 'issueComments')
+          .map((c) => c.params.issue_number),
+      ).toEqual([9]);
+    });
+
+    test('一覧に無くても元がまだ有る（ページのずれ）なら消さない', async () => {
+      const f = relayFakes({ ...base, comments: [stale(1, 98)], live: ['review:98'] });
+      await go(f);
+      expect(f.calls.fetched).toEqual(['review:98']);
+      expect(f.calls.delete).toHaveLength(0);
+    });
+
+    test('元の取り直しが 404 のときだけ消す（レビューコメントも同じ）', async () => {
+      const f = relayFakes({
+        ...base,
+        comments: [noticeOf(1, 'public-comment-review_comment-99')],
+      });
+      await go(f);
+      expect(f.calls.fetched).toEqual(['review_comment:99']);
+      expect(f.calls.delete.map((c) => c.comment_id)).toEqual([1]);
+    });
+
+    test('元の取り直しが 404 以外で失敗したら消さず、その PR を失敗として落とす', async () => {
+      const f = relayFakes({
+        ...base,
+        comments: [stale(1, 98)],
+        fetchFail: Object.assign(new Error('boom'), { status: 500 }),
+      });
+      await go(f);
+      expect(f.calls.delete).toHaveLength(0);
+      expect(f.logs.failed[0]).toContain('#9');
+    });
+
+    test('一覧の取得に失敗したら、何も消さない', async () => {
+      const f = relayFakes({
+        ...base,
+        comments: [stale(1, 98)],
+        lists: {
+          reviewComments: () => {
+            throw Object.assign(new Error('list failed'), { status: 502 });
+          },
+        },
+      });
+      await go(f);
+      expect(f.calls.delete).toHaveLength(0);
+      expect(f.calls.fetched).toHaveLength(0);
+      expect(f.logs.failed[0]).toContain('#9');
+    });
+
+    test('1つの PR が失敗しても残りを続け、最後に失敗した PR を並べて落とす', async () => {
+      const f = fakes({
+        lists: {
+          pulls: [pr(3), pr(4), pr(5)],
+          'reviews:4': () => {
+            throw Object.assign(new Error('boom'), { status: 500 });
+          },
+          'reviewComments:5': [rc(51, email)],
+        },
+      });
+      await caller.run({
+        github: f.github,
+        context: ctx('schedule', {}),
+        core: f.core,
+        config,
+        extraFile: null,
+      });
+      expect(f.calls.create.map((c) => c.issue_number)).toEqual([5]);
+      expect(f.logs.failed).toEqual(['総ざらいに失敗した PR: #4']);
+    });
+
+    test('レート制限（二次レート制限のメッセージだけでも）は続けずすぐ投げる', async () => {
+      const f = fakes({
+        lists: {
+          pulls: [pr(3), pr(4)],
+          'reviews:3': () => {
+            throw Object.assign(new Error('You have exceeded a secondary rate limit'), {
+              status: 403,
+            });
+          },
+        },
+      });
+      await expect(
+        caller.run({
+          github: f.github,
+          context: ctx('schedule', {}),
+          core: f.core,
+          config,
+          extraFile: null,
+        }),
+      ).rejects.toThrow('secondary rate limit');
+      expect(
+        f.calls.paginated.filter((c) => c.key === 'reviews').map((c) => c.params.pull_number),
+      ).toEqual([3]);
+    });
+
+    test('二次レート制限の 403 は、書き込みでも警告にせず投げる', async () => {
+      const err = Object.assign(new Error('You have exceeded a secondary rate limit.'), {
+        status: 403,
+      });
+      await expect(
+        caller.writeOrWarn(
+          async () => {
+            throw err;
+          },
+          () => undefined,
+        ),
+      ).rejects.toThrow('secondary rate limit');
+    });
+  });
+
   describe('定期の総ざらい（schedule / workflow_dispatch）', () => {
     for (const eventName of ['schedule', 'workflow_dispatch']) {
       test(`${eventName}: 開いた PR を全部まわって検査・片づけをする`, async () => {
         const f = fakes({
-          comments: [noticeOf(50, 'public-comment-review-98')],
+          comments: { 5: [noticeOf(50, 'public-comment-review-98')] },
           lists: {
             pulls: [pr(3), pr(4), pr(5)],
             'reviews:3': [rv(31, email)],
@@ -1137,7 +1309,10 @@ describe('中継（workflow_run）と総ざらい', () => {
           'public-comment-review_comment-41',
         ]);
         expect(f.calls.create.map((c) => c.issue_number)).toEqual([3, 4]);
+        expect(f.calls.delete.map((c) => c.comment_id)).toEqual([50]);
+        // 毎時の実行が赤くなり続けないよう、NG は警告にとどめる
         expect(f.logs.failed).toHaveLength(0);
+        expect(f.logs.warning.some((m) => m.includes('PR #3'))).toBe(true);
       });
     }
 

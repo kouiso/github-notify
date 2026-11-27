@@ -28,7 +28,6 @@ function isBotActor(login, config) {
 
 // イベントごとに payload の形が違うので、workflow 側の分岐を増やさないようここで1つの形に揃える。
 // コメントの通知は issue / PR 側のコメント欄に出すため、number は常に issue / PR の番号を返す。
-const COMMENT_TYPES = { issue_comment: 'issue_comment' };
 
 function resolveTarget(eventName, payload) {
   const labelsOf = (issue) => (issue.labels || []).map((l) => l.name);
@@ -64,7 +63,7 @@ function resolveTarget(eventName, payload) {
         kind: issue.pull_request ? 'pull_request' : 'issue',
         labels: labelsOf(issue),
         draft: false,
-        comment: { id: comment.id, url: comment.html_url, type: COMMENT_TYPES[eventName] },
+        comment: { id: comment.id, url: comment.html_url, type: 'issue_comment' },
       };
     }
     default:
@@ -87,7 +86,12 @@ function shouldSkipComment({ author }) {
 // 権限の 403 と見分けるため、ヘッダーで判定して落とす側に回す。
 function isRateLimited(err) {
   const h = err?.response?.headers || {};
-  return h['retry-after'] !== undefined || String(h['x-ratelimit-remaining']) === '0';
+  // 二次レート制限はヘッダーが付かないことがあるので、メッセージでも見る。
+  return (
+    h['retry-after'] !== undefined ||
+    String(h['x-ratelimit-remaining']) === '0' ||
+    /rate limit/i.test(err?.message || '')
+  );
 }
 
 // fork の PR や Dependabot が起こしたイベントは token が読み取り専用で、書き込みが 403 になる。
@@ -249,7 +253,6 @@ async function upsertNotice(env, key, text, ok) {
   }
 }
 
-// そのコメントの知らせを、重複も含めてすべて消す。
 async function deleteAllNotices(env, key) {
   for (const found of findNotices(env.existing, env.config, key))
     await deleteNotice({ ...env, found });
@@ -358,7 +361,6 @@ function parseRelayPayload(text) {
   return { prNumber: data.pr_number };
 }
 
-// zip の中の決まった1ファイルだけを標準出力に出す。他のファイルは展開しない。
 // 圧縮して小さく見せた巨大なファイルや、止まらない展開に備えて、出力の上限と時間の上限を付ける。
 function unzipRelay(buffer, dir) {
   const file = path.join(dir, `text-checks-relay-${process.pid}.zip`);
@@ -411,16 +413,22 @@ async function loadRelayHint(args) {
 }
 
 // 起こした実行の head と一致する PR だけを対象にする。番号は信用せず、head の sha か、head のリポジトリとブランチで確かめる。
-// 実行のあとに push があって sha が進んでいても、同じリポジトリとブランチなら同じ PR として扱う。
+// sha が完全に一致すれば、マージ・クローズ済みの PR でもレビューは後から付くので対象にする。
+// ブランチだけの一致は、push で sha が進んだ開いた PR にだけ使う（閉じた PR は同じブランチの別の PR と取り違えうる）。
 async function findPullsForRun(args) {
   const { github, context, core } = args;
   const { owner, repo } = context.repo;
   const run = context.payload.workflow_run;
   const fullName = run.head_repository?.full_name;
-  const sameHead = (pr) =>
-    pr.state === 'open' &&
-    (pr.head?.sha === run.head_sha ||
-      (pr.head?.repo?.full_name === fullName && pr.head?.ref === run.head_branch));
+  const sameHead = (pr) => {
+    if (run.head_sha && pr.head?.sha === run.head_sha) return true;
+    return (
+      pr.state === 'open' &&
+      Boolean(fullName) &&
+      pr.head?.repo?.full_name === fullName &&
+      pr.head?.ref === run.head_branch
+    );
+  };
 
   const hint = await loadRelayHint(args);
   if (hint) {
@@ -434,21 +442,37 @@ async function findPullsForRun(args) {
   }
   const headOwner = run.head_repository?.owner?.login;
   if (!headOwner || !run.head_branch) return [];
-  const open = await github.paginate(github.rest.pulls.list, {
+  const prs = await github.paginate(github.rest.pulls.list, {
     owner,
     repo,
-    state: 'open',
+    state: 'all',
     head: `${headOwner}:${run.head_branch}`,
     per_page: 100,
   });
-  return open.filter(sameHead).map((pr) => pr.number);
+  return prs.filter(sameHead).map((pr) => pr.number);
 }
 
-const NOTICE_KEY_RE = /^public-comment-(review|review_comment)-\d+$/;
+const NOTICE_KEY_RE = /^public-comment-(review|review_comment)-(\d+)$/;
+
+// 一覧のページがずれて取りこぼしただけで知らせを消さないよう、消す前に元を1件ずつ取り直し、404 のときだけ消す。
+async function sourceIsGone({ github, context }, number, type, id) {
+  const { owner, repo } = context.repo;
+  try {
+    if (type === 'review') {
+      await github.rest.pulls.getReview({ owner, repo, pull_number: number, review_id: id });
+    } else {
+      await github.rest.pulls.getReviewComment({ owner, repo, comment_id: id });
+    }
+    return false;
+  } catch (err) {
+    if (err?.status === 404) return true;
+    throw err;
+  }
+}
 
 // PR のレビューとレビューコメントをすべて取り直して検査し、元が無くなった知らせを片づける。
 // 起こしたイベントの id を使わないので、中継の中身が偽でも、中継が動かなくても、本物の NG を取りこぼさない。
-// 一度の総ざらいで NG が見つかっても実行は落とさない（毎時の実行が直るまで赤くなり続けるため）。知らせのコメントが手がかり。
+// 返すのは NG の一覧。落とすかどうかは呼び出し側が決める。
 async function sweepPull(args, number) {
   const { github, context, core, config, extraFile } = args;
   const { owner, repo } = context.repo;
@@ -474,31 +498,57 @@ async function sweepPull(args, number) {
     failures.push(...(await checkComment(env, target, false)));
   }
 
-  // 消えたレビューコメントの知らせは、消えたことを知らせる手段が無いのでここで片づける。issue コメントの知らせには触らない。
+  // 消えたレビューコメントは消えたことを知らせる手段が無いので、知らせはここで片づける。issue コメントの知らせには触らない。
   const live = new Set(sources.map((t) => commentKey(t.comment)));
   const prefix = `${config.marker}:`;
   for (const c of existing) {
     if (c.user?.login !== NOTICE_AUTHOR || !(c.body || '').startsWith(prefix)) continue;
     const key = c.body.slice(prefix.length).split('\n', 1)[0];
-    if (NOTICE_KEY_RE.test(key) && !live.has(key)) await deleteNotice({ ...env, found: c });
+    const m = NOTICE_KEY_RE.exec(key);
+    if (!m || live.has(key)) continue;
+    if (await sourceIsGone(env, number, m[1], Number(m[2])))
+      await deleteNotice({ ...env, found: c });
   }
-
-  if (failures.length > 0) core.warning(`PR #${number}: ${failures.join(' / ')}`);
   return failures;
 }
 
+// 1つの PR の失敗で残りを止めない。失敗した PR は最後にまとめて落とす。レート制限だけは続けても無駄なのですぐ投げる。
+// NG は警告に出し、failOnNg のときだけ実行も落とす。
+async function sweepEach(args, numbers, { failOnNg }) {
+  const { core } = args;
+  const ng = [];
+  const errored = [];
+  for (const number of numbers) {
+    try {
+      const failures = await sweepPull(args, number);
+      if (failures.length === 0) continue;
+      core.warning(`PR #${number}: ${failures.join(' / ')}`);
+      ng.push(`PR #${number}: ${failures.join(' / ')}`);
+    } catch (err) {
+      if (isRateLimited(err)) throw err;
+      core.warning(`PR #${number} の総ざらいに失敗しました: ${err.message}`);
+      errored.push(`#${number}`);
+    }
+  }
+  const messages = failOnNg ? ng : [];
+  if (errored.length > 0) messages.push(`総ざらいに失敗した PR: ${errored.join(', ')}`);
+  if (messages.length > 0) core.setFailed(messages.join(' / '));
+}
+
 // fork の PR のレビュー系イベント用。既定ブランチのコードと書き込み権限で動き、中継の実行が成功したかどうかは見ない。
+// 起こした本人の投稿の結果なので、NG なら他のイベントと同じく落とす。
 async function runRelay(args) {
   const tmpDir = args.tmpDir || process.env.RUNNER_TEMP || os.tmpdir();
   const numbers = await findPullsForRun({ ...args, tmpDir });
   if (numbers.length === 0) {
-    args.core.info('対応する開いた PR が見つからないので何もしません。');
+    args.core.info('対応する PR が見つからないので何もしません。');
     return;
   }
-  for (const number of numbers) await sweepPull(args, number);
+  await sweepEach(args, numbers, { failOnNg: true });
 }
 
 // 中継が動かなかった（衝突・初回の承認待ち・中継の削除）ぶんは、定期の総ざらいで拾う。
+// 直るまで毎時の実行が赤くなり続けないよう、NG は警告にとどめる。
 async function runSweepAll(args) {
   const { github, context } = args;
   const { owner, repo } = context.repo;
@@ -508,7 +558,11 @@ async function runSweepAll(args) {
     state: 'open',
     per_page: 100,
   });
-  for (const pr of open) await sweepPull(args, pr.number);
+  await sweepEach(
+    args,
+    open.map((pr) => pr.number),
+    { failOnNg: false },
+  );
   args.core.info(`開いた PR ${open.length} 件を総ざらいしました。`);
 }
 
